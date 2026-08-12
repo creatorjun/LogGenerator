@@ -9,7 +9,6 @@ struct LogTemplate {
     std::string id;
     std::string name;
     std::string sample;
-    std::string source;
 };
 
 }

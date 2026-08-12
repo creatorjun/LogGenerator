@@ -3,12 +3,18 @@
 
 #include "application/ports/log_catalog.hpp"
 
+#include <filesystem>
+
 namespace loggen::infrastructure {
 
 class JsonLogCatalog final : public application::ILogCatalog {
 public:
-    [[nodiscard]] std::vector<domain::LogTemplate> load(const std::filesystem::path& file) const override;
-    void save(const std::filesystem::path& file, std::span<const domain::LogTemplate> items) const override;
+    explicit JsonLogCatalog(std::filesystem::path file);
+    [[nodiscard]] std::vector<domain::LogTemplate> load() const override;
+    void save(std::span<const domain::LogTemplate> items) override;
+
+private:
+    std::filesystem::path file_;
 };
 
 }

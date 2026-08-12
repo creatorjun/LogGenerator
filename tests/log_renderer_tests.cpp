@@ -110,6 +110,15 @@ void run_log_renderer_tests() {
     const auto calendar_start = sys_days{year{2026} / January / 1};
     expect(calendar_log.render(calendar_start, true) == "timestamp=2026-01-01T00:00:00+09:00", "Calendar range rendering applied an unwanted timezone shift");
 
+    auto fractional_log = application::LogRenderer::prepare_one("timestamp=2025-07-05T13:53:53.123Z", "10.0.0.1", "10.0.0.2", seconds{0});
+    expect(fractional_log.render(base_time + milliseconds{100}).find(".100Z") != std::string_view::npos, "Fractional timestamp rendering failed");
+    expect(fractional_log.render(base_time + milliseconds{200}).find(".200Z") != std::string_view::npos, "Fractional timestamp cache was stale within the same second");
+    const auto* fractional_buffer = fractional_log.render(base_time).data();
+    for (int index = 0; index < 10'000; ++index) {
+        const auto rendered = fractional_log.render(base_time + microseconds{index});
+        expect(rendered.data() == fractional_buffer, "Fractional timestamp rendering reallocated its output buffer");
+    }
+
     const auto sanitized = application::PrivacyAnonymizer::sanitize(
         "vendor=lottermart alternate=lottemart store_name=당진점 user_name=김테스트 user_id=real-user emp_no=991122 email=person@example.com phone=010-1234-5678 remote_ip=10.20.30.40 src_ip=10.0.0.10 dst_ip=10.0.0.20 hmac=abcdef");
     expect(sanitized.find("lottermart") == std::string::npos, "Company token was not sanitized");
@@ -165,6 +174,17 @@ void run_log_renderer_tests() {
         unique_accounts.emplace(application::PrivacyAnonymizer::synthetic_value(application::PrivacyTokenKind::UserId, index));
     }
     expect(unique_accounts.size() == application::PrivacyAnonymizer::synthetic_profile_count, "Synthetic profile accounts are not unique");
+
+    auto movable = application::LogRenderer::prepare_one("event", "192.0.2.10", "192.0.2.20", seconds{0});
+    auto moved = std::move(movable);
+    expect(moved.render(base_time) == "event", "Moved prepared log could not render");
+    bool moved_from_rejected = false;
+    try {
+        static_cast<void>(movable.render(base_time));
+    } catch (const std::logic_error&) {
+        moved_from_rejected = true;
+    }
+    expect(moved_from_rejected, "Moved-from prepared log access was not rejected");
 }
 
 }

@@ -1,12 +1,12 @@
 // src/application/stress_test_service.cpp
 #include "application/stress_test_service.hpp"
 
-#include <Windows.h>
-#include <timeapi.h>
+#include "application/generator_config_validator.hpp"
 
 #include <algorithm>
 #include <charconv>
 #include <cmath>
+#include <condition_variable>
 #include <format>
 #include <limits>
 #include <stdexcept>
@@ -18,16 +18,15 @@ namespace {
 
 class RatePacer {
 public:
-    explicit RatePacer(const std::uint64_t events_per_second)
-        : events_per_second_(events_per_second), next_(std::chrono::steady_clock::now()) {
+    RatePacer(const std::uint64_t events_per_second, const IExecutionRuntime& execution_runtime)
+        : interval_(events_per_second == 0 ? std::chrono::nanoseconds{0} : std::chrono::nanoseconds{static_cast<std::int64_t>(1'000'000'000ULL / events_per_second)}), next_(std::chrono::steady_clock::now()), execution_runtime_(execution_runtime) {
     }
 
     void wait(const std::uint64_t events, const std::stop_token stop_token) {
-        if (events_per_second_ == 0 || events == 0) {
+        if (interval_.count() == 0 || events == 0) {
             return;
         }
-        const auto duration = std::chrono::nanoseconds{static_cast<std::int64_t>((1'000'000'000ULL * events) / events_per_second_)};
-        next_ += duration;
+        next_ += interval_ * static_cast<std::int64_t>(events);
         auto now = std::chrono::steady_clock::now();
         if (next_ + std::chrono::seconds{1} < now) {
             next_ = now;
@@ -40,29 +39,14 @@ public:
             now = std::chrono::steady_clock::now();
         }
         while (!stop_token.stop_requested() && std::chrono::steady_clock::now() < next_) {
-            YieldProcessor();
+            execution_runtime_.relax_cpu();
         }
     }
 
 private:
-    std::uint64_t events_per_second_{0};
+    std::chrono::nanoseconds interval_{0};
     std::chrono::steady_clock::time_point next_;
-};
-
-class TimerResolution {
-public:
-    TimerResolution()
-        : active_(timeBeginPeriod(1) == TIMERR_NOERROR) {
-    }
-
-    ~TimerResolution() {
-        if (active_) {
-            timeEndPeriod(1);
-        }
-    }
-
-private:
-    bool active_{false};
+    const IExecutionRuntime& execution_runtime_;
 };
 
 class CachedSystemClock {
@@ -97,6 +81,7 @@ public:
                 throw std::invalid_argument("Timestamp range is invalid");
             }
             position_ %= span_;
+            step_ %= span_;
         }
     }
 
@@ -105,7 +90,10 @@ public:
             return system_clock_.now();
         }
         const auto result = generation_.range.start + std::chrono::seconds{position_};
-        position_ = (position_ + step_) % span_;
+        position_ += step_;
+        if (position_ >= span_) {
+            position_ -= span_;
+        }
         return result;
     }
 
@@ -146,22 +134,22 @@ std::uint64_t quota_for_worker(const std::uint64_t target_eps, const std::uint32
 
 std::size_t stream_batch_events(const std::uint64_t quota) {
     if (quota == 0) {
-        return 256;
+        return 4096;
     }
-    return static_cast<std::size_t>(std::clamp<std::uint64_t>(quota / 200, 1, 128));
+    return static_cast<std::size_t>(std::clamp<std::uint64_t>(quota / 100, 1, 4096));
 }
 
 std::size_t file_batch_events(const std::uint64_t quota) {
     if (quota == 0) {
-        return 256;
+        return 16'384;
     }
-    return static_cast<std::size_t>(std::clamp<std::uint64_t>(quota / 20, 1, 256));
+    return static_cast<std::size_t>(std::clamp<std::uint64_t>(quota / 100, 1, 16'384));
 }
 
 }
 
-StressTestService::StressTestService(const ITransportFactory& transport_factory, ILogger& logger)
-    : transport_factory_(transport_factory), logger_(logger) {
+StressTestService::StressTestService(const ITransportFactory& transport_factory, const IExecutionRuntime& execution_runtime, ILogger& logger)
+    : transport_factory_(transport_factory), execution_runtime_(execution_runtime), logger_(logger) {
 }
 
 StressTestService::~StressTestService() {
@@ -170,23 +158,7 @@ StressTestService::~StressTestService() {
 
 void StressTestService::start(domain::GeneratorConfig config) {
     stop();
-    if (config.templates.empty()) {
-        throw std::invalid_argument("At least one log template is required");
-    }
-    if (config.endpoint.protocol != domain::TransportProtocol::File && (config.endpoint.host.empty() || config.endpoint.port == 0)) {
-        throw std::invalid_argument("A destination host and port are required");
-    }
-    if (config.timestamp_generation.mode == domain::TimestampGenerationMode::Range && !config.timestamp_generation.range.valid()) {
-        throw std::invalid_argument("A valid timestamp range is required");
-    }
-    config.worker_count = std::clamp<std::uint32_t>(config.worker_count, 1, 64);
-    if (config.endpoint.protocol == domain::TransportProtocol::File) {
-        config.worker_count = 1;
-        config.endpoint.framing = domain::StreamFraming::Newline;
-    }
-    if (config.target_eps > 0) {
-        config.worker_count = static_cast<std::uint32_t>(std::min<std::uint64_t>(config.worker_count, config.target_eps));
-    }
+    config = validate_and_normalize(std::move(config));
     const auto endpoint = config.endpoint.protocol == domain::TransportProtocol::File ? std::string{"generated directory"} : std::format("{}:{}", config.endpoint.host, config.endpoint.port);
     logger_.info(std::format(
         "Stress test starting: protocol={}, endpoint={}, workers={}, templates={}, target_eps={}",
@@ -207,64 +179,88 @@ void StressTestService::start(domain::GeneratorConfig config) {
             last_error_.clear();
         }
         stop_source_ = std::stop_source{};
-        started_at_ = std::chrono::steady_clock::now();
         {
             std::scoped_lock meter_lock(meter_mutex_);
+            started_at_ = std::chrono::steady_clock::now();
+            finished_at_ = {};
             meter_at_ = started_at_;
             meter_messages_ = 0;
             current_eps_ = 0.0;
         }
         state_.store(domain::GeneratorState::Connecting, std::memory_order_release);
         const auto stop_token = stop_source_.get_token();
-        supervisor_ = std::jthread([this, config = std::move(config), stop_token](std::stop_token) mutable {
-            run_supervisor(std::move(config), stop_token);
-        });
+        try {
+            supervisor_ = std::jthread([this, config = std::move(config), stop_token](std::stop_token) mutable {
+                run_supervisor(std::move(config), stop_token);
+            });
+        } catch (...) {
+            state_.store(domain::GeneratorState::Failed, std::memory_order_release);
+            mark_finished();
+            try {
+                std::scoped_lock error_lock(error_mutex_);
+                last_error_ = "Stress test supervisor could not be started";
+            } catch (...) {
+            }
+            throw;
+        }
     }
 }
 
 void StressTestService::request_stop() noexcept {
-    std::scoped_lock lock(lifecycle_mutex_);
-    if (!supervisor_.joinable()) {
-        return;
-    }
-    if (state_.load(std::memory_order_acquire) != domain::GeneratorState::Failed) {
-        state_.store(domain::GeneratorState::Stopping, std::memory_order_release);
-    }
-    stop_source_.request_stop();
-}
-
-void StressTestService::stop() noexcept {
-    std::jthread supervisor;
-    {
+    try {
         std::scoped_lock lock(lifecycle_mutex_);
         if (!supervisor_.joinable()) {
-            state_.store(domain::GeneratorState::Stopped, std::memory_order_release);
-            std::scoped_lock meter_lock(meter_mutex_);
-            current_eps_ = 0.0;
             return;
         }
         if (state_.load(std::memory_order_acquire) != domain::GeneratorState::Failed) {
             state_.store(domain::GeneratorState::Stopping, std::memory_order_release);
         }
         stop_source_.request_stop();
-        supervisor = std::move(supervisor_);
-    }
-    if (supervisor.joinable()) {
-        supervisor.join();
-    }
-    state_.store(domain::GeneratorState::Stopped, std::memory_order_release);
-    {
-        std::scoped_lock meter_lock(meter_mutex_);
-        current_eps_ = 0.0;
-    }
-    try {
-        logger_.info(std::format(
-            "Stress test stopped: messages={}, bytes={}, errors={}",
-            total_messages_.load(std::memory_order_relaxed),
-            total_bytes_.load(std::memory_order_relaxed),
-            send_errors_.load(std::memory_order_relaxed)));
     } catch (...) {
-        logger_.info("Stress test stopped");
+        state_.store(domain::GeneratorState::Failed, std::memory_order_release);
+        stop_source_.request_stop();
+        logger_.critical("Stress test stop request failed");
+    }
+}
+
+void StressTestService::stop() noexcept {
+    try {
+        std::jthread supervisor;
+        {
+            std::scoped_lock lock(lifecycle_mutex_);
+            if (!supervisor_.joinable()) {
+                state_.store(domain::GeneratorState::Stopped, std::memory_order_release);
+                std::scoped_lock meter_lock(meter_mutex_);
+                if (started_at_.time_since_epoch().count() != 0) {
+                    finished_at_ = std::chrono::steady_clock::now();
+                }
+                current_eps_ = 0.0;
+                return;
+            }
+            if (state_.load(std::memory_order_acquire) != domain::GeneratorState::Failed) {
+                state_.store(domain::GeneratorState::Stopping, std::memory_order_release);
+            }
+            stop_source_.request_stop();
+            supervisor = std::move(supervisor_);
+        }
+        if (supervisor.joinable()) {
+            supervisor.join();
+        }
+        mark_finished();
+        state_.store(domain::GeneratorState::Stopped, std::memory_order_release);
+        try {
+            logger_.info(std::format(
+                "Stress test stopped: messages={}, bytes={}, errors={}",
+                total_messages_.load(std::memory_order_relaxed),
+                total_bytes_.load(std::memory_order_relaxed),
+                send_errors_.load(std::memory_order_relaxed)));
+        } catch (...) {
+            logger_.info("Stress test stopped");
+        }
+    } catch (...) {
+        state_.store(domain::GeneratorState::Failed, std::memory_order_release);
+        stop_source_.request_stop();
+        logger_.critical("Stress test shutdown failed");
     }
 }
 
@@ -275,11 +271,12 @@ domain::TransmissionStats StressTestService::snapshot() {
     result.total_bytes = total_bytes_.load(std::memory_order_relaxed);
     result.send_errors = send_errors_.load(std::memory_order_relaxed);
     const auto now = std::chrono::steady_clock::now();
-    if (started_at_.time_since_epoch().count() != 0) {
-        result.elapsed_seconds = std::chrono::duration<double>(now - started_at_).count();
-    }
     {
         std::scoped_lock lock(meter_mutex_);
+        const auto measured_at = finished_at_.time_since_epoch().count() == 0 ? now : finished_at_;
+        if (started_at_.time_since_epoch().count() != 0) {
+            result.elapsed_seconds = std::chrono::duration<double>(measured_at - started_at_).count();
+        }
         const auto meter_seconds = std::chrono::duration<double>(now - meter_at_).count();
         if (meter_seconds >= 0.2) {
             current_eps_ = static_cast<double>(result.total_messages - meter_messages_) / meter_seconds;
@@ -300,9 +297,11 @@ domain::TransmissionStats StressTestService::snapshot() {
 
 void StressTestService::run_supervisor(domain::GeneratorConfig config, const std::stop_token stop_token) noexcept {
     try {
-        const TimerResolution timer_resolution;
+        const auto timer_resolution = execution_runtime_.enable_high_resolution_timing();
+        static_cast<void>(timer_resolution);
         auto prepared = LogRenderer::prepare(config);
         if (stop_token.stop_requested()) {
+            mark_finished();
             state_.store(domain::GeneratorState::Stopped, std::memory_order_release);
             return;
         }
@@ -331,9 +330,11 @@ void StressTestService::run_supervisor(domain::GeneratorConfig config, const std
                 });
             }
         }
-        while (!stop_token.stop_requested()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds{1});
-        }
+        std::mutex stop_mutex;
+        std::condition_variable_any stop_condition;
+        std::unique_lock stop_lock(stop_mutex);
+        stop_condition.wait(stop_lock, stop_token, [] { return false; });
+        stop_lock.unlock();
         for (auto& worker : workers) {
             worker.request_stop();
         }
@@ -342,6 +343,7 @@ void StressTestService::run_supervisor(domain::GeneratorConfig config, const std
                 worker.join();
             }
         }
+        mark_finished();
         if (state_.load(std::memory_order_acquire) != domain::GeneratorState::Failed) {
             state_.store(domain::GeneratorState::Stopped, std::memory_order_release);
         }
@@ -353,7 +355,7 @@ void StressTestService::run_supervisor(domain::GeneratorConfig config, const std
 }
 
 void StressTestService::run_worker(domain::EndpointConfig endpoint, const domain::TimestampGeneration timestamp_generation, std::vector<PreparedLog> logs, const std::uint64_t quota, const std::uint32_t worker_index, const std::uint32_t worker_count, const std::stop_token stop_token) noexcept {
-    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
+    execution_runtime_.optimize_current_worker();
     std::uint64_t local_messages = 0;
     std::uint64_t local_bytes = 0;
     auto flush = [this, &local_messages, &local_bytes] {
@@ -380,7 +382,7 @@ void StressTestService::run_worker(domain::EndpointConfig endpoint, const domain
             }
         }
 
-        RatePacer pacer{quota};
+        RatePacer pacer{quota, execution_runtime_};
         TimestampCursor clock{timestamp_generation, worker_index, worker_count, quota == 0 || quota >= 10'000};
         const bool calendar_time = clock.calendar_time();
         std::size_t log_index = 0;
@@ -405,7 +407,7 @@ void StressTestService::run_worker(domain::EndpointConfig endpoint, const domain
         } else {
             const auto event_limit = endpoint.protocol == domain::TransportProtocol::File ? file_batch_events(quota) : stream_batch_events(quota);
             std::string batch;
-            const std::size_t batch_limit = endpoint.protocol == domain::TransportProtocol::File ? 65'536 : 262'144;
+            const std::size_t batch_limit = endpoint.protocol == domain::TransportProtocol::File ? 1'048'576 : 262'144;
             batch.reserve(batch_limit);
             while (!stop_token.stop_requested()) {
                 batch.clear();
@@ -451,14 +453,29 @@ void StressTestService::publish_error(std::string message) noexcept {
     } catch (...) {
         logger_.error(message);
     }
-    {
+    try {
         std::scoped_lock lock(error_mutex_);
         if (last_error_.empty()) {
             last_error_ = std::move(message);
         }
+    } catch (...) {
+        logger_.critical("Stress test error details could not be retained");
     }
+    mark_finished();
     state_.store(domain::GeneratorState::Failed, std::memory_order_release);
     stop_source_.request_stop();
+}
+
+void StressTestService::mark_finished() noexcept {
+    try {
+        std::scoped_lock lock(meter_mutex_);
+        if (finished_at_.time_since_epoch().count() == 0) {
+            finished_at_ = std::chrono::steady_clock::now();
+        }
+        current_eps_ = 0.0;
+    } catch (...) {
+        logger_.critical("Stress test completion metrics could not be finalized");
+    }
 }
 
 }

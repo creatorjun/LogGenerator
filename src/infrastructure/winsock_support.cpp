@@ -37,7 +37,7 @@ void set_blocking(const SOCKET socket, const bool blocking) {
     }
 }
 
-bool wait_for_connect(const SOCKET socket, const int timeout_milliseconds) {
+bool wait_for_connect(const SOCKET socket, const int timeout_milliseconds, int& socket_error) {
     fd_set write_set{};
     fd_set error_set{};
     FD_ZERO(&write_set);
@@ -48,16 +48,25 @@ bool wait_for_connect(const SOCKET socket, const int timeout_milliseconds) {
     timeout.tv_sec = timeout_milliseconds / 1000;
     timeout.tv_usec = (timeout_milliseconds % 1000) * 1000;
     const int result = select(0, nullptr, &write_set, &error_set, &timeout);
-    if (result <= 0) {
+    if (result == SOCKET_ERROR) {
+        socket_error = WSAGetLastError();
         return false;
     }
-    int socket_error = 0;
+    if (result == 0) {
+        socket_error = WSAETIMEDOUT;
+        return false;
+    }
+    socket_error = 0;
     int length = sizeof(socket_error);
     if (getsockopt(socket, SOL_SOCKET, SO_ERROR, reinterpret_cast<char*>(&socket_error), &length) == SOCKET_ERROR) {
+        socket_error = WSAGetLastError();
         return false;
     }
-    WSASetLastError(socket_error);
-    return socket_error == 0 && FD_ISSET(socket, &write_set);
+    if (socket_error == 0 && !FD_ISSET(socket, &write_set)) {
+        socket_error = WSAECONNREFUSED;
+        return false;
+    }
+    return socket_error == 0;
 }
 
 }
@@ -107,6 +116,12 @@ void ensure_winsock() {
 }
 
 SocketHandle connect_socket(const std::string& host, const std::uint16_t port, const int socket_type, const int protocol, const int timeout_milliseconds) {
+    if (host.empty() || port == 0) {
+        throw std::invalid_argument("A destination host and port are required");
+    }
+    if (timeout_milliseconds <= 0) {
+        throw std::invalid_argument("Socket timeout must be greater than zero");
+    }
     ensure_winsock();
     addrinfo hints{};
     hints.ai_family = AF_UNSPEC;
@@ -116,7 +131,8 @@ SocketHandle connect_socket(const std::string& host, const std::uint16_t port, c
     const auto service = std::to_string(port);
     const int lookup = getaddrinfo(host.c_str(), service.c_str(), &hints, &raw_results);
     if (lookup != 0) {
-        throw std::runtime_error("Address resolution failed for " + host + ": " + gai_strerrorA(lookup));
+        const char* description = gai_strerrorA(lookup);
+        throw std::runtime_error("Address resolution failed for " + host + ": " + (description == nullptr ? std::to_string(lookup) : std::string(description)));
     }
     const std::unique_ptr<addrinfo, decltype(&freeaddrinfo)> results(raw_results, freeaddrinfo);
     int last_error = WSAEHOSTUNREACH;
@@ -134,8 +150,7 @@ SocketHandle connect_socket(const std::string& host, const std::uint16_t port, c
                 if (last_error != WSAEWOULDBLOCK && last_error != WSAEINPROGRESS) {
                     continue;
                 }
-                if (!wait_for_connect(candidate.get(), timeout_milliseconds)) {
-                    last_error = WSAGetLastError();
+                if (!wait_for_connect(candidate.get(), timeout_milliseconds, last_error)) {
                     continue;
                 }
             }
@@ -144,6 +159,9 @@ SocketHandle connect_socket(const std::string& host, const std::uint16_t port, c
             return candidate;
         } catch (...) {
             last_error = WSAGetLastError();
+            if (last_error == 0) {
+                last_error = WSAEINVAL;
+            }
         }
     }
     throw std::runtime_error(socket_error_message("Connection to " + host + ':' + service, last_error));
@@ -161,18 +179,60 @@ void configure_send_timeout(const SOCKET socket, const int milliseconds) {
     }
 }
 
+void configure_receive_timeout(const SOCKET socket, const int milliseconds) {
+    if (setsockopt(socket, SOL_SOCKET, SO_RCVTIMEO, reinterpret_cast<const char*>(&milliseconds), sizeof(milliseconds)) == SOCKET_ERROR) {
+        throw std::runtime_error(socket_error_message("setsockopt SO_RCVTIMEO"));
+    }
+}
+
 void send_all(const SOCKET socket, const std::string_view payload) {
     std::size_t offset = 0;
     while (offset < payload.size()) {
         const auto remaining = std::min<std::size_t>(payload.size() - offset, static_cast<std::size_t>(std::numeric_limits<int>::max()));
         const int sent = ::send(socket, payload.data() + offset, static_cast<int>(remaining), 0);
         if (sent == SOCKET_ERROR) {
+            if (WSAGetLastError() == WSAEINTR) {
+                continue;
+            }
             throw std::runtime_error(socket_error_message("send"));
         }
         if (sent == 0) {
             throw std::runtime_error("Remote endpoint closed the connection");
         }
         offset += static_cast<std::size_t>(sent);
+    }
+}
+
+void send_all(const SOCKET socket, const std::span<WSABUF> buffers) {
+    std::size_t buffer_index = 0;
+    while (buffer_index < buffers.size()) {
+        while (buffer_index < buffers.size() && buffers[buffer_index].len == 0) {
+            ++buffer_index;
+        }
+        if (buffer_index == buffers.size()) {
+            break;
+        }
+        DWORD sent = 0;
+        const auto buffer_count = static_cast<DWORD>(std::min<std::size_t>(buffers.size() - buffer_index, std::numeric_limits<DWORD>::max()));
+        const int result = WSASend(socket, buffers.data() + buffer_index, buffer_count, &sent, 0, nullptr, nullptr);
+        if (result == SOCKET_ERROR) {
+            if (WSAGetLastError() == WSAEINTR) {
+                continue;
+            }
+            throw std::runtime_error(socket_error_message("WSASend"));
+        }
+        if (sent == 0) {
+            throw std::runtime_error("Remote endpoint closed the connection");
+        }
+        DWORD remaining = sent;
+        while (buffer_index < buffers.size() && remaining >= buffers[buffer_index].len) {
+            remaining -= buffers[buffer_index].len;
+            ++buffer_index;
+        }
+        if (buffer_index < buffers.size() && remaining > 0) {
+            buffers[buffer_index].buf += remaining;
+            buffers[buffer_index].len -= remaining;
+        }
     }
 }
 
@@ -196,6 +256,9 @@ std::string socket_error_message(const std::string_view action, const int error_
 std::wstring utf8_to_wide(const std::string_view value) {
     if (value.empty()) {
         return {};
+    }
+    if (value.size() > static_cast<std::size_t>(std::numeric_limits<int>::max())) {
+        throw std::length_error("UTF-8 text is too large to convert");
     }
     const int required = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, value.data(), static_cast<int>(value.size()), nullptr, 0);
     if (required <= 0) {

@@ -1,7 +1,6 @@
 // src/presentation/app.cpp
 #include "presentation/app.hpp"
 
-#include "application/privacy_anonymizer.hpp"
 #include "domain/generator_config.hpp"
 #include "presentation/ui_theme.hpp"
 
@@ -20,6 +19,8 @@
 #include <limits>
 #include <stdexcept>
 #include <string_view>
+#include <system_error>
+#include <utility>
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND window, UINT message, WPARAM word_parameter, LPARAM long_parameter);
 
@@ -44,6 +45,32 @@ std::string_view state_text(const domain::GeneratorState state) {
         return "오류";
     }
     return "알 수 없음";
+}
+
+std::string_view timestamp_style_text(const application::TimestampStyle style) {
+    switch (style) {
+    case application::TimestampStyle::Iso8601:
+        return "ISO 8601 / Year First";
+    case application::TimestampStyle::YearFirst:
+        return "Year First";
+    case application::TimestampStyle::SyslogWithYear:
+        return "Syslog With Year";
+    case application::TimestampStyle::SyslogWithoutYear:
+        return "Syslog";
+    case application::TimestampStyle::MonthFirstGmt:
+        return "Month First GMT";
+    case application::TimestampStyle::Apache:
+        return "Apache";
+    case application::TimestampStyle::Compact:
+        return "Compact yyyyMMddHHmmss";
+    case application::TimestampStyle::MonthDayYear:
+        return "MMM dd yyyy HH:mm:ss";
+    case application::TimestampStyle::DateOnly:
+        return "Separated Date";
+    case application::TimestampStyle::TimeOnly:
+        return "Separated Time";
+    }
+    return "Unknown";
 }
 
 ImVec4 state_color(const domain::GeneratorState state) {
@@ -107,29 +134,6 @@ void disabled_wrapped_text(const char* text) {
     ImGui::PopStyleColor();
 }
 
-bool valid_ipv4(const std::string_view value) {
-    int segments = 0;
-    std::size_t start = 0;
-    while (start <= value.size()) {
-        const auto end = value.find('.', start);
-        const auto part = value.substr(start, end == std::string_view::npos ? value.size() - start : end - start);
-        if (part.empty() || part.size() > 3) {
-            return false;
-        }
-        int number = -1;
-        const auto conversion = std::from_chars(part.data(), part.data() + part.size(), number);
-        if (conversion.ec != std::errc{} || conversion.ptr != part.data() + part.size() || number < 0 || number > 255) {
-            return false;
-        }
-        ++segments;
-        if (end == std::string_view::npos) {
-            break;
-        }
-        start = end + 1;
-    }
-    return segments == 4;
-}
-
 std::string lowercase(std::string value) {
     std::ranges::transform(value, value.begin(), [](const unsigned char character) {
         return static_cast<char>(std::tolower(character));
@@ -144,24 +148,6 @@ std::string sample_preview(const std::string_view sample) {
         result.append("...");
     }
     return result;
-}
-
-std::string catalog_search_text(const domain::LogTemplate& item, const application::LogTemplateAnalysis& analysis) {
-    std::string result;
-    result.reserve(item.name.size() + item.source.size() + item.sample.size() + 256);
-    result.append(item.name);
-    result.push_back(' ');
-    result.append(item.source);
-    result.push_back(' ');
-    result.append(item.sample);
-    for (const auto kind : application::privacy_token_kinds) {
-        if ((analysis.privacy_token_mask & application::privacy_token_bit(kind)) == 0) {
-            continue;
-        }
-        result.push_back(' ');
-        result.append(application::PrivacyAnonymizer::search_terms(kind));
-    }
-    return lowercase(std::move(result));
 }
 
 std::string path_to_utf8(const std::filesystem::path& path) {
@@ -191,21 +177,20 @@ std::optional<std::chrono::sys_days> parse_iso_date(const std::string_view value
 
 }
 
-App::App(application::ILogCatalog& catalog, application::ILogger& logger, application::StressTestService& stress_service, std::filesystem::path catalog_file, std::filesystem::path generated_directory)
-    : catalog_(catalog), logger_(logger), stress_service_(stress_service), catalog_file_(std::move(catalog_file)), generated_directory_(std::move(generated_directory)) {
+App::App(application::ILogCatalogUseCase& catalog_service, application::ILogger& logger, application::IStressTestUseCase& stress_service, std::filesystem::path generated_directory)
+    : catalog_service_(catalog_service), logger_(logger), stress_service_(stress_service), catalog_tasks_(catalog_service, logger), analysis_tasks_(catalog_service, logger), generated_directory_(std::move(generated_directory)), generated_directory_text_(path_to_utf8(generated_directory_)) {
 }
 
 App::~App() {
-    if (catalog_loader_.joinable()) {
-        catalog_loader_.request_stop();
-        catalog_loader_.join();
-    }
     stress_service_.stop();
     shutdown_imgui();
+    d3d_.reset();
+    shutdown_window();
 }
 
 int App::run(const HINSTANCE instance, const int show_command) {
     logger_.info("UI initialization started");
+    instance_ = instance;
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
     ImGui_ImplWin32_EnableDpiAwareness();
     WNDCLASSEXW window_class{};
@@ -215,21 +200,25 @@ int App::run(const HINSTANCE instance, const int show_command) {
     window_class.hInstance = instance;
     window_class.hCursor = LoadCursor(nullptr, IDC_ARROW);
     window_class.lpszClassName = L"LogGeneratorWindow";
-    if (RegisterClassExW(&window_class) == 0) {
-        throw std::runtime_error("Window class registration failed");
+    window_class_ = RegisterClassExW(&window_class);
+    if (window_class_ == 0) {
+        throw std::system_error(static_cast<int>(GetLastError()), std::system_category(), "Window class registration failed");
     }
 
-    const UINT dpi = GetDpiForSystem();
+    const UINT detected_system_dpi = GetDpiForSystem();
+    const UINT dpi = detected_system_dpi == 0 ? 96U : detected_system_dpi;
     RECT bounds{0, 0, MulDiv(1180, static_cast<int>(dpi), 96), MulDiv(900, static_cast<int>(dpi), 96)};
     AdjustWindowRectExForDpi(&bounds, WS_OVERLAPPEDWINDOW, FALSE, 0, dpi);
     RECT work_area{};
-    SystemParametersInfoW(SPI_GETWORKAREA, 0, &work_area, 0);
-    const int window_width = std::min(bounds.right - bounds.left, work_area.right - work_area.left);
-    const int window_height = std::min(bounds.bottom - bounds.top, work_area.bottom - work_area.top);
+    if (!SystemParametersInfoW(SPI_GETWORKAREA, 0, &work_area, 0)) {
+        work_area.right = GetSystemMetrics(SM_CXSCREEN);
+        work_area.bottom = GetSystemMetrics(SM_CYSCREEN);
+    }
+    const int window_width = static_cast<int>(std::max<LONG>(1, std::min(bounds.right - bounds.left, work_area.right - work_area.left)));
+    const int window_height = static_cast<int>(std::max<LONG>(1, std::min(bounds.bottom - bounds.top, work_area.bottom - work_area.top)));
     window_ = CreateWindowExW(0, window_class.lpszClassName, L"LogGenerator", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, window_width, window_height, nullptr, nullptr, instance, this);
     if (window_ == nullptr) {
-        UnregisterClassW(window_class.lpszClassName, instance);
-        throw std::runtime_error("Window creation failed");
+        throw std::system_error(static_cast<int>(GetLastError()), std::system_category(), "Window creation failed");
     }
     const BOOL dark_mode = TRUE;
     DwmSetWindowAttribute(window_, 20, &dark_mode, sizeof(dark_mode));
@@ -257,6 +246,7 @@ int App::run(const HINSTANCE instance, const int show_command) {
             WaitMessage();
             continue;
         }
+        apply_pending_resize();
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplWin32_NewFrame();
         ImGui::NewFrame();
@@ -268,10 +258,8 @@ int App::run(const HINSTANCE instance, const int show_command) {
     }
     stress_service_.stop();
     shutdown_imgui();
-    if (IsWindow(window_)) {
-        DestroyWindow(window_);
-    }
-    UnregisterClassW(window_class.lpszClassName, instance);
+    d3d_.reset();
+    shutdown_window();
     logger_.info("UI event loop stopped");
     return static_cast<int>(message.wParam);
 }
@@ -281,10 +269,25 @@ LRESULT CALLBACK App::window_procedure(const HWND window, const UINT message, co
     if (message == WM_NCCREATE) {
         const auto* creation = reinterpret_cast<const CREATESTRUCTW*>(long_parameter);
         app = static_cast<App*>(creation->lpCreateParams);
-        SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(app));
+        SetLastError(ERROR_SUCCESS);
+        const LONG_PTR previous = SetWindowLongPtrW(window, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(app));
+        if (previous == 0 && GetLastError() != ERROR_SUCCESS) {
+            app->report_error("Window initialization failed", "window state could not be attached");
+            return FALSE;
+        }
     }
     if (app != nullptr) {
-        return app->handle_message(window, message, word_parameter, long_parameter);
+        try {
+            return app->handle_message(window, message, word_parameter, long_parameter);
+        } catch (const std::exception& error) {
+            app->report_error("Window message processing failed", error.what());
+            PostQuitMessage(1);
+            return 0;
+        } catch (...) {
+            app->report_error("Window message processing failed", "unknown error");
+            PostQuitMessage(1);
+            return 0;
+        }
     }
     return DefWindowProcW(window, message, word_parameter, long_parameter);
 }
@@ -296,11 +299,8 @@ LRESULT App::handle_message(const HWND window, const UINT message, const WPARAM 
     switch (message) {
     case WM_SIZE:
         if (word_parameter != SIZE_MINIMIZED && d3d_.device() != nullptr) {
-            try {
-                d3d_.resize(static_cast<unsigned int>(LOWORD(long_parameter)), static_cast<unsigned int>(HIWORD(long_parameter)));
-            } catch (const std::exception& error) {
-                ui_error_ = error.what();
-            }
+            pending_resize_width_ = static_cast<unsigned int>(LOWORD(long_parameter));
+            pending_resize_height_ = static_cast<unsigned int>(HIWORD(long_parameter));
         }
         return 0;
     case WM_GETMINMAXINFO: {
@@ -333,21 +333,32 @@ LRESULT App::handle_message(const HWND window, const UINT message, const WPARAM 
 
 void App::initialize_imgui() {
     IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
+    if (ImGui::CreateContext() == nullptr) {
+        throw std::runtime_error("Dear ImGui context creation failed");
+    }
+    imgui_context_ready_ = true;
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    ui_scale_ = static_cast<float>(GetDpiForWindow(window_)) / 96.0F;
+    io.IniFilename = nullptr;
+    const UINT detected_dpi = GetDpiForWindow(window_);
+    ui_scale_ = static_cast<float>(detected_dpi == 0 ? 96U : detected_dpi) / 96.0F;
     const std::filesystem::path korean_font = L"C:\\Windows\\Fonts\\malgun.ttf";
+    ImFont* loaded_font = nullptr;
     if (std::filesystem::exists(korean_font)) {
-        io.Fonts->AddFontFromFileTTF(path_to_utf8(korean_font).c_str(), 17.0F, nullptr, io.Fonts->GetGlyphRangesKorean());
-    } else {
+        loaded_font = io.Fonts->AddFontFromFileTTF(path_to_utf8(korean_font).c_str(), 17.0F, nullptr, io.Fonts->GetGlyphRangesKorean());
+    }
+    if (loaded_font == nullptr) {
         io.Fonts->AddFontDefault();
     }
     apply_ui_theme(ui_scale_);
-    if (!ImGui_ImplWin32_Init(window_) || !ImGui_ImplDX11_Init(d3d_.device(), d3d_.context())) {
-        ImGui::DestroyContext();
+    if (!ImGui_ImplWin32_Init(window_)) {
+        throw std::runtime_error("Dear ImGui Win32 initialization failed");
+    }
+    imgui_win32_ready_ = true;
+    if (!ImGui_ImplDX11_Init(d3d_.device(), d3d_.context())) {
         throw std::runtime_error("Dear ImGui initialization failed");
     }
+    imgui_dx11_ready_ = true;
     imgui_ready_ = true;
 }
 
@@ -363,123 +374,146 @@ void App::update_ui_scale(const float scale) {
     }
 }
 
-void App::shutdown_imgui() noexcept {
-    if (!imgui_ready_) {
+void App::apply_pending_resize() {
+    if (pending_resize_width_ == 0 || pending_resize_height_ == 0) {
         return;
     }
-    ImGui_ImplDX11_Shutdown();
-    ImGui_ImplWin32_Shutdown();
-    ImGui::DestroyContext();
+    const auto width = std::exchange(pending_resize_width_, 0U);
+    const auto height = std::exchange(pending_resize_height_, 0U);
+    try {
+        d3d_.resize(width, height);
+    } catch (const std::exception& error) {
+        report_error("Window resize failed", error.what());
+        if (!d3d_.renderable()) {
+            throw;
+        }
+    } catch (...) {
+        report_error("Window resize failed", "unknown error");
+        if (!d3d_.renderable()) {
+            throw;
+        }
+    }
+}
+
+void App::shutdown_imgui() noexcept {
     imgui_ready_ = false;
+    if (imgui_dx11_ready_) {
+        ImGui_ImplDX11_Shutdown();
+        imgui_dx11_ready_ = false;
+    }
+    if (imgui_win32_ready_) {
+        ImGui_ImplWin32_Shutdown();
+        imgui_win32_ready_ = false;
+    }
+    if (imgui_context_ready_) {
+        ImGui::DestroyContext();
+        imgui_context_ready_ = false;
+    }
+}
+
+void App::shutdown_window() noexcept {
+    if (window_ != nullptr && IsWindow(window_)) {
+        DestroyWindow(window_);
+    }
+    window_ = nullptr;
+    if (window_class_ != 0 && instance_ != nullptr) {
+        UnregisterClassW(L"LogGeneratorWindow", instance_);
+    }
+    window_class_ = 0;
+    instance_ = nullptr;
 }
 
 void App::request_catalog_load() {
-    if (catalog_loading_.exchange(true, std::memory_order_acq_rel)) {
-        return;
-    }
-    if (catalog_loader_.joinable()) {
-        catalog_loader_.join();
-    }
-    const auto file = catalog_file_;
-    catalog_loader_ = std::jthread([this, file](std::stop_token) {
-        CatalogLoadResult result;
-        try {
-            result.items = catalog_.load(file);
-            result.search_names.reserve(result.items.size());
-            result.previews.reserve(result.items.size());
-            result.analyses.reserve(result.items.size());
-            for (auto& item : result.items) {
-                item.sample = application::PrivacyAnonymizer::sanitize(item.sample);
-                auto analysis = application::LogRenderer::analyze(item.sample);
-                result.search_names.push_back(catalog_search_text(item, analysis));
-                result.previews.push_back(sample_preview(item.sample));
-                result.analyses.push_back(std::move(analysis));
-            }
-            logger_.info(std::format("Sample log catalog loaded: file={}, entries={}", path_to_utf8(file), result.items.size()));
-        } catch (const std::exception& error) {
-            result.error = error.what();
-            logger_.error(std::format("Sample log catalog load failed: {}", error.what()));
+    try {
+        if (!catalog_tasks_.request_load()) {
+            report_error("Catalog load was not started", "another catalog result must be processed first");
         }
-        {
-            std::scoped_lock lock(catalog_result_mutex_);
-            pending_catalog_result_ = std::move(result);
-        }
-        catalog_result_ready_.store(true, std::memory_order_release);
-        catalog_loading_.store(false, std::memory_order_release);
-    });
-}
-
-void App::request_catalog_save() {
-    if (catalog_loading_.exchange(true, std::memory_order_acq_rel)) {
-        ui_error_ = "카탈로그 작업이 완료된 뒤 다시 시도하세요.";
-        return;
+    } catch (const std::exception& error) {
+        report_error("Catalog load could not be started", error.what());
+    } catch (...) {
+        report_error("Catalog load could not be started", "unknown error");
     }
-    if (catalog_loader_.joinable()) {
-        catalog_loader_.join();
-    }
-    const auto file = catalog_file_;
-    auto items = catalog_items_;
-    catalog_loader_ = std::jthread([this, file, items = std::move(items)](std::stop_token) {
-        CatalogLoadResult result;
-        result.replace_items = false;
-        try {
-            catalog_.save(file, items);
-            logger_.info(std::format("Sample log catalog saved: file={}, entries={}", path_to_utf8(file), items.size()));
-        } catch (const std::exception& error) {
-            result.error = error.what();
-            logger_.error(std::format("Sample log catalog save failed: {}", error.what()));
-        }
-        {
-            std::scoped_lock lock(catalog_result_mutex_);
-            pending_catalog_result_ = std::move(result);
-        }
-        catalog_result_ready_.store(true, std::memory_order_release);
-        catalog_loading_.store(false, std::memory_order_release);
-    });
 }
 
 void App::apply_catalog_result() {
-    if (!catalog_result_ready_.exchange(false, std::memory_order_acq_rel)) {
-        return;
-    }
-    std::optional<CatalogLoadResult> result;
-    {
-        std::scoped_lock lock(catalog_result_mutex_);
-        result = std::move(pending_catalog_result_);
-        pending_catalog_result_.reset();
-    }
-    if (!result) {
-        return;
-    }
-    if (!result->error.empty()) {
-        ui_error_ = std::move(result->error);
-        return;
-    }
-    if (!result->replace_items) {
+    try {
+        auto result = catalog_tasks_.poll();
+        if (!result) {
+            return;
+        }
+        if (!result->error.empty()) {
+            report_error("Catalog operation failed", result->error);
+            return;
+        }
+        if (!result->replace_items) {
+            ui_error_.clear();
+            return;
+        }
+        std::vector<CatalogViewItem> replacement;
+        replacement.reserve(result->items.size());
+        for (auto& item : result->items) {
+            auto preview = sample_preview(item.log.sample);
+            replacement.push_back(CatalogViewItem{std::move(item), std::move(preview)});
+        }
+        auto replacement_filter = build_filter(replacement);
+        catalog_items_.swap(replacement);
+        filtered_indices_.swap(replacement_filter);
+        selected_log_ = std::min(selected_log_, catalog_items_.empty() ? std::size_t{0} : catalog_items_.size() - 1);
+        if (!filtered_indices_.empty() && std::ranges::find(filtered_indices_, selected_log_) == filtered_indices_.end()) {
+            selected_log_ = filtered_indices_.front();
+        }
         ui_error_.clear();
-        return;
+    } catch (const std::exception& error) {
+        report_error("Catalog result could not be applied", error.what());
+    } catch (...) {
+        report_error("Catalog result could not be applied", "unknown error");
     }
-    catalog_items_ = std::move(result->items);
-    catalog_search_names_ = std::move(result->search_names);
-    catalog_previews_ = std::move(result->previews);
-    catalog_analyses_ = std::move(result->analyses);
-    selected_log_ = std::min(selected_log_, catalog_items_.empty() ? std::size_t{0} : catalog_items_.size() - 1);
-    rebuild_filter();
-    ui_error_.clear();
+}
+
+void App::apply_editor_analysis_result() {
+    try {
+        auto result = analysis_tasks_.poll();
+        if (!result || result->request_id != editor_analysis_generation_) {
+            return;
+        }
+        if (!result->error.empty()) {
+            report_error("Sample log analysis failed", result->error);
+            return;
+        }
+        if (result->analysis) {
+            editor_analysis_ = std::move(*result->analysis);
+        }
+    } catch (const std::exception& error) {
+        report_error("Sample log analysis result could not be applied", error.what());
+    } catch (...) {
+        report_error("Sample log analysis result could not be applied", "unknown error");
+    }
 }
 
 void App::rebuild_filter() {
+    try {
+        auto replacement = build_filter(catalog_items_);
+        filtered_indices_.swap(replacement);
+        if (!filtered_indices_.empty() && std::ranges::find(filtered_indices_, selected_log_) == filtered_indices_.end()) {
+            selected_log_ = filtered_indices_.front();
+        }
+    } catch (const std::exception& error) {
+        report_error("Catalog filter could not be rebuilt", error.what());
+    } catch (...) {
+        report_error("Catalog filter could not be rebuilt", "unknown error");
+    }
+}
+
+std::vector<std::size_t> App::build_filter(const std::vector<CatalogViewItem>& items) const {
     const auto query = lowercase(search_.data());
-    filtered_indices_.clear();
-    filtered_indices_.reserve(catalog_items_.size());
-    for (std::size_t index = 0; index < catalog_items_.size(); ++index) {
-        if (query.empty() || catalog_search_names_[index].find(query) != std::string::npos) {
-            filtered_indices_.push_back(index);
+    std::vector<std::size_t> result;
+    result.reserve(items.size());
+    for (std::size_t index = 0; index < items.size(); ++index) {
+        if (query.empty() || items[index].item.search_text.find(query) != std::string::npos) {
+            result.push_back(index);
         }
     }
-    if (!filtered_indices_.empty() && std::ranges::find(filtered_indices_, selected_log_) == filtered_indices_.end()) {
-        selected_log_ = filtered_indices_.front();
-    }
+    return result;
 }
 
 void App::refresh_stats() {
@@ -487,30 +521,54 @@ void App::refresh_stats() {
     if (now < next_stats_refresh_) {
         return;
     }
-    cached_stats_ = stress_service_.snapshot();
-    current_eps_text_ = format_number(cached_stats_.current_eps);
-    average_eps_text_ = format_number(cached_stats_.average_eps);
-    total_messages_text_ = format_number(static_cast<double>(cached_stats_.total_messages));
-    total_bytes_text_ = format_bytes(cached_stats_.total_bytes);
-    next_stats_refresh_ = now + (is_active(cached_stats_.state) ? std::chrono::milliseconds{100} : std::chrono::milliseconds{250});
+    try {
+        auto stats = stress_service_.snapshot();
+        auto current_eps = format_number(stats.current_eps);
+        auto average_eps = format_number(stats.average_eps);
+        auto total_messages = format_number(static_cast<double>(stats.total_messages));
+        auto total_bytes = format_bytes(stats.total_bytes);
+        cached_stats_ = std::move(stats);
+        current_eps_text_ = std::move(current_eps);
+        average_eps_text_ = std::move(average_eps);
+        total_messages_text_ = std::move(total_messages);
+        total_bytes_text_ = std::move(total_bytes);
+        next_stats_refresh_ = now + (is_active(cached_stats_.state) ? std::chrono::milliseconds{100} : std::chrono::milliseconds{250});
+    } catch (const std::exception& error) {
+        report_error("Transmission statistics refresh failed", error.what());
+        next_stats_refresh_ = now + std::chrono::seconds{1};
+    } catch (...) {
+        report_error("Transmission statistics refresh failed", "unknown error");
+        next_stats_refresh_ = now + std::chrono::seconds{1};
+    }
+}
+
+void App::report_error(const std::string_view context, const std::string_view detail) noexcept {
+    try {
+        ui_error_ = std::format("{}: {}", context, detail);
+        logger_.error(ui_error_);
+    } catch (...) {
+        logger_.error(context);
+    }
 }
 
 void App::render() {
     apply_catalog_result();
+    apply_editor_analysis_result();
     refresh_stats();
     const auto& stats = cached_stats_;
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->WorkPos);
     ImGui::SetNextWindowSize(viewport->WorkSize);
-    ImGui::Begin("LogGeneratorRoot", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
-    const auto layout = responsive_layout(ImGui::GetContentRegionAvail().x, ui_scale_);
-    render_header(stats, layout);
-    ImGui::Spacing();
-    render_metrics(stats, layout);
-    ImGui::Spacing();
-    render_configuration(stats, layout);
-    ImGui::Spacing();
-    render_catalog_editor();
+    if (ImGui::Begin("LogGeneratorRoot", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings)) {
+        const auto layout = responsive_layout(ImGui::GetContentRegionAvail().x, ui_scale_);
+        render_header(stats, layout);
+        ImGui::Spacing();
+        render_metrics(stats, layout);
+        ImGui::Spacing();
+        render_configuration(stats, layout);
+        ImGui::Spacing();
+        render_catalog_editor();
+    }
     ImGui::End();
 }
 
@@ -605,7 +663,7 @@ void App::render_destination_panel() {
     const bool file_protocol = protocol_index_ == static_cast<int>(domain::TransportProtocol::File);
     if (file_protocol) {
         ImGui::TextDisabled("저장 폴더");
-        disabled_wrapped_text(path_to_utf8(generated_directory_).c_str());
+        disabled_wrapped_text(generated_directory_text_.c_str());
         disabled_wrapped_text("파일명: yyyyMMdd_HHmmss_SSS.log");
     } else {
         ImGui::TextDisabled("대상 IP / Host");
@@ -719,17 +777,17 @@ void App::render_catalog_selector() {
         ImGui::SameLine();
         ImGui::TextDisabled("%zu개", catalog_items_.size());
         ImGui::TableNextColumn();
-        ImGui::BeginDisabled(catalog_loading_.load(std::memory_order_acquire));
+        ImGui::BeginDisabled(catalog_tasks_.busy());
         if (ImGui::SmallButton("새로고침")) {
             request_catalog_load();
         }
         ImGui::EndDisabled();
         ImGui::EndTable();
     }
-    if (catalog_loading_.load(std::memory_order_acquire)) {
+    if (catalog_tasks_.busy()) {
         ImGui::TextColored(ImVec4(0.30F, 0.69F, 1.0F, 1.0F), "JSON 카탈로그 처리 중...");
     }
-    ImGui::BeginDisabled(catalog_loading_.load(std::memory_order_acquire));
+    ImGui::BeginDisabled(catalog_tasks_.busy());
     if (ImGui::BeginTable("catalog_actions", 3, ImGuiTableFlags_SizingStretchSame)) {
         ImGui::TableNextColumn();
         if (ImGui::Button("추가", ImVec2(-1.0F, 0.0F))) {
@@ -758,13 +816,13 @@ void App::render_catalog_selector() {
     ImGui::SameLine();
     ImGui::TextDisabled("%zu개", filtered_indices_.size());
     if (!rotate_filtered_ && !catalog_items_.empty()) {
-        const char* preview = catalog_items_[selected_log_].name.c_str();
+        const char* preview = catalog_items_[visible_catalog_index()].item.log.name.c_str();
         ImGui::TextDisabled("로그 선택");
         ImGui::SetNextItemWidth(-1.0F);
         if (ImGui::BeginCombo("##log_selection", preview)) {
             for (const auto index : filtered_indices_) {
                 const bool selected = index == selected_log_;
-                if (ImGui::Selectable(catalog_items_[index].name.c_str(), selected)) {
+                if (ImGui::Selectable(catalog_items_[index].item.log.name.c_str(), selected)) {
                     selected_log_ = index;
                 }
                 if (selected) {
@@ -779,12 +837,8 @@ void App::render_catalog_selector() {
     }
     if (!catalog_items_.empty()) {
         const auto preview_index = visible_catalog_index();
-        const auto& sample = catalog_items_[preview_index];
-        if (!sample.source.empty()) {
-            disabled_wrapped_text(sample.source.c_str());
-        }
-        disabled_wrapped_text(catalog_previews_[preview_index].c_str());
-        const auto& analysis = catalog_analyses_[preview_index];
+        disabled_wrapped_text(catalog_items_[preview_index].preview.c_str());
+        const auto& analysis = catalog_items_[preview_index].item.analysis;
         ImGui::TextDisabled("자동 인식: 시간 토큰 %zu개 | src_ip %zu개 | dst_ip %zu개", analysis.timestamp_count, analysis.source_ip_count, analysis.destination_ip_count);
         ImGui::TextDisabled("개인정보 익명화 토큰 %zu개", analysis.privacy_token_count);
         if (!analysis.timestamp_styles.empty()) {
@@ -796,7 +850,7 @@ void App::render_catalog_selector() {
                     ImGui::TextDisabled("/");
                     ImGui::SameLine(0.0F, 4.0F);
                 }
-                const auto name = application::timestamp_style_name(analysis.timestamp_styles[index]);
+                const auto name = timestamp_style_text(analysis.timestamp_styles[index]);
                 ImGui::TextColored(ImVec4(0.30F, 0.69F, 1.0F, 1.0F), "%.*s", static_cast<int>(name.size()), name.data());
             }
         }
@@ -804,7 +858,7 @@ void App::render_catalog_selector() {
 }
 
 void App::render_catalog_editor() {
-    if (editor_analysis_pending_ && std::chrono::steady_clock::now() >= editor_analysis_due_) {
+    if (editor_analysis_pending_ && !analysis_tasks_.busy() && std::chrono::steady_clock::now() >= editor_analysis_due_) {
         analyze_editor_sample();
     }
     if (editor_popup_requested_) {
@@ -830,6 +884,7 @@ void App::render_catalog_editor() {
         ImGui::TextDisabled("샘플 로그");
         const float editor_height = std::max(180.0F * ui_scale_, ImGui::GetContentRegionAvail().y * 0.48F);
         if (ImGui::InputTextMultiline("##editor_sample", &editor_sample_, ImVec2(-1.0F, editor_height), ImGuiInputTextFlags_AllowTabInput)) {
+            ++editor_analysis_generation_;
             editor_analysis_pending_ = true;
             editor_analysis_due_ = std::chrono::steady_clock::now() + std::chrono::milliseconds{120};
         }
@@ -837,7 +892,7 @@ void App::render_catalog_editor() {
         ImGui::Separator();
         ImGui::Text("시간 토큰 %zu개 | src_ip %zu개 | dst_ip %zu개", editor_analysis_.timestamp_count, editor_analysis_.source_ip_count, editor_analysis_.destination_ip_count);
         ImGui::Text("개인정보 익명화 토큰 %zu개", editor_analysis_.privacy_token_count);
-        if (editor_analysis_pending_) {
+        if (editor_analysis_pending_ || analysis_tasks_.busy()) {
             ImGui::SameLine();
             ImGui::TextDisabled("분석 대기...");
         }
@@ -845,14 +900,15 @@ void App::render_catalog_editor() {
             ImGui::TextColored(ImVec4(1.0F, 0.72F, 0.25F, 1.0F), "인식된 날짜 포맷이 없습니다.");
         } else {
             for (const auto style : editor_analysis_.timestamp_styles) {
-                const auto name = application::timestamp_style_name(style);
+                const auto name = timestamp_style_text(style);
                 ImGui::BulletText("%.*s", static_cast<int>(name.size()), name.data());
             }
         }
-        ImGui::BeginDisabled(editor_name_.empty() || editor_sample_.empty() || catalog_loading_.load(std::memory_order_acquire));
+        ImGui::BeginDisabled(editor_name_.empty() || editor_sample_.empty() || catalog_tasks_.busy());
         if (ImGui::Button("저장", ImVec2(140.0F * ui_scale_, 0.0F))) {
-            save_catalog_editor();
-            ImGui::CloseCurrentPopup();
+            if (save_catalog_editor()) {
+                ImGui::CloseCurrentPopup();
+            }
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
@@ -865,12 +921,13 @@ void App::render_catalog_editor() {
     ImGui::SetNextWindowSize(ImVec2(460.0F * ui_scale_, 0.0F), ImGuiCond_Appearing);
     if (ImGui::BeginPopupModal("샘플 로그 삭제", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
         if (delete_index_ < catalog_items_.size()) {
-            ImGui::TextWrapped("'%s' 샘플 로그를 삭제하시겠습니까?", catalog_items_[delete_index_].name.c_str());
+            ImGui::TextWrapped("'%s' 샘플 로그를 삭제하시겠습니까?", catalog_items_[delete_index_].item.log.name.c_str());
         }
         ImGui::TextColored(ImVec4(1.0F, 0.38F, 0.40F, 1.0F), "JSON 파일에서도 삭제됩니다.");
         if (ImGui::Button("삭제", ImVec2(120.0F * ui_scale_, 0.0F))) {
-            delete_selected_catalog_item();
-            ImGui::CloseCurrentPopup();
+            if (delete_selected_catalog_item()) {
+                ImGui::CloseCurrentPopup();
+            }
         }
         ImGui::SameLine();
         if (ImGui::Button("취소", ImVec2(120.0F * ui_scale_, 0.0F))) {
@@ -885,7 +942,9 @@ void App::open_new_catalog_editor() {
     editor_index_ = catalog_items_.size();
     editor_name_.clear();
     editor_sample_.clear();
-    analyze_editor_sample();
+    editor_analysis_ = {};
+    editor_analysis_pending_ = false;
+    ++editor_analysis_generation_;
     editor_popup_requested_ = true;
 }
 
@@ -893,60 +952,113 @@ void App::open_selected_catalog_editor() {
     if (catalog_items_.empty()) {
         return;
     }
-    editor_is_new_ = false;
-    editor_index_ = visible_catalog_index();
-    editor_name_ = catalog_items_[editor_index_].name;
-    editor_sample_ = catalog_items_[editor_index_].sample;
-    analyze_editor_sample();
-    editor_popup_requested_ = true;
+    try {
+        const auto selected = visible_catalog_index();
+        auto name = catalog_items_[selected].item.log.name;
+        auto sample = catalog_items_[selected].item.log.sample;
+        auto analysis = catalog_items_[selected].item.analysis;
+        editor_is_new_ = false;
+        editor_index_ = selected;
+        editor_name_ = std::move(name);
+        editor_sample_ = std::move(sample);
+        editor_analysis_ = std::move(analysis);
+        editor_analysis_pending_ = false;
+        ++editor_analysis_generation_;
+        editor_popup_requested_ = true;
+    } catch (const std::exception& error) {
+        report_error("Sample log editor could not be opened", error.what());
+    } catch (...) {
+        report_error("Sample log editor could not be opened", "unknown error");
+    }
 }
 
-void App::save_catalog_editor() {
+bool App::save_catalog_editor() {
     if (editor_name_.empty() || editor_sample_.empty()) {
-        return;
+        return false;
     }
-    editor_sample_ = application::PrivacyAnonymizer::sanitize(editor_sample_);
-    analyze_editor_sample();
-    if (editor_is_new_) {
-        const auto ticks = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        auto identifier = std::format("user-{:x}", static_cast<std::uint64_t>(ticks));
-        std::uint32_t suffix = 0;
-        while (std::ranges::any_of(catalog_items_, [&identifier](const domain::LogTemplate& item) { return item.id == identifier; })) {
-            identifier = std::format("user-{:x}-{}", static_cast<std::uint64_t>(ticks), ++suffix);
+    try {
+        auto replacement = catalog_items_;
+        std::size_t replacement_index = editor_index_;
+        if (editor_is_new_) {
+            const auto existing = catalog_snapshot();
+            auto entry = catalog_service_.create(existing, editor_name_, editor_sample_);
+            auto preview = sample_preview(entry.log.sample);
+            replacement.push_back(CatalogViewItem{std::move(entry), std::move(preview)});
+            replacement_index = replacement.size() - 1;
+        } else if (editor_index_ < replacement.size()) {
+            auto entry = catalog_service_.update(catalog_items_[editor_index_].item.log, editor_name_, editor_sample_);
+            auto preview = sample_preview(entry.log.sample);
+            replacement[editor_index_] = CatalogViewItem{std::move(entry), std::move(preview)};
+        } else {
+            report_error("Sample log save failed", "the selected catalog item no longer exists");
+            return false;
         }
-        catalog_items_.push_back(domain::LogTemplate{std::move(identifier), editor_name_, editor_sample_, "사용자 정의"});
-        catalog_search_names_.push_back(catalog_search_text(catalog_items_.back(), editor_analysis_));
-        catalog_previews_.push_back(sample_preview(editor_sample_));
-        catalog_analyses_.push_back(editor_analysis_);
-        selected_log_ = catalog_items_.size() - 1;
-    } else if (editor_index_ < catalog_items_.size()) {
-        catalog_items_[editor_index_].name = editor_name_;
-        catalog_items_[editor_index_].sample = editor_sample_;
-        catalog_search_names_[editor_index_] = catalog_search_text(catalog_items_[editor_index_], editor_analysis_);
-        catalog_previews_[editor_index_] = sample_preview(editor_sample_);
-        catalog_analyses_[editor_index_] = editor_analysis_;
-        selected_log_ = editor_index_;
+        auto replacement_filter = build_filter(replacement);
+        auto saved_sample = replacement[replacement_index].item.log.sample;
+        auto saved_analysis = replacement[replacement_index].item.analysis;
+        if (!catalog_tasks_.request_save(catalog_snapshot(replacement))) {
+            report_error("Sample log save failed", "another catalog result must be processed first");
+            return false;
+        }
+        catalog_items_.swap(replacement);
+        filtered_indices_.swap(replacement_filter);
+        selected_log_ = replacement_index;
+        editor_sample_ = std::move(saved_sample);
+        editor_analysis_ = std::move(saved_analysis);
+        ++editor_analysis_generation_;
+        editor_analysis_pending_ = false;
+        return true;
+    } catch (const std::exception& error) {
+        report_error("Sample log save failed", error.what());
+    } catch (...) {
+        report_error("Sample log save failed", "unknown error");
     }
-    rebuild_filter();
-    request_catalog_save();
+    return false;
 }
 
-void App::delete_selected_catalog_item() {
+bool App::delete_selected_catalog_item() {
     if (delete_index_ >= catalog_items_.size()) {
-        return;
+        report_error("Sample log deletion failed", "the selected catalog item no longer exists");
+        return false;
     }
-    catalog_items_.erase(catalog_items_.begin() + static_cast<std::ptrdiff_t>(delete_index_));
-    catalog_search_names_.erase(catalog_search_names_.begin() + static_cast<std::ptrdiff_t>(delete_index_));
-    catalog_previews_.erase(catalog_previews_.begin() + static_cast<std::ptrdiff_t>(delete_index_));
-    catalog_analyses_.erase(catalog_analyses_.begin() + static_cast<std::ptrdiff_t>(delete_index_));
-    selected_log_ = catalog_items_.empty() ? 0 : std::min(delete_index_, catalog_items_.size() - 1);
-    rebuild_filter();
-    request_catalog_save();
+    try {
+        auto replacement = catalog_items_;
+        replacement.erase(replacement.begin() + static_cast<std::ptrdiff_t>(delete_index_));
+        auto replacement_filter = build_filter(replacement);
+        if (!catalog_tasks_.request_save(catalog_snapshot(replacement))) {
+            report_error("Sample log deletion failed", "another catalog result must be processed first");
+            return false;
+        }
+        catalog_items_.swap(replacement);
+        filtered_indices_.swap(replacement_filter);
+        selected_log_ = catalog_items_.empty() ? 0 : std::min(delete_index_, catalog_items_.size() - 1);
+        if (!filtered_indices_.empty() && std::ranges::find(filtered_indices_, selected_log_) == filtered_indices_.end()) {
+            selected_log_ = filtered_indices_.front();
+        }
+        return true;
+    } catch (const std::exception& error) {
+        report_error("Sample log deletion failed", error.what());
+    } catch (...) {
+        report_error("Sample log deletion failed", "unknown error");
+    }
+    return false;
 }
 
 void App::analyze_editor_sample() {
-    editor_analysis_ = application::LogRenderer::analyze(editor_sample_);
-    editor_analysis_pending_ = false;
+    if (editor_sample_.empty()) {
+        editor_analysis_ = {};
+        editor_analysis_pending_ = false;
+        return;
+    }
+    try {
+        if (analysis_tasks_.request_analyze(editor_sample_, editor_analysis_generation_)) {
+            editor_analysis_pending_ = false;
+        }
+    } catch (const std::exception& error) {
+        report_error("Sample log analysis could not be started", error.what());
+    } catch (...) {
+        report_error("Sample log analysis could not be started", "unknown error");
+    }
 }
 
 std::size_t App::visible_catalog_index() const noexcept {
@@ -959,6 +1071,19 @@ std::size_t App::visible_catalog_index() const noexcept {
     return std::min(selected_log_, catalog_items_.size() - 1);
 }
 
+std::vector<domain::LogTemplate> App::catalog_snapshot() const {
+    return catalog_snapshot(catalog_items_);
+}
+
+std::vector<domain::LogTemplate> App::catalog_snapshot(const std::vector<CatalogViewItem>& items) const {
+    std::vector<domain::LogTemplate> result;
+    result.reserve(items.size());
+    for (const auto& item : items) {
+        result.push_back(item.item.log);
+    }
+    return result;
+}
+
 void App::start_test() {
     try {
         if (catalog_items_.empty()) {
@@ -967,9 +1092,6 @@ void App::start_test() {
         const auto protocol = static_cast<domain::TransportProtocol>(protocol_index_);
         if (protocol != domain::TransportProtocol::File && (host_[0] == '\0' || port_ < 1 || port_ > 65'535)) {
             throw std::invalid_argument("대상 IP/Host와 유효한 Port를 입력하세요.");
-        }
-        if (!valid_ipv4(source_ip_.data()) || !valid_ipv4(destination_ip_.data())) {
-            throw std::invalid_argument("src_ip와 dst_ip는 유효한 IPv4 주소여야 합니다.");
         }
         domain::GeneratorConfig config;
         config.endpoint.protocol = protocol;
@@ -983,9 +1105,13 @@ void App::start_test() {
         config.timestamp_generation.mode = static_cast<domain::TimestampGenerationMode>(timestamp_mode_index_);
         if (config.timestamp_generation.mode == domain::TimestampGenerationMode::Offset) {
             config.timestamp_generation.offset.negative = offset_sign_index_ == 1;
-            config.timestamp_generation.offset.days = std::clamp(std::abs(offset_days_), 0, 3650);
-            config.timestamp_generation.offset.hours = std::clamp(std::abs(offset_hours_), 0, 23);
-            config.timestamp_generation.offset.minutes = std::clamp(std::abs(offset_minutes_), 0, 59);
+            const auto magnitude = [](const int value) {
+                const auto wide = static_cast<std::int64_t>(value);
+                return wide < 0 ? -wide : wide;
+            };
+            config.timestamp_generation.offset.days = static_cast<int>(std::clamp<std::int64_t>(magnitude(offset_days_), 0, 3650));
+            config.timestamp_generation.offset.hours = static_cast<int>(std::clamp<std::int64_t>(magnitude(offset_hours_), 0, 23));
+            config.timestamp_generation.offset.minutes = static_cast<int>(std::clamp<std::int64_t>(magnitude(offset_minutes_), 0, 59));
         } else {
             const auto range_start = parse_iso_date(range_start_.data());
             const auto range_end = parse_iso_date(range_end_.data());
@@ -1003,10 +1129,13 @@ void App::start_test() {
         if (rotate_filtered_) {
             config.templates.reserve(filtered_indices_.size());
             for (const auto index : filtered_indices_) {
-                config.templates.push_back(catalog_items_[index]);
+                if (index >= catalog_items_.size()) {
+                    throw std::runtime_error("Catalog filter contains an invalid item index");
+                }
+                config.templates.push_back(catalog_items_[index].item.log);
             }
         } else {
-            config.templates.push_back(catalog_items_[selected_log_]);
+            config.templates.push_back(catalog_items_[visible_catalog_index()].item.log);
         }
         if (config.templates.empty()) {
             throw std::invalid_argument("검색 조건에 맞는 샘플 로그가 없습니다.");
@@ -1015,8 +1144,9 @@ void App::start_test() {
         next_stats_refresh_ = {};
         ui_error_.clear();
     } catch (const std::exception& error) {
-        ui_error_ = error.what();
-        logger_.warning(std::format("Stress test start rejected: {}", error.what()));
+        report_error("Stress test start rejected", error.what());
+    } catch (...) {
+        report_error("Stress test start rejected", "unknown error");
     }
 }
 

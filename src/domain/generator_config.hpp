@@ -6,6 +6,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -50,7 +51,23 @@ struct TimeRange {
         if (!valid()) {
             return 0;
         }
-        return static_cast<std::uint64_t>((end - start).count()) + 1;
+        const auto first = start.time_since_epoch().count();
+        const auto last = end.time_since_epoch().count();
+        std::uint64_t difference = 0;
+        if (first < 0 && last >= 0) {
+            const auto negative = static_cast<std::uint64_t>(-(first + 1)) + 1;
+            const auto positive = static_cast<std::uint64_t>(last);
+            if (negative > std::numeric_limits<std::uint64_t>::max() - positive) {
+                return 0;
+            }
+            difference = negative + positive;
+        } else {
+            difference = static_cast<std::uint64_t>(last - first);
+        }
+        if (difference == std::numeric_limits<std::uint64_t>::max()) {
+            return 0;
+        }
+        return difference + 1;
     }
 };
 

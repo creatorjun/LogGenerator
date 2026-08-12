@@ -13,7 +13,9 @@ void UdpTransport::connect(const domain::EndpointConfig& endpoint) {
     configure_send_buffer(socket_.get(), 4 * 1024 * 1024);
     BOOL disabled = FALSE;
     DWORD returned = 0;
-    WSAIoctl(socket_.get(), SIO_UDP_CONNRESET, &disabled, sizeof(disabled), nullptr, 0, &returned, nullptr, nullptr);
+    if (WSAIoctl(socket_.get(), SIO_UDP_CONNRESET, &disabled, sizeof(disabled), nullptr, 0, &returned, nullptr, nullptr) == SOCKET_ERROR) {
+        throw std::runtime_error(socket_error_message("WSAIoctl SIO_UDP_CONNRESET"));
+    }
 }
 
 void UdpTransport::send(const std::string_view payload) {

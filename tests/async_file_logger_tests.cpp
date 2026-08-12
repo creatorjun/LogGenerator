@@ -22,6 +22,7 @@ void run_async_file_logger_tests() {
         logger.info("application started");
         logger.warning("line one\nline two");
         logger.error("sample failure");
+        expect(logger.healthy(), "Application file logger became unhealthy during normal writes");
     }
 
     std::filesystem::path log_file;

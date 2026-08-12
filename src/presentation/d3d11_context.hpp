@@ -3,6 +3,7 @@
 
 #include <Windows.h>
 #include <d3d11.h>
+#include <dxgi1_2.h>
 #include <wrl/client.h>
 
 namespace loggen::presentation {
@@ -13,9 +14,11 @@ public:
     void resize(unsigned int width, unsigned int height);
     void clear(float red, float green, float blue, float alpha);
     void present();
+    void reset() noexcept;
 
     [[nodiscard]] ID3D11Device* device() const noexcept;
     [[nodiscard]] ID3D11DeviceContext* context() const noexcept;
+    [[nodiscard]] bool renderable() const noexcept;
 
 private:
     void create_render_target();

@@ -5,72 +5,62 @@
 #include <array>
 #include <cctype>
 #include <cstdio>
+#include <memory>
 #include <regex>
+#include <stdexcept>
 #include <string>
 
 namespace loggen::application {
 namespace {
 
-struct SyntheticProfile {
-    std::string person;
-    std::string store;
-    std::string user_id;
-    std::string employee_id;
-    std::string department;
-    std::string organization;
-    std::string email;
-    std::string phone;
-    std::string address;
-    std::string ip_address;
-    std::string mac_address;
-    std::string host;
-    std::string identifier;
-    std::string secret;
-    std::string file_path;
-};
+constexpr std::size_t profile_slot(const PrivacyTokenKind kind) noexcept {
+    return static_cast<std::size_t>(kind) - 1;
+}
 
-std::array<SyntheticProfile, PrivacyAnonymizer::synthetic_profile_count> make_profiles() {
-    std::array<SyntheticProfile, PrivacyAnonymizer::synthetic_profile_count> result;
-    for (std::size_t index = 0; index < result.size(); ++index) {
+using SyntheticProfiles = std::array<PrivacyAnonymizer::SyntheticProfileValues, PrivacyAnonymizer::synthetic_profile_count>;
+
+std::unique_ptr<SyntheticProfiles> make_profiles() {
+    auto result = std::make_unique<SyntheticProfiles>();
+    for (std::size_t index = 0; index < result->size(); ++index) {
         const auto number = static_cast<unsigned int>(index + 1);
         char buffer[96]{};
-        auto& profile = result[index];
+        auto& profile = (*result)[index];
         std::snprintf(buffer, sizeof(buffer), "홍길동 %u", number);
-        profile.person = buffer;
+        profile[profile_slot(PrivacyTokenKind::Person)] = buffer;
         std::snprintf(buffer, sizeof(buffer), "%u호점", number);
-        profile.store = buffer;
+        profile[profile_slot(PrivacyTokenKind::Store)] = buffer;
         std::snprintf(buffer, sizeof(buffer), "user%u", number);
-        profile.user_id = buffer;
+        profile[profile_slot(PrivacyTokenKind::UserId)] = buffer;
         std::snprintf(buffer, sizeof(buffer), "EMP%04u", number);
-        profile.employee_id = buffer;
+        profile[profile_slot(PrivacyTokenKind::EmployeeId)] = buffer;
         std::snprintf(buffer, sizeof(buffer), "테스트부서 %u", number);
-        profile.department = buffer;
-        profile.organization = "Your-Company";
+        profile[profile_slot(PrivacyTokenKind::Department)] = buffer;
+        profile[profile_slot(PrivacyTokenKind::Organization)] = "Your-Company";
         std::snprintf(buffer, sizeof(buffer), "user%u@example.invalid", number);
-        profile.email = buffer;
+        profile[profile_slot(PrivacyTokenKind::Email)] = buffer;
         std::snprintf(buffer, sizeof(buffer), "010-0000-%04u", number);
-        profile.phone = buffer;
+        profile[profile_slot(PrivacyTokenKind::Phone)] = buffer;
         std::snprintf(buffer, sizeof(buffer), "서울특별시 테스트로 %u", number);
-        profile.address = buffer;
+        profile[profile_slot(PrivacyTokenKind::Address)] = buffer;
         std::snprintf(buffer, sizeof(buffer), "198.51.100.%u", number);
-        profile.ip_address = buffer;
+        profile[profile_slot(PrivacyTokenKind::IpAddress)] = buffer;
         std::snprintf(buffer, sizeof(buffer), "02:00:00:00:00:%02X", number);
-        profile.mac_address = buffer;
+        profile[profile_slot(PrivacyTokenKind::MacAddress)] = buffer;
         std::snprintf(buffer, sizeof(buffer), "host-%u", number);
-        profile.host = buffer;
+        profile[profile_slot(PrivacyTokenKind::Host)] = buffer;
         std::snprintf(buffer, sizeof(buffer), "id-%04u", number);
-        profile.identifier = buffer;
+        profile[profile_slot(PrivacyTokenKind::Identifier)] = buffer;
         std::snprintf(buffer, sizeof(buffer), "secret-%04u", number);
-        profile.secret = buffer;
+        profile[profile_slot(PrivacyTokenKind::Secret)] = buffer;
         std::snprintf(buffer, sizeof(buffer), "C:\\Test\\file-%u.log", number);
-        profile.file_path = buffer;
+        profile[profile_slot(PrivacyTokenKind::FilePath)] = buffer;
     }
     return result;
 }
 
-const std::array<SyntheticProfile, PrivacyAnonymizer::synthetic_profile_count>& profiles() {
+const SyntheticProfiles& profiles() {
     static const auto value = make_profiles();
-    return value;
+    return *value;
 }
 
 std::string normalize_field(const std::string_view field_name) {
@@ -97,22 +87,48 @@ bool equals_any(const std::string_view value, const std::initializer_list<std::s
     return std::ranges::find(candidates, value) != candidates.end();
 }
 
-void replace_ascii_case_insensitive(std::string& value, const std::string_view needle, const std::string_view replacement) {
-    if (needle.empty() || value.size() < needle.size()) {
-        return;
+char ascii_lower(const char value) noexcept {
+    return value >= 'A' && value <= 'Z' ? static_cast<char>(value + ('a' - 'A')) : value;
+}
+
+bool matches_ascii_case_insensitive(const std::string_view value, const std::size_t position, const std::string_view needle) noexcept {
+    if (position + needle.size() > value.size()) {
+        return false;
     }
+    for (std::size_t index = 0; index < needle.size(); ++index) {
+        if (ascii_lower(value[position + index]) != needle[index]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::string replace_company_terms(const std::string_view value) {
+    std::string result;
+    result.reserve(value.size());
     std::size_t position = 0;
-    while (position + needle.size() <= value.size()) {
-        const auto matches = std::equal(needle.begin(), needle.end(), value.begin() + static_cast<std::ptrdiff_t>(position), [](const char left, const char right) {
-            return std::tolower(static_cast<unsigned char>(left)) == std::tolower(static_cast<unsigned char>(right));
-        });
-        if (!matches) {
-            ++position;
+    while (position < value.size()) {
+        if (ascii_lower(value[position]) == 'l') {
+            const bool lottermart = matches_ascii_case_insensitive(value, position, "lottermart");
+            if (lottermart || matches_ascii_case_insensitive(value, position, "lottemart")) {
+                result.append("Your-Company");
+                position += lottermart ? 10 : 9;
+                continue;
+            }
+            if (matches_ascii_case_insensitive(value, position, "lotte")) {
+                result.append("Your");
+                position += 5;
+                continue;
+            }
+        } else if (ascii_lower(value[position]) == 'm' && matches_ascii_case_insensitive(value, position, "mart")) {
+            result.append("company");
+            position += 4;
             continue;
         }
-        value.replace(position, needle.size(), replacement);
-        position += replacement.size();
+        result.push_back(value[position]);
+        ++position;
     }
+    return result;
 }
 
 const std::regex& assigned_field_pattern() {
@@ -126,9 +142,11 @@ std::string replace_sensitive_fields(const std::string& input) {
     std::string output;
     output.reserve(input.size());
     std::size_t cursor = 0;
+    const std::string_view view{input};
     for (std::sregex_iterator iterator(input.begin(), input.end(), assigned_field_pattern()), end; iterator != end; ++iterator) {
         const auto& match = *iterator;
-        const auto kind = PrivacyAnonymizer::classify_field(match[2].str());
+        const auto field_begin = static_cast<std::size_t>(match[2].first - input.begin());
+        const auto kind = PrivacyAnonymizer::classify_field(view.substr(field_begin, static_cast<std::size_t>(match[2].length())));
         if (kind == PrivacyTokenKind::None) {
             continue;
         }
@@ -138,7 +156,8 @@ std::string replace_sensitive_fields(const std::string& input) {
         } else if (match[4].matched) {
             value_group = 4;
         }
-        const auto current_value = match[value_group].str();
+        const auto value_begin = static_cast<std::size_t>(match[value_group].first - input.begin());
+        const auto current_value = view.substr(value_begin, static_cast<std::size_t>(match[value_group].length()));
         if (current_value.find("{{") != std::string::npos || current_value.find("}}") != std::string::npos) {
             continue;
         }
@@ -177,11 +196,7 @@ std::string replace_pattern(const std::string& input, const std::regex& pattern,
 }
 
 std::string PrivacyAnonymizer::sanitize(const std::string_view sample) {
-    std::string result{sample};
-    replace_ascii_case_insensitive(result, "lottermart", "Your-Company");
-    replace_ascii_case_insensitive(result, "lottemart", "Your-Company");
-    replace_ascii_case_insensitive(result, "lotte", "Your");
-    replace_ascii_case_insensitive(result, "mart", "company");
+    auto result = replace_company_terms(sample);
     result = replace_sensitive_fields(result);
 
     static const std::regex email_pattern(R"(\b[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\b)", std::regex::ECMAScript | std::regex::optimize);
@@ -202,7 +217,8 @@ std::string PrivacyAnonymizer::sanitize(const std::string_view sample) {
         const auto begin = static_cast<std::size_t>(match[0].first - result.begin());
         const auto finish = static_cast<std::size_t>(match[0].second - result.begin());
         path_output.append(result, cursor, begin - cursor);
-        path_output.append(match[1].str());
+        const auto prefix_begin = static_cast<std::size_t>(match[1].first - result.begin());
+        path_output.append(result, prefix_begin, static_cast<std::size_t>(match[1].length()));
         path_output.append("TestUser");
         cursor = finish;
     }
@@ -311,42 +327,18 @@ PrivacyTokenKind PrivacyAnonymizer::marker_kind(const std::string_view value) no
 }
 
 std::string_view PrivacyAnonymizer::synthetic_value(const PrivacyTokenKind kind, const std::size_t profile_index) {
-    const auto& profile = profiles()[profile_index % synthetic_profile_count];
-    switch (kind) {
-    case PrivacyTokenKind::Person:
-        return profile.person;
-    case PrivacyTokenKind::Store:
-        return profile.store;
-    case PrivacyTokenKind::UserId:
-        return profile.user_id;
-    case PrivacyTokenKind::EmployeeId:
-        return profile.employee_id;
-    case PrivacyTokenKind::Department:
-        return profile.department;
-    case PrivacyTokenKind::Organization:
-        return profile.organization;
-    case PrivacyTokenKind::Email:
-        return profile.email;
-    case PrivacyTokenKind::Phone:
-        return profile.phone;
-    case PrivacyTokenKind::Address:
-        return profile.address;
-    case PrivacyTokenKind::IpAddress:
-        return profile.ip_address;
-    case PrivacyTokenKind::MacAddress:
-        return profile.mac_address;
-    case PrivacyTokenKind::Host:
-        return profile.host;
-    case PrivacyTokenKind::Identifier:
-        return profile.identifier;
-    case PrivacyTokenKind::Secret:
-        return profile.secret;
-    case PrivacyTokenKind::FilePath:
-        return profile.file_path;
-    case PrivacyTokenKind::None:
+    if (kind == PrivacyTokenKind::None) {
         return {};
     }
-    return {};
+    if (static_cast<std::size_t>(kind) > privacy_token_kinds.size()) {
+        throw std::invalid_argument("Invalid privacy token kind");
+    }
+    return synthetic_profile(profile_index)[profile_slot(kind)];
+}
+
+const PrivacyAnonymizer::SyntheticProfileValues& PrivacyAnonymizer::synthetic_profile(const std::size_t profile_index) {
+    const auto normalized_index = profile_index < synthetic_profile_count ? profile_index : profile_index % synthetic_profile_count;
+    return profiles()[normalized_index];
 }
 
 std::string_view PrivacyAnonymizer::search_terms(const PrivacyTokenKind kind) noexcept {

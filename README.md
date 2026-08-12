@@ -7,28 +7,42 @@ Windows 64비트 SIEM 스트레스 테스트를 위한 C++23 기반 고성능 �
 
 ```text
 LogGenerator/
+├─ ARCHITECTURE.md
 ├─ CMakeLists.txt
+├─ PERFORMANCE.md
 ├─ README.md
 ├─ requirements.txt
 ├─ Sample Logs/
 │  └─ sample_logs.json
+├─ benchmarks/
+│  ├─ log_renderer_benchmark.cpp
+│  └─ stress_engine_benchmark.cpp
 ├─ scripts/
 │  ├─ build.ps1
 │  └─ publish.ps1
 ├─ src/
 │  ├─ domain/
 │  │  ├─ generator_config.hpp
-│  │  ├─ log_level.hpp
+│  │  ├─ log_limits.hpp
 │  │  ├─ log_template.hpp
 │  │  ├─ protocol.hpp
 │  │  └─ transmission_stats.hpp
 │  ├─ application/
 │  │  ├─ ports/
+│  │  │  ├─ execution_runtime.hpp
+│  │  │  ├─ identifier_generator.hpp
 │  │  │  ├─ log_catalog.hpp
+│  │  │  ├─ log_catalog_use_case.hpp
 │  │  │  ├─ logger.hpp
-│  │  │  └─ log_transport.hpp
+│  │  │  ├─ log_transport.hpp
+│  │  │  └─ stress_test_use_case.hpp
+│  │  ├─ generator_config_validator.cpp
+│  │  ├─ generator_config_validator.hpp
+│  │  ├─ log_catalog_service.cpp
+│  │  ├─ log_catalog_service.hpp
 │  │  ├─ log_renderer.cpp
 │  │  ├─ log_renderer.hpp
+│  │  ├─ log_template_analysis.hpp
 │  │  ├─ privacy_anonymizer.cpp
 │  │  ├─ privacy_anonymizer.hpp
 │  │  ├─ stress_test_service.cpp
@@ -44,15 +58,21 @@ LogGenerator/
 │  │  ├─ schannel_transport.hpp
 │  │  ├─ tcp_transport.cpp
 │  │  ├─ tcp_transport.hpp
+│  │  ├─ timestamp_identifier_generator.cpp
+│  │  ├─ timestamp_identifier_generator.hpp
 │  │  ├─ transport_factory.cpp
 │  │  ├─ transport_factory.hpp
 │  │  ├─ udp_transport.cpp
 │  │  ├─ udp_transport.hpp
+│  │  ├─ windows_execution_runtime.cpp
+│  │  ├─ windows_execution_runtime.hpp
 │  │  ├─ winsock_support.cpp
 │  │  └─ winsock_support.hpp
 │  ├─ presentation/
 │  │  ├─ app.cpp
 │  │  ├─ app.hpp
+│  │  ├─ catalog_task_runner.cpp
+│  │  ├─ catalog_task_runner.hpp
 │  │  ├─ d3d11_context.cpp
 │  │  ├─ d3d11_context.hpp
 │  │  ├─ responsive_layout.hpp
@@ -60,15 +80,26 @@ LogGenerator/
 │  │  └─ ui_theme.hpp
 │  └─ main.cpp
 └─ tests/
+   ├─ architecture_tests.cpp
    ├─ async_file_logger_tests.cpp
+   ├─ catalog_task_runner_tests.cpp
    ├─ file_transport_tests.cpp
+   ├─ generator_config_validator_tests.cpp
    ├─ json_log_catalog_tests.cpp
+   ├─ log_catalog_service_tests.cpp
    ├─ log_renderer_tests.cpp
    ├─ responsive_layout_tests.cpp
    ├─ stress_test_service_tests.cpp
+   ├─ transport_error_tests.cpp
    ├─ test_main.cpp
    └─ test_support.hpp
 ```
+
+## 아키텍처
+
+프로젝트는 `Domain ← Application ← Infrastructure/Presentation` 의존성 규칙과 Composition Root를 사용하는 Clean Architecture로 구성됩니다. CMake 타깃도 `loggen_domain`, `loggen_application`, `loggen_infrastructure`로 분리되어 있으며 계층 금지 include와 코드 주석 규칙은 Release 테스트에서 자동 검사합니다.
+
+포트–어댑터 매핑, 비동기 경계, 리소스 소유권과 강제 규칙은 [ARCHITECTURE.md](ARCHITECTURE.md)에 정리되어 있습니다.
 
 ## 요구 환경
 
@@ -126,7 +157,7 @@ generated/20260812_173245_123.log
 generated/20260812_173245_123_0002.log
 ```
 
-각 파일은 배치 경계를 유지하면서 약 1 MiB 단위로 회전합니다. 로그 이벤트 중간 절단을 피하기 때문에 파일 크기는 1 MiB보다 조금 작을 수 있습니다. FILE은 디스크 순차 처리량과 생성 순서를 유지하기 위해 Worker를 단일 writer로 고정하며 목표 EPS 설정은 동일하게 적용됩니다.
+각 파일은 최대 1 MiB 단위로 회전합니다. 큰 배치가 들어와도 어댑터가 남은 slice 용량만큼 나누어 기록하므로 어떤 파일도 1 MiB를 넘지 않습니다. FILE은 디스크 순차 처리량과 생성 순서를 유지하기 위해 Worker를 단일 writer로 고정하며 목표 EPS 설정은 동일하게 적용됩니다.
 
 ## JSON 샘플 카탈로그
 
@@ -146,6 +177,8 @@ generated/20260812_173245_123_0002.log
 ```
 
 `id`, `name`, `sample`은 비어 있으면 안 되며 `id`는 전체 카탈로그에서 고유해야 합니다. UI에서 새 로그를 만들면 충돌하지 않는 `user-...` 식별자를 자동 생성합니다. JSON을 외부 코드 편집기로 직접 바꾼 뒤에는 UI의 `새로고침`을 누르면 됩니다.
+
+비정상적으로 큰 입력으로 인한 메모리 고갈을 막기 위해 카탈로그는 최대 64 MiB·10,000건, 로그 샘플 한 건은 최대 4 MiB로 제한합니다. 제한을 넘거나 JSON 스키마·필드·중복 식별자가 잘못되면 기존 카탈로그를 유지하고 UI와 애플리케이션 로그에 원인을 표시합니다.
 
 현재 기본 카탈로그는 `SampleLog_202607221009.csv`의 84개 샘플로 기존 견본 전체를 교체한 결과입니다. 원본 CSV와 Parser XML의 필드명·위치 정보를 함께 분석해 실제 값 대신 익명화 토큰만 저장했으며 원본 CSV 파일 자체는 배포 파일에 포함하지 않습니다.
 
@@ -201,18 +234,28 @@ logs/LogGenerator_yyyyMMdd.log
 
 기록 대상은 프로그램 시작·종료, UI 초기화, JSON 카탈로그 로드·저장, 스트레스 테스트 설정과 시작·중지, Worker 연결 완료 및 전송 오류입니다. 개별 보안 로그 전송 성공은 최대 EPS를 훼손하지 않도록 애플리케이션 로그에 기록하지 않습니다.
 
+## 런타임 안정성
+
+- 전송·카탈로그 백그라운드 스레드는 표준 예외와 비표준 예외를 모두 프로세스 경계 안에서 처리하고 UI에 실패 상태를 전달합니다.
+- JSON 저장은 프로세스·스레드별 고유 임시 파일을 완전히 기록한 뒤 원자적으로 교체하며 실패한 임시 파일을 정리합니다.
+- FILE 기록은 Windows 부분 쓰기를 끝까지 재시도하고 slice 회전·파일 닫기 실패를 즉시 보고합니다.
+- 네트워크 연결에는 연결·송신 제한 시간이 적용되며 TLS handshake 수신에도 5초 제한 시간과 1 MiB 입력 상한을 적용합니다.
+- TLS 연결 전 전송, 잘못된 UTF-8·Endpoint·카탈로그 인덱스, 이동된 렌더 객체 재사용은 명시적 오류로 차단합니다.
+- Direct3D 하드웨어 장치 생성이 실패하면 WARP로 대체하고, 리사이즈 실패 시 기존 렌더 타깃 복구를 시도합니다. 렌더링이 불가능한 상태에서는 null 리소스를 사용하지 않고 안전하게 종료합니다.
+- 최상위 Win32 진입점과 Window Procedure에는 마지막 예외 경계가 있어 알 수 없는 C++ 예외도 로그 또는 오류 대화상자로 보고합니다.
+
 ## 성능 설계
 
-- JSON 로드·저장·정규식 사전 분석은 UI 외부 백그라운드 스레드에서 실행합니다.
+- JSON 로드·저장·정규식 사전 분석은 수명과 결과 전달을 전담하는 `CatalogTaskRunner`의 백그라운드 스레드에서 실행합니다.
 - 검색용 이름·본문·개인정보 범주 인덱스, 미리보기, 분석 결과와 통계 표시 문자열을 캐시합니다.
 - 통계는 실행 중 100 ms, 대기 중 250 ms 주기로만 갱신합니다.
 - 전송 시작 시 템플릿 준비와 Worker 생성을 supervisor 스레드에서 수행합니다.
 - 각 템플릿은 Worker별 파티션으로 이동해 모든 Worker가 전체 로그를 복제하지 않습니다.
 - Worker별 독립 소켓과 연결로 전송 경로의 전역 잠금을 제거합니다.
 - UDP는 connected socket과 4 MiB 송신 버퍼를 사용합니다.
-- TCP/TLS는 최대 256 KiB 단위로 여러 로그를 배치합니다.
-- FILE은 최대 64 KiB 배치와 단일 순차 writer로 약 1 MiB 회전 파일을 생성합니다.
-- 정적 로그는 완성 문자열을 재사용하고 시간 포함 로그는 초 단위 결과를 캐시합니다. 개인정보 토큰은 정규식을 반복 실행하지 않으며 이벤트당 PRNG를 한 번만 호출한 뒤 50개 사전 생성 프로필의 문자열을 바로 추가합니다.
+- TCP/TLS는 최대 4,096건 또는 256 KiB 단위로 여러 로그를 배치합니다.
+- FILE은 최대 16,384건 또는 1 MiB 배치와 단일 순차 writer로 약 1 MiB 회전 파일을 생성합니다.
+- 정적 로그는 완성 문자열을 재사용하고 모든 시간 토큰은 초 단위 달력 문자열을 캐시합니다. 소수 초 토큰은 달력 변환 없이 소수점 숫자만 갱신합니다. 개인정보 토큰은 정규식을 반복 실행하지 않으며 이벤트당 PRNG를 한 번만 호출한 뒤 50개 사전 생성 프로필의 문자열을 바로 추가합니다.
 - 고속 UDP의 시스템 시각 조회는 256건 단위로 줄이고 통계는 Worker 로컬 누적 후 일괄 반영합니다.
 - TLS 암호화 버퍼는 재사용하며 DirectX 11 Flip Model 스왑 체인을 사용합니다.
 - Release 빌드는 최적화, LTCG, AVX2를 활성화합니다.
@@ -224,3 +267,7 @@ logs/LogGenerator_yyyyMMdd.log
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish.ps1 -Message "feat: update log generator"
 ```
+
+## 성능 검증
+
+생성·렌더링·전송·파일·TLS·UI·로거 경로의 성능 감사 결과와 Release 벤치마크 방법은 [PERFORMANCE.md](PERFORMANCE.md)에 정리되어 있습니다. 벤치마크는 일반 빌드에서 제외되며 필요한 타깃만 명시적으로 빌드해 실행할 수 있습니다.

@@ -5,8 +5,8 @@
 #include <array>
 #include <atomic>
 #include <chrono>
-#include <cstdio>
 #include <ctime>
+#include <limits>
 #include <regex>
 #include <stdexcept>
 #include <string_view>
@@ -176,6 +176,7 @@ TimestampToken make_token(const TimestampStyle style, const std::string_view val
 
 std::vector<RenderSegment> compile_segments(const std::string& input) {
     std::vector<MatchCandidate> candidates;
+    candidates.reserve(std::max<std::size_t>(privacy_token_kinds.size(), input.size() / 32));
     for (const auto& pattern : timestamp_patterns()) {
         for (std::sregex_iterator iterator(input.begin(), input.end(), pattern.expression), end; iterator != end; ++iterator) {
             const auto& match = *iterator;
@@ -241,9 +242,9 @@ std::size_t count_captures(const std::string& input, const std::regex& pattern) 
 }
 
 std::tm make_time(std::chrono::system_clock::time_point point, const TimestampToken& token, const bool calendar_time) {
-    const auto value = std::chrono::system_clock::to_time_t(point);
     std::tm result{};
     if (calendar_time) {
+        const auto value = std::chrono::system_clock::to_time_t(point);
         gmtime_s(&result, &value);
         return result;
     }
@@ -253,11 +254,31 @@ std::tm make_time(std::chrono::system_clock::time_point point, const TimestampTo
     }
     const auto adjusted_value = std::chrono::system_clock::to_time_t(point);
     if (utc) {
-        gmtime_s(&result, &adjusted_value);
-    } else {
-        localtime_s(&result, &adjusted_value);
+        if (gmtime_s(&result, &adjusted_value) != 0) {
+            throw std::runtime_error("UTC timestamp conversion failed");
+        }
+    } else if (localtime_s(&result, &adjusted_value) != 0) {
+        throw std::runtime_error("Local timestamp conversion failed");
     }
     return result;
+}
+
+void append_two_digits(std::string& output, const int value) {
+    output.push_back(static_cast<char>('0' + (value / 10) % 10));
+    output.push_back(static_cast<char>('0' + value % 10));
+}
+
+void append_four_digits(std::string& output, const int value) {
+    if (value < 0 || value > 9999) {
+        char buffer[16]{};
+        const auto converted = std::to_chars(std::begin(buffer), std::end(buffer), value);
+        output.append(buffer, converted.ptr);
+        return;
+    }
+    output.push_back(static_cast<char>('0' + (value / 1000) % 10));
+    output.push_back(static_cast<char>('0' + (value / 100) % 10));
+    output.push_back(static_cast<char>('0' + (value / 10) % 10));
+    output.push_back(static_cast<char>('0' + value % 10));
 }
 
 void append_fraction(std::string& output, const std::chrono::system_clock::time_point point, const std::uint8_t digits) {
@@ -268,17 +289,23 @@ void append_fraction(std::string& output, const std::chrono::system_clock::time_
     if (remainder.count() < 0) {
         remainder += std::chrono::seconds{1};
     }
-    const auto nanoseconds = std::chrono::duration_cast<std::chrono::nanoseconds>(remainder).count();
-    char buffer[16]{};
-    std::snprintf(buffer, sizeof(buffer), ".%09lld", static_cast<long long>(nanoseconds));
-    output.append(buffer, static_cast<std::size_t>(digits) + 1);
+    auto nanoseconds = static_cast<std::uint32_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(remainder).count());
+    std::array<char, 9> buffer{};
+    for (std::size_t index = buffer.size(); index > 0; --index) {
+        buffer[index - 1] = static_cast<char>('0' + nanoseconds % 10);
+        nanoseconds /= 10;
+    }
+    output.push_back('.');
+    output.append(buffer.data(), digits);
 }
 
 void append_timestamp(std::string& output, const TimestampToken& token, const std::chrono::system_clock::time_point point, const bool calendar_time) {
     const auto value = make_time(point, token, calendar_time);
+    if (value.tm_mon < 0 || value.tm_mon >= 12 || value.tm_wday < 0 || value.tm_wday >= 7) {
+        throw std::runtime_error("Timestamp conversion returned invalid calendar fields");
+    }
     static constexpr std::array<std::string_view, 12> months{"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
     static constexpr std::array<std::string_view, 7> weekdays{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
-    char buffer[64]{};
     if (token.has_weekday) {
         output.append(weekdays[static_cast<std::size_t>(value.tm_wday)]);
         output.push_back(' ');
@@ -286,46 +313,111 @@ void append_timestamp(std::string& output, const TimestampToken& token, const st
     switch (token.style) {
     case TimestampStyle::Iso8601:
     case TimestampStyle::YearFirst:
-        std::snprintf(buffer, sizeof(buffer), "%04d%c%02d%c%02d%c%02d:%02d:%02d", value.tm_year + 1900, token.date_separator, value.tm_mon + 1, token.date_separator, value.tm_mday, token.date_time_separator, value.tm_hour, value.tm_min, value.tm_sec);
-        output.append(buffer);
+        append_four_digits(output, value.tm_year + 1900);
+        output.push_back(token.date_separator);
+        append_two_digits(output, value.tm_mon + 1);
+        output.push_back(token.date_separator);
+        append_two_digits(output, value.tm_mday);
+        output.push_back(token.date_time_separator);
+        append_two_digits(output, value.tm_hour);
+        output.push_back(':');
+        append_two_digits(output, value.tm_min);
+        output.push_back(':');
+        append_two_digits(output, value.tm_sec);
         append_fraction(output, point, token.fractional_digits);
         output.append(token.zone_suffix);
         break;
     case TimestampStyle::SyslogWithYear:
-        std::snprintf(buffer, sizeof(buffer), "%s %02d %02d:%02d:%02d %04d", months[static_cast<std::size_t>(value.tm_mon)].data(), value.tm_mday, value.tm_hour, value.tm_min, value.tm_sec, value.tm_year + 1900);
-        output.append(buffer);
+        output.append(months[static_cast<std::size_t>(value.tm_mon)]);
+        output.push_back(' ');
+        append_two_digits(output, value.tm_mday);
+        output.push_back(' ');
+        append_two_digits(output, value.tm_hour);
+        output.push_back(':');
+        append_two_digits(output, value.tm_min);
+        output.push_back(':');
+        append_two_digits(output, value.tm_sec);
+        output.push_back(' ');
+        append_four_digits(output, value.tm_year + 1900);
         break;
     case TimestampStyle::SyslogWithoutYear:
-        std::snprintf(buffer, sizeof(buffer), "%s %02d %02d:%02d:%02d", months[static_cast<std::size_t>(value.tm_mon)].data(), value.tm_mday, value.tm_hour, value.tm_min, value.tm_sec);
-        output.append(buffer);
+        output.append(months[static_cast<std::size_t>(value.tm_mon)]);
+        output.push_back(' ');
+        append_two_digits(output, value.tm_mday);
+        output.push_back(' ');
+        append_two_digits(output, value.tm_hour);
+        output.push_back(':');
+        append_two_digits(output, value.tm_min);
+        output.push_back(':');
+        append_two_digits(output, value.tm_sec);
         break;
     case TimestampStyle::MonthFirstGmt:
-        std::snprintf(buffer, sizeof(buffer), "%s %02d %04d %02d:%02d:%02d GMT", months[static_cast<std::size_t>(value.tm_mon)].data(), value.tm_mday, value.tm_year + 1900, value.tm_hour, value.tm_min, value.tm_sec);
-        output.append(buffer);
+        output.append(months[static_cast<std::size_t>(value.tm_mon)]);
+        output.push_back(' ');
+        append_two_digits(output, value.tm_mday);
+        output.push_back(' ');
+        append_four_digits(output, value.tm_year + 1900);
+        output.push_back(' ');
+        append_two_digits(output, value.tm_hour);
+        output.push_back(':');
+        append_two_digits(output, value.tm_min);
+        output.push_back(':');
+        append_two_digits(output, value.tm_sec);
+        output.append(" GMT");
         break;
     case TimestampStyle::Apache:
-        std::snprintf(buffer, sizeof(buffer), "%02d/%s/%04d:%02d:%02d:%02d %s", value.tm_mday, months[static_cast<std::size_t>(value.tm_mon)].data(), value.tm_year + 1900, value.tm_hour, value.tm_min, value.tm_sec, token.zone_suffix.c_str());
-        output.append(buffer);
+        append_two_digits(output, value.tm_mday);
+        output.push_back('/');
+        output.append(months[static_cast<std::size_t>(value.tm_mon)]);
+        output.push_back('/');
+        append_four_digits(output, value.tm_year + 1900);
+        output.push_back(':');
+        append_two_digits(output, value.tm_hour);
+        output.push_back(':');
+        append_two_digits(output, value.tm_min);
+        output.push_back(':');
+        append_two_digits(output, value.tm_sec);
+        output.push_back(' ');
+        output.append(token.zone_suffix);
         break;
     case TimestampStyle::Compact:
-        std::snprintf(buffer, sizeof(buffer), "%04d%02d%02d%02d%02d%02d", value.tm_year + 1900, value.tm_mon + 1, value.tm_mday, value.tm_hour, value.tm_min, value.tm_sec);
-        output.append(buffer);
+        append_four_digits(output, value.tm_year + 1900);
+        append_two_digits(output, value.tm_mon + 1);
+        append_two_digits(output, value.tm_mday);
+        append_two_digits(output, value.tm_hour);
+        append_two_digits(output, value.tm_min);
+        append_two_digits(output, value.tm_sec);
         break;
     case TimestampStyle::MonthDayYear:
-        std::snprintf(buffer, sizeof(buffer), "%s %02d %04d %02d:%02d:%02d", months[static_cast<std::size_t>(value.tm_mon)].data(), value.tm_mday, value.tm_year + 1900, value.tm_hour, value.tm_min, value.tm_sec);
-        output.append(buffer);
+        output.append(months[static_cast<std::size_t>(value.tm_mon)]);
+        output.push_back(' ');
+        append_two_digits(output, value.tm_mday);
+        output.push_back(' ');
+        append_four_digits(output, value.tm_year + 1900);
+        output.push_back(' ');
+        append_two_digits(output, value.tm_hour);
+        output.push_back(':');
+        append_two_digits(output, value.tm_min);
+        output.push_back(':');
+        append_two_digits(output, value.tm_sec);
         if (!token.zone_suffix.empty()) {
             output.push_back(' ');
             output.append(token.zone_suffix);
         }
         break;
     case TimestampStyle::DateOnly:
-        std::snprintf(buffer, sizeof(buffer), "%04d%c%02d%c%02d", value.tm_year + 1900, token.date_separator, value.tm_mon + 1, token.date_separator, value.tm_mday);
-        output.append(buffer);
+        append_four_digits(output, value.tm_year + 1900);
+        output.push_back(token.date_separator);
+        append_two_digits(output, value.tm_mon + 1);
+        output.push_back(token.date_separator);
+        append_two_digits(output, value.tm_mday);
         break;
     case TimestampStyle::TimeOnly:
-        std::snprintf(buffer, sizeof(buffer), "%02d:%02d:%02d", value.tm_hour, value.tm_min, value.tm_sec);
-        output.append(buffer);
+        append_two_digits(output, value.tm_hour);
+        output.push_back(':');
+        append_two_digits(output, value.tm_min);
+        output.push_back(':');
+        append_two_digits(output, value.tm_sec);
         append_fraction(output, point, token.fractional_digits);
         break;
     }
@@ -338,8 +430,20 @@ PreparedLog::PreparedLog(std::vector<RenderSegment> segments, const std::chrono:
     auto compiled = std::make_shared<CompiledLog>();
     compiled->segments = std::move(segments);
     for (const auto& segment : compiled->segments) {
-        compiled->capacity_hint += segment.is_timestamp ? 40 : segment.privacy == PrivacyTokenKind::None ? segment.text.size() : 64;
+        const auto privacy_index = static_cast<std::size_t>(segment.privacy);
+        if (privacy_index > privacy_token_kinds.size()) {
+            throw std::invalid_argument("Prepared log contains an invalid privacy token kind");
+        }
+        if (segment.is_timestamp && segment.timestamp.fractional_digits > 9) {
+            throw std::invalid_argument("Prepared log timestamp precision exceeds nine digits");
+        }
+        const auto segment_capacity = segment.is_timestamp ? std::size_t{40} : segment.privacy == PrivacyTokenKind::None ? segment.text.size() : std::size_t{64};
+        if (compiled->capacity_hint > std::numeric_limits<std::size_t>::max() - segment_capacity) {
+            throw std::length_error("Prepared log capacity exceeds the supported size");
+        }
+        compiled->capacity_hint += segment_capacity;
         compiled->has_timestamp = compiled->has_timestamp || segment.is_timestamp;
+        compiled->has_fractional_timestamp = compiled->has_fractional_timestamp || (segment.is_timestamp && segment.timestamp.fractional_digits > 0);
         compiled->has_privacy = compiled->has_privacy || segment.privacy != PrivacyTokenKind::None;
     }
     compiled_ = std::move(compiled);
@@ -359,7 +463,9 @@ PreparedLog& PreparedLog::operator=(const PreparedLog& other) {
         offset_ = other.offset_;
         cached_.clear();
         timestamp_cache_.clear();
+        fractional_offsets_.clear();
         cached_second_ = -1;
+        timestamp_cache_ready_ = false;
         initialize_random_state();
         initialize_cache();
     }
@@ -375,6 +481,7 @@ void PreparedLog::initialize_cache() {
     }
     cached_.reserve(compiled_->capacity_hint);
     timestamp_cache_.resize(compiled_->segments.size());
+    fractional_offsets_.assign(compiled_->segments.size(), std::string::npos);
     for (std::size_t index = 0; index < compiled_->segments.size(); ++index) {
         if (compiled_->segments[index].is_timestamp) {
             timestamp_cache_[index].reserve(40);
@@ -406,35 +513,46 @@ std::size_t PreparedLog::next_profile_index() noexcept {
 }
 
 std::string_view PreparedLog::render(const std::chrono::system_clock::time_point now, const bool calendar_time) {
+    if (!compiled_) {
+        throw std::logic_error("Cannot render a moved-from prepared log");
+    }
     if (!compiled_->has_timestamp && !compiled_->has_privacy) {
         return cached_;
     }
     const auto adjusted = now + offset_;
     const auto second = std::chrono::duration_cast<std::chrono::seconds>(adjusted.time_since_epoch()).count();
-    if (!compiled_->has_privacy && second == cached_second_ && calendar_time == cached_calendar_time_) {
+    const bool timestamp_changed = compiled_->has_timestamp && (!timestamp_cache_ready_ || second != cached_second_ || calendar_time != cached_calendar_time_);
+    if (!compiled_->has_privacy && !compiled_->has_fractional_timestamp && !timestamp_changed) {
         return cached_;
     }
-    if (compiled_->has_privacy && compiled_->has_timestamp && (second != cached_second_ || calendar_time != cached_calendar_time_)) {
+    if (timestamp_changed) {
+        const auto whole_second = std::chrono::floor<std::chrono::seconds>(adjusted);
         for (std::size_t index = 0; index < compiled_->segments.size(); ++index) {
             if (!compiled_->segments[index].is_timestamp) {
                 continue;
             }
             timestamp_cache_[index].clear();
-            append_timestamp(timestamp_cache_[index], compiled_->segments[index].timestamp, adjusted, calendar_time);
+            append_timestamp(timestamp_cache_[index], compiled_->segments[index].timestamp, whole_second, calendar_time);
+            fractional_offsets_[index] = compiled_->segments[index].timestamp.fractional_digits == 0 ? std::string::npos : timestamp_cache_[index].find('.');
         }
+        timestamp_cache_ready_ = true;
     }
     cached_.clear();
     const auto profile_index = compiled_->has_privacy ? next_profile_index() : std::size_t{0};
+    const auto* profile = compiled_->has_privacy ? &PrivacyAnonymizer::synthetic_profile(profile_index) : nullptr;
     for (std::size_t index = 0; index < compiled_->segments.size(); ++index) {
         const auto& segment = compiled_->segments[index];
         if (segment.is_timestamp) {
-            if (compiled_->has_privacy) {
+            if (segment.timestamp.fractional_digits == 0) {
                 cached_.append(timestamp_cache_[index]);
             } else {
-                append_timestamp(cached_, segment.timestamp, adjusted, calendar_time);
+                const auto fraction = fractional_offsets_[index];
+                cached_.append(timestamp_cache_[index], 0, fraction);
+                append_fraction(cached_, adjusted, segment.timestamp.fractional_digits);
+                cached_.append(timestamp_cache_[index], fraction + static_cast<std::size_t>(segment.timestamp.fractional_digits) + 1, std::string::npos);
             }
         } else if (segment.privacy != PrivacyTokenKind::None) {
-            cached_.append(PrivacyAnonymizer::synthetic_value(segment.privacy, profile_index));
+            cached_.append((*profile)[static_cast<std::size_t>(segment.privacy) - 1]);
         } else {
             cached_.append(segment.text);
         }
@@ -449,9 +567,13 @@ std::size_t PreparedLog::capacity_hint() const noexcept {
 }
 
 LogTemplateAnalysis LogRenderer::analyze(const std::string_view sample) {
+    return analyze_sanitized(PrivacyAnonymizer::sanitize(sample));
+}
+
+LogTemplateAnalysis LogRenderer::analyze_sanitized(const std::string_view sample) {
     const std::string input{sample};
     LogTemplateAnalysis result;
-    const auto segments = compile_segments(PrivacyAnonymizer::sanitize(input));
+    const auto segments = compile_segments(input);
     for (const auto& segment : segments) {
         if (segment.privacy != PrivacyTokenKind::None) {
             ++result.privacy_token_count;
@@ -472,8 +594,8 @@ LogTemplateAnalysis LogRenderer::analyze(const std::string_view sample) {
 std::vector<PreparedLog> LogRenderer::prepare(const domain::GeneratorConfig& config) {
     std::vector<PreparedLog> result;
     result.reserve(config.templates.size());
+    const auto offset = config.timestamp_generation.mode == domain::TimestampGenerationMode::Offset ? config.timestamp_generation.offset.value() : std::chrono::seconds{0};
     for (const auto& item : config.templates) {
-        const auto offset = config.timestamp_generation.mode == domain::TimestampGenerationMode::Offset ? config.timestamp_generation.offset.value() : std::chrono::seconds{0};
         result.push_back(prepare_one(item.sample, config.source_ip, config.destination_ip, offset));
     }
     return result;

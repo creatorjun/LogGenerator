@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <cstring>
 #include <iomanip>
 #include <limits>
@@ -47,7 +48,7 @@ struct SchannelTransport::Impl {
     bool context_ready{false};
     SecPkgContext_StreamSizes sizes{};
     std::vector<std::byte> encrypted;
-    std::string wire;
+    std::array<char, 16'384> receive_buffer{};
 
     ~Impl() {
         if (context_ready) {
@@ -83,15 +84,20 @@ struct SchannelTransport::Impl {
     }
 
     void receive_into(std::vector<char>& input) {
-        std::array<char, 16'384> buffer{};
-        const int received = recv(socket.get(), buffer.data(), static_cast<int>(buffer.size()), 0);
+        if (!socket.valid()) {
+            throw std::runtime_error("TLS socket is not connected");
+        }
+        const int received = recv(socket.get(), receive_buffer.data(), static_cast<int>(receive_buffer.size()), 0);
         if (received == SOCKET_ERROR) {
             throw std::runtime_error(socket_error_message("TLS handshake receive"));
         }
         if (received == 0) {
             throw std::runtime_error("Remote endpoint closed during TLS handshake");
         }
-        input.insert(input.end(), buffer.begin(), buffer.begin() + received);
+        if (input.size() > 1'048'576 - static_cast<std::size_t>(received)) {
+            throw std::length_error("TLS handshake input exceeded the safety limit");
+        }
+        input.insert(input.end(), receive_buffer.begin(), receive_buffer.begin() + received);
     }
 
     void handshake(const std::wstring& server_name, const bool verify_certificate) {
@@ -105,6 +111,14 @@ struct SchannelTransport::Impl {
         SecBuffer first_output{0, SECBUFFER_TOKEN, nullptr};
         SecBufferDesc first_output_description{SECBUFFER_VERSION, 1, &first_output};
         SECURITY_STATUS status = InitializeSecurityContextW(&credentials, nullptr, const_cast<wchar_t*>(server_name.c_str()), request_flags, 0, SECURITY_NATIVE_DREP, nullptr, 0, &context, &first_output_description, &attributes, &expiry);
+        if (status == SEC_I_COMPLETE_NEEDED || status == SEC_I_COMPLETE_AND_CONTINUE) {
+            const SECURITY_STATUS complete_status = CompleteAuthToken(&context, &first_output_description);
+            if (complete_status != SEC_E_OK) {
+                release_output_token(first_output);
+                throw security_error("CompleteAuthToken", complete_status);
+            }
+            status = status == SEC_I_COMPLETE_NEEDED ? SEC_E_OK : SEC_I_CONTINUE_NEEDED;
+        }
         context_ready = status == SEC_I_CONTINUE_NEEDED || status == SEC_E_OK;
         try {
             send_token(first_output);
@@ -149,6 +163,9 @@ struct SchannelTransport::Impl {
             }
             if (input_buffers[1].BufferType == SECBUFFER_EXTRA && input_buffers[1].cbBuffer > 0) {
                 const auto extra = static_cast<std::size_t>(input_buffers[1].cbBuffer);
+                if (extra > input.size()) {
+                    throw std::runtime_error("TLS handshake returned an invalid extra-data length");
+                }
                 std::vector<char> remaining(input.end() - static_cast<std::ptrdiff_t>(extra), input.end());
                 input.swap(remaining);
             } else {
@@ -159,16 +176,23 @@ struct SchannelTransport::Impl {
         if (sizes_status != SEC_E_OK) {
             throw security_error("QueryContextAttributes", sizes_status);
         }
-        encrypted.reserve(static_cast<std::size_t>(sizes.cbHeader) + sizes.cbMaximumMessage + sizes.cbTrailer);
-        wire.reserve(static_cast<std::size_t>(sizes.cbHeader) + sizes.cbMaximumMessage + sizes.cbTrailer);
+        if (sizes.cbMaximumMessage == 0) {
+            throw std::runtime_error("TLS provider returned a zero maximum message size");
+        }
+        const auto encrypted_size = static_cast<std::uint64_t>(sizes.cbHeader) + sizes.cbMaximumMessage + sizes.cbTrailer;
+        if (encrypted_size > std::numeric_limits<std::size_t>::max()) {
+            throw std::length_error("TLS provider returned an invalid buffer size");
+        }
+        encrypted.resize(static_cast<std::size_t>(encrypted_size));
     }
 
     void send_encrypted(const std::string_view payload) {
+        if (!socket.valid() || !context_ready || sizes.cbMaximumMessage == 0 || encrypted.empty()) {
+            throw std::runtime_error("TLS transport is not connected");
+        }
         std::size_t offset = 0;
         while (offset < payload.size()) {
             const auto chunk_size = std::min<std::size_t>(payload.size() - offset, sizes.cbMaximumMessage);
-            const auto storage_size = static_cast<std::size_t>(sizes.cbHeader) + chunk_size + sizes.cbTrailer;
-            encrypted.resize(storage_size);
             std::memcpy(encrypted.data() + sizes.cbHeader, payload.data() + offset, chunk_size);
 
             SecBuffer buffers[4]{
@@ -182,11 +206,12 @@ struct SchannelTransport::Impl {
             if (status != SEC_E_OK) {
                 throw security_error("EncryptMessage", status);
             }
-            wire.clear();
-            wire.append(static_cast<const char*>(buffers[0].pvBuffer), buffers[0].cbBuffer);
-            wire.append(static_cast<const char*>(buffers[1].pvBuffer), buffers[1].cbBuffer);
-            wire.append(static_cast<const char*>(buffers[2].pvBuffer), buffers[2].cbBuffer);
-            send_all(socket.get(), wire);
+            WSABUF wire_buffers[3]{
+                {buffers[0].cbBuffer, static_cast<char*>(buffers[0].pvBuffer)},
+                {buffers[1].cbBuffer, static_cast<char*>(buffers[1].pvBuffer)},
+                {buffers[2].cbBuffer, static_cast<char*>(buffers[2].pvBuffer)},
+            };
+            send_all(socket.get(), std::span<WSABUF>{wire_buffers});
             offset += chunk_size;
         }
     }
@@ -199,8 +224,10 @@ SchannelTransport::SchannelTransport()
 SchannelTransport::~SchannelTransport() = default;
 
 void SchannelTransport::connect(const domain::EndpointConfig& endpoint) {
+    impl_ = std::make_unique<Impl>();
     impl_->socket = connect_socket(endpoint.host, endpoint.port, SOCK_STREAM, IPPROTO_TCP);
     configure_send_buffer(impl_->socket.get(), 4 * 1024 * 1024);
+    configure_receive_timeout(impl_->socket.get(), 5000);
     BOOL enabled = TRUE;
     if (setsockopt(impl_->socket.get(), IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&enabled), sizeof(enabled)) == SOCKET_ERROR) {
         throw std::runtime_error(socket_error_message("setsockopt TCP_NODELAY"));

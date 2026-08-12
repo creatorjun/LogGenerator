@@ -28,6 +28,7 @@ public:
 
 private:
     void close() noexcept;
+    void close_checked();
     void open_next_slice();
     [[nodiscard]] std::filesystem::path slice_path(std::uint32_t index) const;
 

@@ -4,6 +4,7 @@
 #include <WinSock2.h>
 
 #include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -33,7 +34,9 @@ void ensure_winsock();
 [[nodiscard]] SocketHandle connect_socket(const std::string& host, std::uint16_t port, int socket_type, int protocol, int timeout_milliseconds = 5000);
 void configure_send_buffer(SOCKET socket, int bytes);
 void configure_send_timeout(SOCKET socket, int milliseconds);
+void configure_receive_timeout(SOCKET socket, int milliseconds);
 void send_all(SOCKET socket, std::string_view payload);
+void send_all(SOCKET socket, std::span<WSABUF> buffers);
 [[nodiscard]] std::string socket_error_message(std::string_view action, int error_code = WSAGetLastError());
 [[nodiscard]] std::wstring utf8_to_wide(std::string_view value);
 

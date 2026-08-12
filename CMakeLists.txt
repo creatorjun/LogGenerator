@@ -50,34 +50,49 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
-set(LOGGEN_CORE_SOURCES
+add_library(loggen_domain INTERFACE)
+target_include_directories(loggen_domain INTERFACE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+
+set(LOGGEN_APPLICATION_SOURCES
+    src/application/generator_config_validator.cpp
+    src/application/log_catalog_service.cpp
     src/application/log_renderer.cpp
     src/application/privacy_anonymizer.cpp
     src/application/stress_test_service.cpp
+)
+
+add_library(loggen_application STATIC ${LOGGEN_APPLICATION_SOURCES})
+target_include_directories(loggen_application PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(loggen_application PUBLIC loggen_domain)
+
+set(LOGGEN_INFRASTRUCTURE_SOURCES
     src/infrastructure/async_file_logger.cpp
     src/infrastructure/file_transport.cpp
     src/infrastructure/json_log_catalog.cpp
     src/infrastructure/schannel_transport.cpp
     src/infrastructure/tcp_transport.cpp
+    src/infrastructure/timestamp_identifier_generator.cpp
     src/infrastructure/transport_factory.cpp
     src/infrastructure/udp_transport.cpp
+    src/infrastructure/windows_execution_runtime.cpp
     src/infrastructure/winsock_support.cpp
 )
 
-add_library(loggen_core STATIC ${LOGGEN_CORE_SOURCES})
-target_include_directories(loggen_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
-target_compile_definitions(loggen_core PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE SECURITY_WIN32 SCHANNEL_USE_BLACKLISTS _WIN32_WINNT=0x0A00)
-target_link_libraries(loggen_core PUBLIC nlohmann_json::nlohmann_json PRIVATE ws2_32 secur32 crypt32 winmm)
+add_library(loggen_infrastructure STATIC ${LOGGEN_INFRASTRUCTURE_SOURCES})
+target_include_directories(loggen_infrastructure PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_compile_definitions(loggen_infrastructure PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE SECURITY_WIN32 SCHANNEL_USE_BLACKLISTS _WIN32_WINNT=0x0A00)
+target_link_libraries(loggen_infrastructure PUBLIC loggen_application PRIVATE nlohmann_json::nlohmann_json ws2_32 secur32 crypt32 winmm)
 
 add_executable(LogGenerator WIN32
     src/main.cpp
     src/presentation/app.cpp
+    src/presentation/catalog_task_runner.cpp
     src/presentation/d3d11_context.cpp
     src/presentation/ui_theme.cpp
 )
 target_include_directories(LogGenerator PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_compile_definitions(LogGenerator PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _WIN32_WINNT=0x0A00)
-target_link_libraries(LogGenerator PRIVATE loggen_core imgui d3d11 dxgi dwmapi)
+target_link_libraries(LogGenerator PRIVATE loggen_application loggen_infrastructure imgui d3d11 dxgi dwmapi)
 add_custom_command(
     TARGET LogGenerator
     POST_BUILD
@@ -87,18 +102,36 @@ add_custom_command(
 
 enable_testing()
 add_executable(LogGeneratorTests
+    src/presentation/catalog_task_runner.cpp
     tests/test_main.cpp
     tests/async_file_logger_tests.cpp
+    tests/architecture_tests.cpp
+    tests/catalog_task_runner_tests.cpp
     tests/file_transport_tests.cpp
+    tests/generator_config_validator_tests.cpp
+    tests/log_catalog_service_tests.cpp
     tests/log_renderer_tests.cpp
     tests/json_log_catalog_tests.cpp
     tests/stress_test_service_tests.cpp
+    tests/transport_error_tests.cpp
     tests/responsive_layout_tests.cpp
 )
 target_include_directories(LogGeneratorTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_SOURCE_DIR}/tests")
 target_compile_definitions(LogGeneratorTests PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _WIN32_WINNT=0x0A00 LOGGEN_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
-target_link_libraries(LogGeneratorTests PRIVATE loggen_core)
+target_link_libraries(LogGeneratorTests PRIVATE loggen_application loggen_infrastructure)
 add_test(NAME LogGeneratorTests COMMAND LogGeneratorTests)
+
+add_executable(LogGeneratorBenchmarks EXCLUDE_FROM_ALL
+    benchmarks/log_renderer_benchmark.cpp
+)
+target_include_directories(LogGeneratorBenchmarks PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(LogGeneratorBenchmarks PRIVATE loggen_application)
+
+add_executable(LogGeneratorEngineBenchmarks EXCLUDE_FROM_ALL
+    benchmarks/stress_engine_benchmark.cpp
+)
+target_include_directories(LogGeneratorEngineBenchmarks PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(LogGeneratorEngineBenchmarks PRIVATE loggen_application)
 
 function(loggen_configure_target target_name)
     if(MSVC)
@@ -107,9 +140,12 @@ function(loggen_configure_target target_name)
     endif()
 endfunction()
 
-loggen_configure_target(loggen_core)
+loggen_configure_target(loggen_application)
+loggen_configure_target(loggen_infrastructure)
 loggen_configure_target(LogGenerator)
 loggen_configure_target(LogGeneratorTests)
+loggen_configure_target(LogGeneratorBenchmarks)
+loggen_configure_target(LogGeneratorEngineBenchmarks)
 
 install(TARGETS LogGenerator RUNTIME DESTINATION .)
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/Sample Logs" DESTINATION .)

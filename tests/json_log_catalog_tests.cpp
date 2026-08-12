@@ -16,15 +16,14 @@
 namespace loggen::tests {
 
 void run_json_log_catalog_tests() {
-    const infrastructure::JsonLogCatalog catalog;
     const auto source = std::filesystem::path{LOGGEN_SOURCE_DIR} / "Sample Logs" / "sample_logs.json";
-    const auto items = catalog.load(source);
+    const infrastructure::JsonLogCatalog catalog{source};
+    const auto items = catalog.load();
     expect(items.size() == 84, "Expected 84 CSV replacement sample logs");
     expect(!items.front().id.empty(), "First sample log id is empty");
     expect(!items.front().name.empty(), "First sample log name is empty");
     expect(!items.front().sample.empty(), "First sample log body is empty");
     expect(items.front().id == "csv-0001", "CSV sample ids were not normalized");
-    expect(items.front().source.empty(), "CSV sample source should be omitted");
 
     std::size_t timestamp_templates = 0;
     std::size_t source_ip_templates = 0;
@@ -69,19 +68,34 @@ void run_json_log_catalog_tests() {
     std::error_code cleanup_error;
     std::filesystem::remove_all(directory, cleanup_error);
     const std::vector<domain::LogTemplate> expected{
-        {"custom-1", "사용자 로그", "timestamp=2030-01-02T03:04:05Z src_ip=10.0.0.1 dst_ip=10.0.0.2", "사용자 정의"},
-        {"custom-2", "Multiline", "line one\nline two", "사용자 정의"},
+        {"custom-1", "사용자 로그", "timestamp=2030-01-02T03:04:05Z src_ip=10.0.0.1 dst_ip=10.0.0.2"},
+        {"custom-2", "Multiline", "line one\nline two"},
     };
-    catalog.save(file, expected);
-    const auto actual = catalog.load(file);
+    infrastructure::JsonLogCatalog temporary_catalog{file};
+    temporary_catalog.save(expected);
+    const auto actual = temporary_catalog.load();
     expect(actual.size() == expected.size(), "JSON catalog round trip changed item count");
     expect(actual[0].id == expected[0].id, "JSON catalog round trip changed id");
     expect(actual[0].name == expected[0].name, "JSON catalog round trip changed UTF-8 name");
     expect(actual[0].sample == expected[0].sample, "JSON catalog round trip changed sample");
     expect(actual[1].sample == expected[1].sample, "JSON catalog round trip changed multiline sample");
     const std::vector<domain::LogTemplate> empty;
-    catalog.save(file, empty);
-    expect(catalog.load(file).empty(), "JSON catalog could not persist an empty catalog");
+    temporary_catalog.save(empty);
+    expect(temporary_catalog.load().empty(), "JSON catalog could not persist an empty catalog");
+
+    const auto blocked_file = directory / "blocked.json";
+    std::filesystem::create_directory(blocked_file);
+    infrastructure::JsonLogCatalog blocked_catalog{blocked_file};
+    bool blocked_save_failed = false;
+    try {
+        blocked_catalog.save(expected);
+    } catch (const std::runtime_error&) {
+        blocked_save_failed = true;
+    }
+    expect(blocked_save_failed, "JSON catalog did not report an atomic replacement failure");
+    for (const auto& entry : std::filesystem::directory_iterator(directory)) {
+        expect(!entry.path().filename().string().starts_with("blocked.json.tmp."), "JSON catalog left a failed temporary file behind");
+    }
     std::filesystem::remove_all(directory, cleanup_error);
 }
 

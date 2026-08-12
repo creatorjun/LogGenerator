@@ -1,57 +1,54 @@
 // src/presentation/app.hpp
 #pragma once
 
-#include "application/log_renderer.hpp"
-#include "application/ports/log_catalog.hpp"
+#include "application/ports/log_catalog_use_case.hpp"
 #include "application/ports/logger.hpp"
-#include "application/stress_test_service.hpp"
+#include "application/ports/stress_test_use_case.hpp"
 #include "domain/log_template.hpp"
+#include "presentation/catalog_task_runner.hpp"
 #include "presentation/d3d11_context.hpp"
 #include "presentation/responsive_layout.hpp"
 
 #include <Windows.h>
 
 #include <array>
-#include <atomic>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
-#include <mutex>
-#include <optional>
 #include <string>
-#include <thread>
+#include <string_view>
 #include <vector>
 
 namespace loggen::presentation {
 
 class App {
 public:
-    App(application::ILogCatalog& catalog, application::ILogger& logger, application::StressTestService& stress_service, std::filesystem::path catalog_file, std::filesystem::path generated_directory);
+    App(application::ILogCatalogUseCase& catalog_service, application::ILogger& logger, application::IStressTestUseCase& stress_service, std::filesystem::path generated_directory);
     ~App();
 
     int run(HINSTANCE instance, int show_command);
 
 private:
-    struct CatalogLoadResult {
-        std::vector<domain::LogTemplate> items;
-        std::vector<std::string> search_names;
-        std::vector<std::string> previews;
-        std::vector<application::LogTemplateAnalysis> analyses;
-        std::string error;
-        bool replace_items{true};
+    struct CatalogViewItem {
+        application::CatalogItem item;
+        std::string preview;
     };
 
     static LRESULT CALLBACK window_procedure(HWND window, UINT message, WPARAM word_parameter, LPARAM long_parameter);
     LRESULT handle_message(HWND window, UINT message, WPARAM word_parameter, LPARAM long_parameter);
     void initialize_imgui();
     void update_ui_scale(float scale);
+    void apply_pending_resize();
     void shutdown_imgui() noexcept;
+    void shutdown_window() noexcept;
     void request_catalog_load();
-    void request_catalog_save();
     void apply_catalog_result();
+    void apply_editor_analysis_result();
     void rebuild_filter();
+    [[nodiscard]] std::vector<std::size_t> build_filter(const std::vector<CatalogViewItem>& items) const;
     void refresh_stats();
+    void report_error(std::string_view context, std::string_view detail) noexcept;
     void render();
     void render_header(const domain::TransmissionStats& stats, const ResponsiveLayout& layout);
     void render_metrics(const domain::TransmissionStats& stats, const ResponsiveLayout& layout);
@@ -64,25 +61,33 @@ private:
     void render_catalog_editor();
     void open_new_catalog_editor();
     void open_selected_catalog_editor();
-    void save_catalog_editor();
-    void delete_selected_catalog_item();
+    [[nodiscard]] bool save_catalog_editor();
+    [[nodiscard]] bool delete_selected_catalog_item();
     void analyze_editor_sample();
     [[nodiscard]] std::size_t visible_catalog_index() const noexcept;
+    [[nodiscard]] std::vector<domain::LogTemplate> catalog_snapshot() const;
+    [[nodiscard]] std::vector<domain::LogTemplate> catalog_snapshot(const std::vector<CatalogViewItem>& items) const;
     void start_test();
 
-    application::ILogCatalog& catalog_;
+    application::ILogCatalogUseCase& catalog_service_;
     application::ILogger& logger_;
-    application::StressTestService& stress_service_;
-    std::filesystem::path catalog_file_;
+    application::IStressTestUseCase& stress_service_;
+    CatalogTaskRunner catalog_tasks_;
+    CatalogTaskRunner analysis_tasks_;
     std::filesystem::path generated_directory_;
+    std::string generated_directory_text_;
     D3d11Context d3d_;
+    HINSTANCE instance_{nullptr};
+    ATOM window_class_{0};
     HWND window_{nullptr};
+    bool imgui_context_ready_{false};
+    bool imgui_win32_ready_{false};
+    bool imgui_dx11_ready_{false};
     bool imgui_ready_{false};
+    unsigned int pending_resize_width_{0};
+    unsigned int pending_resize_height_{0};
     float ui_scale_{1.0F};
-    std::vector<domain::LogTemplate> catalog_items_;
-    std::vector<std::string> catalog_search_names_;
-    std::vector<std::string> catalog_previews_;
-    std::vector<application::LogTemplateAnalysis> catalog_analyses_;
+    std::vector<CatalogViewItem> catalog_items_;
     std::vector<std::size_t> filtered_indices_;
     std::size_t selected_log_{0};
     bool rotate_filtered_{true};
@@ -121,11 +126,7 @@ private:
     application::LogTemplateAnalysis editor_analysis_;
     bool editor_analysis_pending_{false};
     std::chrono::steady_clock::time_point editor_analysis_due_{};
-    std::atomic<bool> catalog_loading_{false};
-    std::atomic<bool> catalog_result_ready_{false};
-    std::mutex catalog_result_mutex_;
-    std::optional<CatalogLoadResult> pending_catalog_result_;
-    std::jthread catalog_loader_;
+    std::uint64_t editor_analysis_generation_{0};
 };
 
 }

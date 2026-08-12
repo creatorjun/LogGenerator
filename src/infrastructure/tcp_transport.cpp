@@ -14,7 +14,9 @@ void TcpTransport::connect(const domain::EndpointConfig& endpoint) {
     if (setsockopt(socket_.get(), IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&enabled), sizeof(enabled)) == SOCKET_ERROR) {
         throw std::runtime_error(socket_error_message("setsockopt TCP_NODELAY"));
     }
-    setsockopt(socket_.get(), SOL_SOCKET, SO_KEEPALIVE, reinterpret_cast<const char*>(&enabled), sizeof(enabled));
+    if (setsockopt(socket_.get(), SOL_SOCKET, SO_KEEPALIVE, reinterpret_cast<const char*>(&enabled), sizeof(enabled)) == SOCKET_ERROR) {
+        throw std::runtime_error(socket_error_message("setsockopt SO_KEEPALIVE"));
+    }
 }
 
 void TcpTransport::send(const std::string_view payload) {

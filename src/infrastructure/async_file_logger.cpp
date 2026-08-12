@@ -15,7 +15,9 @@ namespace {
 std::tm local_time(const std::chrono::system_clock::time_point timestamp) {
     const auto raw_time = std::chrono::system_clock::to_time_t(timestamp);
     std::tm result{};
-    localtime_s(&result, &raw_time);
+    if (localtime_s(&result, &raw_time) != 0) {
+        throw std::runtime_error("Local timestamp conversion failed");
+    }
     return result;
 }
 
@@ -63,7 +65,7 @@ AsyncFileLogger::~AsyncFileLogger() {
     output_.close();
 }
 
-void AsyncFileLogger::log(const domain::LogLevel level, const std::string_view message) noexcept {
+void AsyncFileLogger::log(const application::LogLevel level, const std::string_view message) noexcept {
     if (!accepting_.load(std::memory_order_acquire)) {
         return;
     }
@@ -96,6 +98,10 @@ std::uint64_t AsyncFileLogger::dropped_entries() const noexcept {
     return dropped_total_.load(std::memory_order_relaxed);
 }
 
+bool AsyncFileLogger::healthy() const noexcept {
+    return healthy_.load(std::memory_order_acquire);
+}
+
 void AsyncFileLogger::run(const std::stop_token stop_token) noexcept {
     std::deque<Entry> pending;
     try {
@@ -116,7 +122,7 @@ void AsyncFileLogger::run(const std::stop_token stop_token) noexcept {
             for (const auto& entry : pending) {
                 open_for(entry.timestamp);
                 write_entry(entry);
-                urgent = urgent || entry.level == domain::LogLevel::Error || entry.level == domain::LogLevel::Critical;
+                urgent = urgent || entry.level == application::LogLevel::Error || entry.level == application::LogLevel::Critical;
             }
             pending.clear();
             const auto dropped = dropped_pending_.exchange(0, std::memory_order_relaxed);
@@ -127,6 +133,9 @@ void AsyncFileLogger::run(const std::stop_token stop_token) noexcept {
             const auto now = std::chrono::steady_clock::now();
             if (urgent || stop_token.stop_requested() || now - last_flush >= std::chrono::seconds{1}) {
                 output_.flush();
+                if (!output_) {
+                    throw std::runtime_error("Unable to flush application log");
+                }
                 last_flush = now;
             }
         }
@@ -136,10 +145,17 @@ void AsyncFileLogger::run(const std::stop_token stop_token) noexcept {
             write_dropped_notice(dropped);
         }
         output_.flush();
+        if (!output_) {
+            throw std::runtime_error("Unable to flush application log");
+        }
     } catch (const std::exception& error) {
+        healthy_.store(false, std::memory_order_release);
+        accepting_.store(false, std::memory_order_release);
         const auto message = std::string("LogGenerator file logger failure: ") + error.what() + "\n";
         OutputDebugStringA(message.c_str());
     } catch (...) {
+        healthy_.store(false, std::memory_order_release);
+        accepting_.store(false, std::memory_order_release);
         OutputDebugStringA("LogGenerator file logger failure: unknown error\n");
     }
 }
@@ -151,8 +167,15 @@ void AsyncFileLogger::open_for(const std::chrono::system_clock::time_point times
     }
     if (output_.is_open()) {
         output_.flush();
+        if (!output_) {
+            throw std::runtime_error("Unable to flush application log before rotation");
+        }
         output_.close();
+        if (output_.fail()) {
+            throw std::runtime_error("Unable to close application log before rotation");
+        }
     }
+    output_.clear();
     const auto path = directory_ / (base_name_ + '_' + requested_date + ".log");
     output_.open(path, std::ios::binary | std::ios::app);
     if (!output_) {
@@ -170,7 +193,7 @@ void AsyncFileLogger::write_entry(const Entry& entry) {
 }
 
 void AsyncFileLogger::write_dropped_notice(const std::uint64_t count) {
-    const Entry entry{std::chrono::system_clock::now(), domain::LogLevel::Warning, GetCurrentThreadId(), std::format("Logger queue discarded {} entries", count)};
+    const Entry entry{std::chrono::system_clock::now(), application::LogLevel::Warning, GetCurrentThreadId(), std::format("Logger queue discarded {} entries", count)};
     open_for(entry.timestamp);
     write_entry(entry);
 }
@@ -187,7 +210,7 @@ std::string AsyncFileLogger::format_entry(const Entry& entry) {
     const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(entry.timestamp.time_since_epoch()).count() % 1000;
     std::array<char, 64> timestamp{};
     std::snprintf(timestamp.data(), timestamp.size(), "%04d-%02d-%02d %02d:%02d:%02d.%03lld", value.tm_year + 1900, value.tm_mon + 1, value.tm_mday, value.tm_hour, value.tm_min, value.tm_sec, static_cast<long long>(milliseconds));
-    return std::format("[{}] [{}] [T{}] {}\n", timestamp.data(), domain::log_level_name(entry.level), entry.thread_id, sanitize(entry.message));
+    return std::format("[{}] [{}] [T{}] {}\n", timestamp.data(), application::log_level_name(entry.level), entry.thread_id, sanitize(entry.message));
 }
 
 }

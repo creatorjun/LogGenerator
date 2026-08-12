@@ -19,7 +19,7 @@ FileTransport::~FileTransport() {
 }
 
 void FileTransport::connect(const domain::EndpointConfig&) {
-    close();
+    close_checked();
     std::filesystem::create_directories(output_directory_);
     SYSTEMTIME value{};
     GetLocalTime(&value);
@@ -36,27 +36,30 @@ void FileTransport::send(const std::string_view payload) {
     if (payload.empty()) {
         return;
     }
-    if (current_size_ > 0 && current_size_ + payload.size() > slice_size_bytes) {
-        close();
-        ++slice_index_;
-        current_size_ = 0;
-        open_next_slice();
-    }
-
     std::size_t offset = 0;
     while (offset < payload.size()) {
+        if (current_size_ == slice_size_bytes) {
+            close_checked();
+            if (slice_index_ == std::numeric_limits<std::uint32_t>::max()) {
+                throw std::overflow_error("Generated log slice index limit was reached");
+            }
+            ++slice_index_;
+            current_size_ = 0;
+            open_next_slice();
+        }
         const auto remaining = payload.size() - offset;
-        const auto chunk = static_cast<DWORD>(std::min<std::size_t>(remaining, std::numeric_limits<DWORD>::max()));
+        const auto available = slice_size_bytes - current_size_;
+        const auto chunk = static_cast<DWORD>(std::min<std::uint64_t>(std::min<std::size_t>(remaining, std::numeric_limits<DWORD>::max()), available));
         DWORD written = 0;
         if (!WriteFile(file_, payload.data() + offset, chunk, &written, nullptr)) {
             throw std::system_error(static_cast<int>(GetLastError()), std::system_category(), "Generated log write failed");
         }
-        if (written != chunk) {
-            throw std::runtime_error("Generated log write was incomplete");
+        if (written == 0) {
+            throw std::runtime_error("Generated log write made no progress");
         }
         offset += written;
+        current_size_ += written;
     }
-    current_size_ += payload.size();
 }
 
 bool FileTransport::is_datagram() const noexcept {
@@ -70,6 +73,16 @@ void FileTransport::close() noexcept {
     }
 }
 
+void FileTransport::close_checked() {
+    if (file_ == INVALID_HANDLE_VALUE) {
+        return;
+    }
+    if (!CloseHandle(file_)) {
+        throw std::system_error(static_cast<int>(GetLastError()), std::system_category(), "Generated log file close failed");
+    }
+    file_ = INVALID_HANDLE_VALUE;
+}
+
 void FileTransport::open_next_slice() {
     for (;;) {
         const auto path = slice_path(slice_index_);
@@ -80,6 +93,9 @@ void FileTransport::open_next_slice() {
         const auto error = GetLastError();
         if (error != ERROR_FILE_EXISTS && error != ERROR_ALREADY_EXISTS) {
             throw std::system_error(static_cast<int>(error), std::system_category(), "Generated log file creation failed");
+        }
+        if (slice_index_ == std::numeric_limits<std::uint32_t>::max()) {
+            throw std::overflow_error("Generated log slice index limit was reached");
         }
         ++slice_index_;
     }
