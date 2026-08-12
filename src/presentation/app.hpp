@@ -6,6 +6,7 @@
 #include "application/stress_test_service.hpp"
 #include "domain/log_template.hpp"
 #include "presentation/d3d11_context.hpp"
+#include "presentation/responsive_layout.hpp"
 
 #include <Windows.h>
 
@@ -29,12 +30,16 @@ private:
     static LRESULT CALLBACK window_procedure(HWND window, UINT message, WPARAM word_parameter, LPARAM long_parameter);
     LRESULT handle_message(HWND window, UINT message, WPARAM word_parameter, LPARAM long_parameter);
     void initialize_imgui();
+    void update_ui_scale(float scale);
     void shutdown_imgui() noexcept;
     void load_catalog();
     void render();
-    void render_header(const domain::TransmissionStats& stats);
-    void render_metrics(const domain::TransmissionStats& stats);
-    void render_configuration(const domain::TransmissionStats& stats);
+    void render_header(const domain::TransmissionStats& stats, const ResponsiveLayout& layout);
+    void render_metrics(const domain::TransmissionStats& stats, const ResponsiveLayout& layout);
+    void render_configuration(const domain::TransmissionStats& stats, const ResponsiveLayout& layout);
+    void render_destination_panel();
+    void render_template_panel(const ResponsiveLayout& layout);
+    void render_time_offset(int columns);
     void render_catalog_selector();
     void start_test();
     [[nodiscard]] std::vector<std::size_t> filtered_indices() const;
@@ -46,6 +51,7 @@ private:
     D3d11Context d3d_;
     HWND window_{nullptr};
     bool imgui_ready_{false};
+    float ui_scale_{1.0F};
     std::vector<domain::LogTemplate> catalog_items_;
     std::size_t selected_log_{0};
     bool rotate_filtered_{true};

@@ -89,6 +89,7 @@ add_executable(LogGeneratorTests
     tests/async_file_logger_tests.cpp
     tests/log_renderer_tests.cpp
     tests/excel_log_catalog_tests.cpp
+    tests/responsive_layout_tests.cpp
 )
 target_include_directories(LogGeneratorTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_SOURCE_DIR}/tests")
 target_compile_definitions(LogGeneratorTests PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _WIN32_WINNT=0x0A00 LOGGEN_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")

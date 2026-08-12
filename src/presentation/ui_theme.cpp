@@ -6,7 +6,7 @@
 namespace loggen::presentation {
 
 void apply_ui_theme(const float scale) {
-    ImGuiStyle& style = ImGui::GetStyle();
+    ImGuiStyle style{};
     style.WindowPadding = ImVec2(22.0F, 18.0F);
     style.FramePadding = ImVec2(12.0F, 8.0F);
     style.CellPadding = ImVec2(10.0F, 7.0F);
@@ -22,8 +22,10 @@ void apply_ui_theme(const float scale) {
     style.ChildBorderSize = 1.0F;
     style.FrameBorderSize = 0.0F;
     style.ScaleAllSizes(scale);
+    style.FontScaleDpi = scale;
+    ImGui::GetStyle() = style;
 
-    auto& colors = style.Colors;
+    auto& colors = ImGui::GetStyle().Colors;
     colors[ImGuiCol_Text] = ImVec4(0.91F, 0.93F, 0.96F, 1.0F);
     colors[ImGuiCol_TextDisabled] = ImVec4(0.47F, 0.52F, 0.61F, 1.0F);
     colors[ImGuiCol_WindowBg] = ImVec4(0.055F, 0.067F, 0.09F, 1.0F);

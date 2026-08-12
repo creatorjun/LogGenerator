@@ -87,13 +87,21 @@ std::string format_bytes(const std::uint64_t bytes) {
 }
 
 void metric_card(const char* id, const char* label, const std::string& value, const ImVec4 accent) {
+    const float height = ImGui::GetTextLineHeightWithSpacing() * 3.4F;
     ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.075F, 0.092F, 0.125F, 1.0F));
-    ImGui::BeginChild(id, ImVec2(0.0F, 86.0F), ImGuiChildFlags_Borders);
+    ImGui::BeginChild(id, ImVec2(0.0F, height), ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding);
     ImGui::TextColored(accent, "%s", label);
-    ImGui::SetWindowFontScale(1.35F);
+    const float value_scale = ImGui::GetContentRegionAvail().x < ImGui::GetFontSize() * 10.0F ? 1.15F : 1.35F;
+    ImGui::SetWindowFontScale(value_scale);
     ImGui::TextUnformatted(value.c_str());
     ImGui::SetWindowFontScale(1.0F);
     ImGui::EndChild();
+    ImGui::PopStyleColor();
+}
+
+void disabled_wrapped_text(const char* text) {
+    ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    ImGui::TextWrapped("%s", text);
     ImGui::PopStyleColor();
 }
 
@@ -157,9 +165,14 @@ int App::run(const HINSTANCE instance, const int show_command) {
         throw std::runtime_error("Window class registration failed");
     }
 
-    RECT bounds{0, 0, 1080, 860};
-    AdjustWindowRectEx(&bounds, WS_OVERLAPPEDWINDOW, FALSE, 0);
-    window_ = CreateWindowExW(0, window_class.lpszClassName, L"LogGenerator", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, bounds.right - bounds.left, bounds.bottom - bounds.top, nullptr, nullptr, instance, this);
+    const UINT dpi = GetDpiForSystem();
+    RECT bounds{0, 0, MulDiv(1180, static_cast<int>(dpi), 96), MulDiv(900, static_cast<int>(dpi), 96)};
+    AdjustWindowRectExForDpi(&bounds, WS_OVERLAPPEDWINDOW, FALSE, 0, dpi);
+    RECT work_area{};
+    SystemParametersInfoW(SPI_GETWORKAREA, 0, &work_area, 0);
+    const int window_width = std::min(bounds.right - bounds.left, work_area.right - work_area.left);
+    const int window_height = std::min(bounds.bottom - bounds.top, work_area.bottom - work_area.top);
+    window_ = CreateWindowExW(0, window_class.lpszClassName, L"LogGenerator", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, window_width, window_height, nullptr, nullptr, instance, this);
     if (window_ == nullptr) {
         UnregisterClassW(window_class.lpszClassName, instance);
         throw std::runtime_error("Window creation failed");
@@ -234,8 +247,16 @@ LRESULT App::handle_message(const HWND window, const UINT message, const WPARAM 
         return 0;
     case WM_GETMINMAXINFO: {
         auto* information = reinterpret_cast<MINMAXINFO*>(long_parameter);
-        information->ptMinTrackSize.x = 900;
-        information->ptMinTrackSize.y = 720;
+        const UINT detected_dpi = GetDpiForWindow(window);
+        const UINT dpi = detected_dpi == 0 ? 96U : detected_dpi;
+        information->ptMinTrackSize.x = MulDiv(520, static_cast<int>(dpi), 96);
+        information->ptMinTrackSize.y = MulDiv(480, static_cast<int>(dpi), 96);
+        return 0;
+    }
+    case WM_DPICHANGED: {
+        const auto* suggested_bounds = reinterpret_cast<const RECT*>(long_parameter);
+        SetWindowPos(window, nullptr, suggested_bounds->left, suggested_bounds->top, suggested_bounds->right - suggested_bounds->left, suggested_bounds->bottom - suggested_bounds->top, SWP_NOACTIVATE | SWP_NOZORDER);
+        update_ui_scale(static_cast<float>(HIWORD(word_parameter)) / 96.0F);
         return 0;
     }
     case WM_SYSCOMMAND:
@@ -257,19 +278,31 @@ void App::initialize_imgui() {
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    const float scale = static_cast<float>(GetDpiForWindow(window_)) / 96.0F;
+    ui_scale_ = static_cast<float>(GetDpiForWindow(window_)) / 96.0F;
     const std::filesystem::path korean_font = L"C:\\Windows\\Fonts\\malgun.ttf";
     if (std::filesystem::exists(korean_font)) {
-        io.Fonts->AddFontFromFileTTF(path_to_utf8(korean_font).c_str(), 17.0F * scale, nullptr, io.Fonts->GetGlyphRangesKorean());
+        io.Fonts->AddFontFromFileTTF(path_to_utf8(korean_font).c_str(), 17.0F, nullptr, io.Fonts->GetGlyphRangesKorean());
     } else {
         io.Fonts->AddFontDefault();
     }
-    apply_ui_theme(scale);
+    apply_ui_theme(ui_scale_);
     if (!ImGui_ImplWin32_Init(window_) || !ImGui_ImplDX11_Init(d3d_.device(), d3d_.context())) {
         ImGui::DestroyContext();
         throw std::runtime_error("Dear ImGui initialization failed");
     }
     imgui_ready_ = true;
+}
+
+void App::update_ui_scale(const float scale) {
+    const float next_scale = std::clamp(scale, 1.0F, 4.0F);
+    if (std::abs(next_scale - ui_scale_) < 0.01F) {
+        return;
+    }
+    ui_scale_ = next_scale;
+    if (imgui_ready_) {
+        apply_ui_theme(ui_scale_);
+        logger_.info(std::format("UI DPI scale changed: {:.2f}", ui_scale_));
+    }
 }
 
 void App::shutdown_imgui() noexcept {
@@ -301,28 +334,36 @@ void App::render() {
     ImGui::SetNextWindowPos(viewport->WorkPos);
     ImGui::SetNextWindowSize(viewport->WorkSize);
     ImGui::Begin("LogGeneratorRoot", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
-    render_header(stats);
-    ImGui::Dummy(ImVec2(0.0F, 5.0F));
-    render_metrics(stats);
-    ImGui::Dummy(ImVec2(0.0F, 8.0F));
-    render_configuration(stats);
+    const auto layout = responsive_layout(ImGui::GetContentRegionAvail().x, ui_scale_);
+    render_header(stats, layout);
+    ImGui::Spacing();
+    render_metrics(stats, layout);
+    ImGui::Spacing();
+    render_configuration(stats, layout);
+    ImGui::Spacing();
     ImGui::End();
 }
 
-void App::render_header(const domain::TransmissionStats& stats) {
-    ImGui::SetWindowFontScale(1.45F);
+void App::render_header(const domain::TransmissionStats& stats, const ResponsiveLayout& layout) {
+    ImGui::SetWindowFontScale(layout.size == ResponsiveSize::Compact ? 1.25F : 1.45F);
     ImGui::TextUnformatted("LOG GENERATOR");
     ImGui::SetWindowFontScale(1.0F);
-    ImGui::SameLine();
+    if (layout.inline_header_subtitle) {
+        ImGui::SameLine();
+    }
     ImGui::TextDisabled("SIEM STRESS TOOL");
     const auto status = state_text(stats.state);
-    const auto width = ImGui::CalcTextSize(status.c_str()).x;
-    ImGui::SameLine(ImGui::GetContentRegionAvail().x - width + ImGui::GetCursorPosX());
+    if (layout.inline_header_status) {
+        const std::string status_label = "● " + status;
+        const float status_width = ImGui::CalcTextSize(status_label.c_str()).x;
+        const float right_aligned_x = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - status_width;
+        ImGui::SameLine(std::max(ImGui::GetCursorPosX() + ImGui::GetStyle().ItemSpacing.x, right_aligned_x));
+    }
     ImGui::TextColored(state_color(stats.state), "● %s", status.c_str());
 }
 
-void App::render_metrics(const domain::TransmissionStats& stats) {
-    if (ImGui::BeginTable("metrics", 4, ImGuiTableFlags_SizingStretchSame)) {
+void App::render_metrics(const domain::TransmissionStats& stats, const ResponsiveLayout& layout) {
+    if (ImGui::BeginTable("metrics", layout.metric_columns, ImGuiTableFlags_SizingStretchSame | ImGuiTableFlags_PadOuterX)) {
         ImGui::TableNextColumn();
         metric_card("eps_card", "현재 EPS", format_number(stats.current_eps), {0.30F, 0.69F, 1.0F, 1.0F});
         ImGui::TableNextColumn();
@@ -335,80 +376,26 @@ void App::render_metrics(const domain::TransmissionStats& stats) {
     }
 }
 
-void App::render_configuration(const domain::TransmissionStats& stats) {
+void App::render_configuration(const domain::TransmissionStats& stats, const ResponsiveLayout& layout) {
     const bool active = is_active(stats.state);
     ImGui::BeginDisabled(active);
-    if (ImGui::BeginTable("configuration", 2, ImGuiTableFlags_SizingStretchSame)) {
-        ImGui::TableNextColumn();
-        ImGui::BeginChild("destination", ImVec2(0.0F, 410.0F), ImGuiChildFlags_Borders);
-        ImGui::TextUnformatted("전송 설정");
-        ImGui::Separator();
-        const char* protocols[]{"UDP", "TCP", "TLS"};
-        ImGui::TextDisabled("프로토콜");
-        ImGui::SetNextItemWidth(-1.0F);
-        ImGui::Combo("##protocol", &protocol_index_, protocols, static_cast<int>(std::size(protocols)));
-        ImGui::TextDisabled("대상 IP / Host");
-        ImGui::SetNextItemWidth(-1.0F);
-        ImGui::InputText("##host", host_.data(), host_.size());
-        ImGui::TextDisabled("Port");
-        ImGui::SetNextItemWidth(-1.0F);
-        ImGui::InputInt("##port", &port_, 0, 0);
-        if (protocol_index_ != 0) {
-            const char* framings[]{"Newline", "RFC 6587 Octet Counting"};
-            ImGui::TextDisabled("프레이밍");
-            ImGui::SetNextItemWidth(-1.0F);
-            ImGui::Combo("##framing", &framing_index_, framings, static_cast<int>(std::size(framings)));
+    if (layout.configuration_columns == 2) {
+        if (ImGui::BeginTable("configuration", 2, ImGuiTableFlags_SizingStretchSame | ImGuiTableFlags_PadOuterX)) {
+            ImGui::TableNextColumn();
+            render_destination_panel();
+            ImGui::TableNextColumn();
+            render_template_panel(layout);
+            ImGui::EndTable();
         }
-        if (protocol_index_ == 2) {
-            ImGui::TextDisabled("TLS 서버 이름");
-            ImGui::SetNextItemWidth(-1.0F);
-            ImGui::InputText("##tls_server_name", tls_server_name_.data(), tls_server_name_.size());
-            ImGui::Checkbox("서버 인증서 검증", &verify_certificate_);
-        }
+    } else {
+        render_destination_panel();
         ImGui::Spacing();
-        ImGui::TextUnformatted("성능");
-        ImGui::Separator();
-        ImGui::TextDisabled("Worker");
-        ImGui::SetNextItemWidth(-1.0F);
-        ImGui::SliderInt("##worker_count", &worker_count_, 1, 64);
-        ImGui::TextDisabled("목표 EPS");
-        ImGui::SetNextItemWidth(-1.0F);
-        ImGui::InputScalar("##target_eps", ImGuiDataType_U64, &target_eps_);
-        ImGui::TextDisabled("0은 제한 없는 최대 성능 모드입니다.");
-        ImGui::EndChild();
-
-        ImGui::TableNextColumn();
-        ImGui::BeginChild("templates", ImVec2(0.0F, 410.0F), ImGuiChildFlags_Borders);
-        render_catalog_selector();
-        ImGui::Spacing();
-        ImGui::TextUnformatted("로그 치환");
-        ImGui::Separator();
-        ImGui::TextDisabled("src_ip");
-        ImGui::SetNextItemWidth(-1.0F);
-        ImGui::InputText("##source_ip", source_ip_.data(), source_ip_.size());
-        ImGui::TextDisabled("dst_ip");
-        ImGui::SetNextItemWidth(-1.0F);
-        ImGui::InputText("##destination_ip", destination_ip_.data(), destination_ip_.size());
-        ImGui::TextDisabled("타임 오프셋");
-        const char* signs[]{"+", "-"};
-        ImGui::SetNextItemWidth(70.0F);
-        ImGui::Combo("##offset_sign", &offset_sign_index_, signs, static_cast<int>(std::size(signs)));
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(85.0F);
-        ImGui::InputInt("일", &offset_days_, 0, 0);
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(85.0F);
-        ImGui::InputInt("시간", &offset_hours_, 0, 0);
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(85.0F);
-        ImGui::InputInt("분", &offset_minutes_, 0, 0);
-        ImGui::TextDisabled("인식된 타임스탬프를 현재 시각 기준으로 생성합니다.");
-        ImGui::EndChild();
-        ImGui::EndTable();
+        render_template_panel(layout);
     }
     ImGui::EndDisabled();
 
-    const float button_height = 48.0F;
+    ImGui::Spacing();
+    const float button_height = ImGui::GetFrameHeight() * 1.5F;
     if (active) {
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.78F, 0.19F, 0.23F, 1.0F));
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.92F, 0.25F, 0.29F, 1.0F));
@@ -420,21 +407,112 @@ void App::render_configuration(const domain::TransmissionStats& stats) {
         start_test();
     }
     if (!stats.last_error.empty()) {
-        ImGui::TextColored({1.0F, 0.38F, 0.40F, 1.0F}, "%s", stats.last_error.c_str());
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0F, 0.38F, 0.40F, 1.0F));
+        ImGui::TextWrapped("%s", stats.last_error.c_str());
+        ImGui::PopStyleColor();
     } else if (!ui_error_.empty()) {
-        ImGui::TextColored({1.0F, 0.38F, 0.40F, 1.0F}, "%s", ui_error_.c_str());
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0F, 0.38F, 0.40F, 1.0F));
+        ImGui::TextWrapped("%s", ui_error_.c_str());
+        ImGui::PopStyleColor();
     } else {
-        ImGui::TextDisabled("UDP 통계는 로컬 소켓 전송 완료를 기준으로 집계합니다.");
+        disabled_wrapped_text("UDP 통계는 로컬 소켓 전송 완료를 기준으로 집계합니다.");
     }
 }
 
+void App::render_destination_panel() {
+    ImGui::BeginChild("destination", ImVec2(0.0F, 0.0F), ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_AutoResizeY);
+    ImGui::TextUnformatted("전송 설정");
+    ImGui::Separator();
+    const char* protocols[]{"UDP", "TCP", "TLS"};
+    ImGui::TextDisabled("프로토콜");
+    ImGui::SetNextItemWidth(-1.0F);
+    ImGui::Combo("##protocol", &protocol_index_, protocols, static_cast<int>(std::size(protocols)));
+    ImGui::TextDisabled("대상 IP / Host");
+    ImGui::SetNextItemWidth(-1.0F);
+    ImGui::InputText("##host", host_.data(), host_.size());
+    ImGui::TextDisabled("Port");
+    ImGui::SetNextItemWidth(-1.0F);
+    ImGui::InputInt("##port", &port_, 0, 0);
+    if (protocol_index_ != 0) {
+        const char* framings[]{"Newline", "RFC 6587 Octet Counting"};
+        ImGui::TextDisabled("프레이밍");
+        ImGui::SetNextItemWidth(-1.0F);
+        ImGui::Combo("##framing", &framing_index_, framings, static_cast<int>(std::size(framings)));
+    }
+    if (protocol_index_ == 2) {
+        ImGui::TextDisabled("TLS 서버 이름");
+        ImGui::SetNextItemWidth(-1.0F);
+        ImGui::InputText("##tls_server_name", tls_server_name_.data(), tls_server_name_.size());
+        ImGui::Checkbox("서버 인증서 검증", &verify_certificate_);
+    }
+    ImGui::Spacing();
+    ImGui::TextUnformatted("성능");
+    ImGui::Separator();
+    ImGui::TextDisabled("Worker");
+    ImGui::SetNextItemWidth(-1.0F);
+    ImGui::SliderInt("##worker_count", &worker_count_, 1, 64);
+    ImGui::TextDisabled("목표 EPS");
+    ImGui::SetNextItemWidth(-1.0F);
+    ImGui::InputScalar("##target_eps", ImGuiDataType_U64, &target_eps_);
+    disabled_wrapped_text("0은 제한 없는 최대 성능 모드입니다.");
+    ImGui::EndChild();
+}
+
+void App::render_template_panel(const ResponsiveLayout& layout) {
+    ImGui::BeginChild("templates", ImVec2(0.0F, 0.0F), ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_AutoResizeY);
+    render_catalog_selector();
+    ImGui::Spacing();
+    ImGui::TextUnformatted("로그 치환");
+    ImGui::Separator();
+    ImGui::TextDisabled("src_ip");
+    ImGui::SetNextItemWidth(-1.0F);
+    ImGui::InputText("##source_ip", source_ip_.data(), source_ip_.size());
+    ImGui::TextDisabled("dst_ip");
+    ImGui::SetNextItemWidth(-1.0F);
+    ImGui::InputText("##destination_ip", destination_ip_.data(), destination_ip_.size());
+    ImGui::TextDisabled("타임 오프셋");
+    render_time_offset(layout.offset_columns);
+    disabled_wrapped_text("인식된 타임스탬프를 현재 시각 기준으로 생성합니다.");
+    ImGui::EndChild();
+}
+
+void App::render_time_offset(const int columns) {
+    if (!ImGui::BeginTable("time_offset", columns, ImGuiTableFlags_SizingStretchSame)) {
+        return;
+    }
+    const char* signs[]{"+", "-"};
+    ImGui::TableNextColumn();
+    ImGui::TextDisabled("방향");
+    ImGui::SetNextItemWidth(-1.0F);
+    ImGui::Combo("##offset_sign", &offset_sign_index_, signs, static_cast<int>(std::size(signs)));
+    ImGui::TableNextColumn();
+    ImGui::TextDisabled("일");
+    ImGui::SetNextItemWidth(-1.0F);
+    ImGui::InputInt("##offset_days", &offset_days_, 0, 0);
+    ImGui::TableNextColumn();
+    ImGui::TextDisabled("시간");
+    ImGui::SetNextItemWidth(-1.0F);
+    ImGui::InputInt("##offset_hours", &offset_hours_, 0, 0);
+    ImGui::TableNextColumn();
+    ImGui::TextDisabled("분");
+    ImGui::SetNextItemWidth(-1.0F);
+    ImGui::InputInt("##offset_minutes", &offset_minutes_, 0, 0);
+    ImGui::EndTable();
+}
+
 void App::render_catalog_selector() {
-    ImGui::TextUnformatted("샘플 로그");
-    ImGui::SameLine();
-    ImGui::TextDisabled("%zu개", catalog_items_.size());
-    ImGui::SameLine(ImGui::GetContentRegionAvail().x - 48.0F + ImGui::GetCursorPosX());
-    if (ImGui::SmallButton("새로고침")) {
-        load_catalog();
+    if (ImGui::BeginTable("catalog_header", 2, ImGuiTableFlags_SizingStretchProp)) {
+        ImGui::TableSetupColumn("catalog_summary", ImGuiTableColumnFlags_WidthStretch);
+        ImGui::TableSetupColumn("catalog_reload", ImGuiTableColumnFlags_WidthFixed);
+        ImGui::TableNextColumn();
+        ImGui::TextUnformatted("샘플 로그");
+        ImGui::SameLine();
+        ImGui::TextDisabled("%zu개", catalog_items_.size());
+        ImGui::TableNextColumn();
+        if (ImGui::SmallButton("새로고침")) {
+            load_catalog();
+        }
+        ImGui::EndTable();
     }
     ImGui::Separator();
     ImGui::SetNextItemWidth(-1.0F);
@@ -445,8 +523,9 @@ void App::render_catalog_selector() {
     ImGui::TextDisabled("%zu개", filtered.size());
     if (!rotate_filtered_ && !catalog_items_.empty()) {
         const char* preview = catalog_items_[selected_log_].name.c_str();
+        ImGui::TextDisabled("로그 선택");
         ImGui::SetNextItemWidth(-1.0F);
-        if (ImGui::BeginCombo("로그 선택", preview)) {
+        if (ImGui::BeginCombo("##log_selection", preview)) {
             for (const auto index : filtered) {
                 const bool selected = index == selected_log_;
                 if (ImGui::Selectable(catalog_items_[index].name.c_str(), selected)) {
@@ -459,18 +538,19 @@ void App::render_catalog_selector() {
             ImGui::EndCombo();
         }
     }
+    if (rotate_filtered_ && filtered.empty()) {
+        disabled_wrapped_text("검색 조건에 맞는 샘플 로그가 없습니다.");
+    }
     if (!catalog_items_.empty()) {
         const auto preview_index = rotate_filtered_ && !filtered.empty() ? filtered.front() : selected_log_;
         const auto& sample = catalog_items_[preview_index];
-        ImGui::TextDisabled("%s", sample.source.c_str());
+        disabled_wrapped_text(sample.source.c_str());
         const auto length = std::min<std::size_t>(sample.sample.size(), 180);
         std::string preview_text = sample.sample.substr(0, length);
         if (length < sample.sample.size()) {
             preview_text.append("...");
         }
-        ImGui::PushTextWrapPos(0.0F);
-        ImGui::TextDisabled("%s", preview_text.c_str());
-        ImGui::PopTextWrapPos();
+        disabled_wrapped_text(preview_text.c_str());
     }
 }
 
