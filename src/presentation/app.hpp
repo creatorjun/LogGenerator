@@ -27,7 +27,7 @@ namespace loggen::presentation {
 
 class App {
 public:
-    App(application::ILogCatalog& catalog, application::ILogger& logger, application::StressTestService& stress_service, std::filesystem::path catalog_file);
+    App(application::ILogCatalog& catalog, application::ILogger& logger, application::StressTestService& stress_service, std::filesystem::path catalog_file, std::filesystem::path generated_directory);
     ~App();
 
     int run(HINSTANCE instance, int show_command);
@@ -59,6 +59,7 @@ private:
     void render_destination_panel();
     void render_template_panel(const ResponsiveLayout& layout);
     void render_time_offset(int columns);
+    void render_time_range();
     void render_catalog_selector();
     void render_catalog_editor();
     void open_new_catalog_editor();
@@ -73,6 +74,7 @@ private:
     application::ILogger& logger_;
     application::StressTestService& stress_service_;
     std::filesystem::path catalog_file_;
+    std::filesystem::path generated_directory_;
     D3d11Context d3d_;
     HWND window_{nullptr};
     bool imgui_ready_{false};
@@ -86,6 +88,7 @@ private:
     bool rotate_filtered_{true};
     int protocol_index_{0};
     int framing_index_{0};
+    int timestamp_mode_index_{0};
     int offset_sign_index_{0};
     int port_{514};
     int worker_count_{1};
@@ -98,6 +101,8 @@ private:
     std::array<char, 256> tls_server_name_{};
     std::array<char, 64> source_ip_{"10.0.0.10"};
     std::array<char, 64> destination_ip_{"10.0.0.20"};
+    std::array<char, 11> range_start_{"2026-01-01"};
+    std::array<char, 11> range_end_{"2026-07-31"};
     std::array<char, 256> search_{};
     std::string ui_error_;
     domain::TransmissionStats cached_stats_;

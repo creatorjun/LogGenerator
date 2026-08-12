@@ -59,10 +59,10 @@ const std::regex& arrow_destination_pattern() {
 const std::vector<TimestampPattern>& timestamp_patterns() {
     static const std::vector<TimestampPattern> patterns{
         {std::regex(R"(\b\d{4}[-/]\d{2}[-/]\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:?\d{2})?)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::Iso8601, 0, 0},
-        {std::regex(R"(\b[A-Z][a-z]{2}\s+\d{1,2}\s+\d{4}\s+\d{2}:\d{2}:\d{2}(?:\s+(?:GMT|UTC))?\b)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::MonthDayYear, 1, 0},
-        {std::regex(R"(\b[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\d{4}\b)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::SyslogWithYear, 2, 0},
+        {std::regex(R"(\b(?:[A-Z][a-z]{2}\s+)?[A-Z][a-z]{2}\s+\d{1,2}\s+\d{4}\s+\d{2}:\d{2}:\d{2}(?:\s+(?:GMT|UTC))?\b)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::MonthDayYear, 1, 0},
+        {std::regex(R"(\b(?:[A-Z][a-z]{2}\s+)?[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\d{4}\b)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::SyslogWithYear, 2, 0},
         {std::regex(R"(\b\d{1,2}/[A-Z][a-z]{2}/\d{4}:\d{2}:\d{2}:\d{2}\s+[+-]\d{4}\b)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::Apache, 3, 0},
-        {std::regex(R"(\b[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\b)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::SyslogWithoutYear, 4, 0},
+        {std::regex(R"(\b(?:[A-Z][a-z]{2}\s+)?[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\b)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::SyslogWithoutYear, 4, 0},
         {std::regex(R"(\b\d{14}\b)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::Compact, 5, 0},
         {std::regex(R"((\bdate\s*=\s*["']?)(\d{4}[-/]\d{2}[-/]\d{2}))", std::regex::ECMAScript | std::regex::icase | std::regex::optimize), TimestampStyle::DateOnly, 6, 2},
         {std::regex(R"((\btime\s*=\s*["']?)(\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?))", std::regex::ECMAScript | std::regex::icase | std::regex::optimize), TimestampStyle::TimeOnly, 7, 2},
@@ -107,6 +107,10 @@ int parse_zone_offset(const std::string_view suffix) {
 TimestampToken make_token(const TimestampStyle style, const std::string_view value) {
     TimestampToken token;
     token.style = style;
+    static constexpr std::array<std::string_view, 7> weekdays{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+    if (value.size() > 4 && value[3] == ' ' && std::ranges::find(weekdays, value.substr(0, 3)) != weekdays.end()) {
+        token.has_weekday = true;
+    }
     if (style == TimestampStyle::Iso8601) {
         token.date_separator = value.size() > 4 ? value[4] : '-';
         token.date_time_separator = value.size() > 10 ? value[10] : 'T';
@@ -204,17 +208,22 @@ std::size_t count_captures(const std::string& input, const std::regex& pattern) 
     return count;
 }
 
-std::tm make_time(std::chrono::system_clock::time_point point, const TimestampToken& token) {
+std::tm make_time(std::chrono::system_clock::time_point point, const TimestampToken& token, const bool calendar_time) {
+    const auto value = std::chrono::system_clock::to_time_t(point);
+    std::tm result{};
+    if (calendar_time) {
+        gmtime_s(&result, &value);
+        return result;
+    }
     const bool utc = token.zone_suffix == "Z" || token.zone_suffix == "GMT" || !token.zone_suffix.empty();
     if (utc && token.zone_offset_minutes != 0) {
         point += std::chrono::minutes{token.zone_offset_minutes};
     }
-    const auto value = std::chrono::system_clock::to_time_t(point);
-    std::tm result{};
+    const auto adjusted_value = std::chrono::system_clock::to_time_t(point);
     if (utc) {
-        gmtime_s(&result, &value);
+        gmtime_s(&result, &adjusted_value);
     } else {
-        localtime_s(&result, &value);
+        localtime_s(&result, &adjusted_value);
     }
     return result;
 }
@@ -233,10 +242,15 @@ void append_fraction(std::string& output, const std::chrono::system_clock::time_
     output.append(buffer, static_cast<std::size_t>(digits) + 1);
 }
 
-void append_timestamp(std::string& output, const TimestampToken& token, const std::chrono::system_clock::time_point point) {
-    const auto value = make_time(point, token);
+void append_timestamp(std::string& output, const TimestampToken& token, const std::chrono::system_clock::time_point point, const bool calendar_time) {
+    const auto value = make_time(point, token, calendar_time);
     static constexpr std::array<std::string_view, 12> months{"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+    static constexpr std::array<std::string_view, 7> weekdays{"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
     char buffer[64]{};
+    if (token.has_weekday) {
+        output.append(weekdays[static_cast<std::size_t>(value.tm_wday)]);
+        output.push_back(' ');
+    }
     switch (token.style) {
     case TimestampStyle::Iso8601:
     case TimestampStyle::YearFirst:
@@ -327,24 +341,25 @@ void PreparedLog::initialize_cache() {
     }
 }
 
-std::string_view PreparedLog::render(const std::chrono::system_clock::time_point now) {
+std::string_view PreparedLog::render(const std::chrono::system_clock::time_point now, const bool calendar_time) {
     if (!compiled_->has_timestamp) {
         return cached_;
     }
     const auto adjusted = now + offset_;
     const auto second = std::chrono::duration_cast<std::chrono::seconds>(adjusted.time_since_epoch()).count();
-    if (second == cached_second_) {
+    if (second == cached_second_ && calendar_time == cached_calendar_time_) {
         return cached_;
     }
     cached_.clear();
     for (const auto& segment : compiled_->segments) {
         if (segment.is_timestamp) {
-            append_timestamp(cached_, segment.timestamp, adjusted);
+            append_timestamp(cached_, segment.timestamp, adjusted, calendar_time);
         } else {
             cached_.append(segment.text);
         }
     }
     cached_second_ = second;
+    cached_calendar_time_ = calendar_time;
     return cached_;
 }
 
@@ -374,7 +389,8 @@ std::vector<PreparedLog> LogRenderer::prepare(const domain::GeneratorConfig& con
     std::vector<PreparedLog> result;
     result.reserve(config.templates.size());
     for (const auto& item : config.templates) {
-        result.push_back(prepare_one(item.sample, config.source_ip, config.destination_ip, config.time_offset.value()));
+        const auto offset = config.timestamp_generation.mode == domain::TimestampGenerationMode::Offset ? config.timestamp_generation.offset.value() : std::chrono::seconds{0};
+        result.push_back(prepare_one(item.sample, config.source_ip, config.destination_ip, offset));
     }
     return result;
 }

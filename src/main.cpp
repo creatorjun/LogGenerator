@@ -32,13 +32,14 @@ int WINAPI wWinMain(const HINSTANCE instance, HINSTANCE, PWSTR, const int show_c
         try {
             logger.info("LogGenerator startup");
             loggen::infrastructure::JsonLogCatalog catalog;
-            loggen::infrastructure::TransportFactory transport_factory;
+            const auto generated_directory = application_directory / L"generated";
+            loggen::infrastructure::TransportFactory transport_factory{generated_directory};
             loggen::application::StressTestService stress_service{transport_factory, logger};
             auto catalog_file = application_directory / L"Sample Logs" / L"sample_logs.json";
             if (!std::filesystem::exists(catalog_file)) {
                 catalog_file = std::filesystem::current_path() / L"Sample Logs" / L"sample_logs.json";
             }
-            loggen::presentation::App app{catalog, logger, stress_service, std::move(catalog_file)};
+            loggen::presentation::App app{catalog, logger, stress_service, std::move(catalog_file), generated_directory};
             const int result = app.run(instance, show_command);
             logger.info("LogGenerator shutdown completed");
             return result;

@@ -8,7 +8,8 @@ namespace loggen::domain {
 enum class TransportProtocol {
     Udp,
     Tcp,
-    Tls
+    Tls,
+    File
 };
 
 enum class StreamFraming {
@@ -24,6 +25,8 @@ constexpr std::string_view protocol_name(const TransportProtocol protocol) noexc
         return "TCP";
     case TransportProtocol::Tls:
         return "TLS";
+    case TransportProtocol::File:
+        return "FILE";
     }
     return "Unknown";
 }

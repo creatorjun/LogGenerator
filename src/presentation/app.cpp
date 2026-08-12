@@ -150,10 +150,30 @@ std::string path_to_utf8(const std::filesystem::path& path) {
     return {reinterpret_cast<const char*>(value.data()), value.size()};
 }
 
+std::optional<std::chrono::sys_days> parse_iso_date(const std::string_view value) {
+    if (value.size() != 10 || value[4] != '-' || value[7] != '-') {
+        return std::nullopt;
+    }
+    int year_value = 0;
+    unsigned int month_value = 0;
+    unsigned int day_value = 0;
+    const auto year_result = std::from_chars(value.data(), value.data() + 4, year_value);
+    const auto month_result = std::from_chars(value.data() + 5, value.data() + 7, month_value);
+    const auto day_result = std::from_chars(value.data() + 8, value.data() + 10, day_value);
+    if (year_result.ec != std::errc{} || year_result.ptr != value.data() + 4 || month_result.ec != std::errc{} || month_result.ptr != value.data() + 7 || day_result.ec != std::errc{} || day_result.ptr != value.data() + 10) {
+        return std::nullopt;
+    }
+    const std::chrono::year_month_day date{std::chrono::year{year_value}, std::chrono::month{month_value}, std::chrono::day{day_value}};
+    if (!date.ok()) {
+        return std::nullopt;
+    }
+    return std::chrono::sys_days{date};
 }
 
-App::App(application::ILogCatalog& catalog, application::ILogger& logger, application::StressTestService& stress_service, std::filesystem::path catalog_file)
-    : catalog_(catalog), logger_(logger), stress_service_(stress_service), catalog_file_(std::move(catalog_file)) {
+}
+
+App::App(application::ILogCatalog& catalog, application::ILogger& logger, application::StressTestService& stress_service, std::filesystem::path catalog_file, std::filesystem::path generated_directory)
+    : catalog_(catalog), logger_(logger), stress_service_(stress_service), catalog_file_(std::move(catalog_file)), generated_directory_(std::move(generated_directory)) {
 }
 
 App::~App() {
@@ -544,6 +564,8 @@ void App::render_configuration(const domain::TransmissionStats& stats, const Res
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0F, 0.38F, 0.40F, 1.0F));
         ImGui::TextWrapped("%s", ui_error_.c_str());
         ImGui::PopStyleColor();
+    } else if (protocol_index_ == static_cast<int>(domain::TransportProtocol::File)) {
+        disabled_wrapped_text("FILE은 실행 파일 옆 generated 폴더에 약 1 MiB 단위로 분할 저장합니다.");
     } else {
         disabled_wrapped_text("UDP 통계는 로컬 소켓 전송 완료를 기준으로 집계합니다.");
     }
@@ -553,23 +575,32 @@ void App::render_destination_panel() {
     ImGui::BeginChild("destination", ImVec2(0.0F, 0.0F), ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_AutoResizeY);
     ImGui::TextUnformatted("전송 설정");
     ImGui::Separator();
-    const char* protocols[]{"UDP", "TCP", "TLS"};
+    const char* protocols[]{"UDP", "TCP", "TLS", "FILE"};
     ImGui::TextDisabled("프로토콜");
     ImGui::SetNextItemWidth(-1.0F);
-    ImGui::Combo("##protocol", &protocol_index_, protocols, static_cast<int>(std::size(protocols)));
-    ImGui::TextDisabled("대상 IP / Host");
-    ImGui::SetNextItemWidth(-1.0F);
-    ImGui::InputText("##host", host_.data(), host_.size());
-    ImGui::TextDisabled("Port");
-    ImGui::SetNextItemWidth(-1.0F);
-    ImGui::InputInt("##port", &port_, 0, 0);
-    if (protocol_index_ != 0) {
+    if (ImGui::Combo("##protocol", &protocol_index_, protocols, static_cast<int>(std::size(protocols))) && protocol_index_ == static_cast<int>(domain::TransportProtocol::File)) {
+        worker_count_ = 1;
+    }
+    const bool file_protocol = protocol_index_ == static_cast<int>(domain::TransportProtocol::File);
+    if (file_protocol) {
+        ImGui::TextDisabled("저장 폴더");
+        disabled_wrapped_text(path_to_utf8(generated_directory_).c_str());
+        disabled_wrapped_text("파일명: yyyyMMdd_HHmmss_SSS.log");
+    } else {
+        ImGui::TextDisabled("대상 IP / Host");
+        ImGui::SetNextItemWidth(-1.0F);
+        ImGui::InputText("##host", host_.data(), host_.size());
+        ImGui::TextDisabled("Port");
+        ImGui::SetNextItemWidth(-1.0F);
+        ImGui::InputInt("##port", &port_, 0, 0);
+    }
+    if (protocol_index_ == static_cast<int>(domain::TransportProtocol::Tcp) || protocol_index_ == static_cast<int>(domain::TransportProtocol::Tls)) {
         const char* framings[]{"Newline", "RFC 6587 Octet Counting"};
         ImGui::TextDisabled("프레이밍");
         ImGui::SetNextItemWidth(-1.0F);
         ImGui::Combo("##framing", &framing_index_, framings, static_cast<int>(std::size(framings)));
     }
-    if (protocol_index_ == 2) {
+    if (protocol_index_ == static_cast<int>(domain::TransportProtocol::Tls)) {
         ImGui::TextDisabled("TLS 서버 이름");
         ImGui::SetNextItemWidth(-1.0F);
         ImGui::InputText("##tls_server_name", tls_server_name_.data(), tls_server_name_.size());
@@ -580,7 +611,12 @@ void App::render_destination_panel() {
     ImGui::Separator();
     ImGui::TextDisabled("Worker");
     ImGui::SetNextItemWidth(-1.0F);
+    ImGui::BeginDisabled(file_protocol);
     ImGui::SliderInt("##worker_count", &worker_count_, 1, 64);
+    ImGui::EndDisabled();
+    if (file_protocol) {
+        ImGui::TextDisabled("FILE은 순차 기록을 위해 단일 writer를 사용합니다.");
+    }
     ImGui::TextDisabled("목표 EPS");
     ImGui::SetNextItemWidth(-1.0F);
     ImGui::InputScalar("##target_eps", ImGuiDataType_U64, &target_eps_);
@@ -600,9 +636,17 @@ void App::render_template_panel(const ResponsiveLayout& layout) {
     ImGui::TextDisabled("dst_ip");
     ImGui::SetNextItemWidth(-1.0F);
     ImGui::InputText("##destination_ip", destination_ip_.data(), destination_ip_.size());
-    ImGui::TextDisabled("타임 오프셋");
-    render_time_offset(layout.offset_columns);
-    disabled_wrapped_text("인식된 타임스탬프를 현재 시각 기준으로 생성합니다.");
+    ImGui::TextDisabled("날짜/시간 생성 방식");
+    const char* timestamp_modes[]{"현재 시간 + 오프셋", "기간 지정"};
+    ImGui::SetNextItemWidth(-1.0F);
+    ImGui::Combo("##timestamp_mode", &timestamp_mode_index_, timestamp_modes, static_cast<int>(std::size(timestamp_modes)));
+    if (timestamp_mode_index_ == static_cast<int>(domain::TimestampGenerationMode::Offset)) {
+        render_time_offset(layout.offset_columns);
+        disabled_wrapped_text("인식된 타임스탬프를 현재 시각과 오프셋 기준으로 생성합니다.");
+    } else {
+        render_time_range();
+        disabled_wrapped_text("시작일 00:00:00부터 종료일 23:59:59까지 이벤트마다 1초씩 진행하고 범위 끝에서 순환합니다.");
+    }
     ImGui::EndChild();
 }
 
@@ -627,6 +671,21 @@ void App::render_time_offset(const int columns) {
     ImGui::TextDisabled("분");
     ImGui::SetNextItemWidth(-1.0F);
     ImGui::InputInt("##offset_minutes", &offset_minutes_, 0, 0);
+    ImGui::EndTable();
+}
+
+void App::render_time_range() {
+    if (!ImGui::BeginTable("time_range", 2, ImGuiTableFlags_SizingStretchSame)) {
+        return;
+    }
+    ImGui::TableNextColumn();
+    ImGui::TextDisabled("시작일 (yyyy-MM-dd)");
+    ImGui::SetNextItemWidth(-1.0F);
+    ImGui::InputText("##range_start", range_start_.data(), range_start_.size());
+    ImGui::TableNextColumn();
+    ImGui::TextDisabled("종료일 (yyyy-MM-dd)");
+    ImGui::SetNextItemWidth(-1.0F);
+    ImGui::InputText("##range_end", range_end_.data(), range_end_.size());
     ImGui::EndTable();
 }
 
@@ -881,14 +940,15 @@ void App::start_test() {
         if (catalog_items_.empty()) {
             throw std::invalid_argument("전송할 샘플 로그가 없습니다.");
         }
-        if (host_[0] == '\0' || port_ < 1 || port_ > 65'535) {
+        const auto protocol = static_cast<domain::TransportProtocol>(protocol_index_);
+        if (protocol != domain::TransportProtocol::File && (host_[0] == '\0' || port_ < 1 || port_ > 65'535)) {
             throw std::invalid_argument("대상 IP/Host와 유효한 Port를 입력하세요.");
         }
         if (!valid_ipv4(source_ip_.data()) || !valid_ipv4(destination_ip_.data())) {
             throw std::invalid_argument("src_ip와 dst_ip는 유효한 IPv4 주소여야 합니다.");
         }
         domain::GeneratorConfig config;
-        config.endpoint.protocol = static_cast<domain::TransportProtocol>(protocol_index_);
+        config.endpoint.protocol = protocol;
         config.endpoint.host = host_.data();
         config.endpoint.port = static_cast<std::uint16_t>(port_);
         config.endpoint.framing = static_cast<domain::StreamFraming>(framing_index_);
@@ -896,10 +956,24 @@ void App::start_test() {
         config.endpoint.verify_certificate = verify_certificate_;
         config.source_ip = source_ip_.data();
         config.destination_ip = destination_ip_.data();
-        config.time_offset.negative = offset_sign_index_ == 1;
-        config.time_offset.days = std::clamp(std::abs(offset_days_), 0, 3650);
-        config.time_offset.hours = std::clamp(std::abs(offset_hours_), 0, 23);
-        config.time_offset.minutes = std::clamp(std::abs(offset_minutes_), 0, 59);
+        config.timestamp_generation.mode = static_cast<domain::TimestampGenerationMode>(timestamp_mode_index_);
+        if (config.timestamp_generation.mode == domain::TimestampGenerationMode::Offset) {
+            config.timestamp_generation.offset.negative = offset_sign_index_ == 1;
+            config.timestamp_generation.offset.days = std::clamp(std::abs(offset_days_), 0, 3650);
+            config.timestamp_generation.offset.hours = std::clamp(std::abs(offset_hours_), 0, 23);
+            config.timestamp_generation.offset.minutes = std::clamp(std::abs(offset_minutes_), 0, 59);
+        } else {
+            const auto range_start = parse_iso_date(range_start_.data());
+            const auto range_end = parse_iso_date(range_end_.data());
+            if (!range_start || !range_end) {
+                throw std::invalid_argument("기간은 yyyy-MM-dd 형식의 유효한 날짜여야 합니다.");
+            }
+            if (*range_start > *range_end) {
+                throw std::invalid_argument("기간 시작일은 종료일보다 늦을 수 없습니다.");
+            }
+            config.timestamp_generation.range.start = std::chrono::time_point_cast<std::chrono::seconds>(*range_start);
+            config.timestamp_generation.range.end = std::chrono::time_point_cast<std::chrono::seconds>(*range_end + std::chrono::days{1}) - std::chrono::seconds{1};
+        }
         config.worker_count = static_cast<std::uint32_t>(std::clamp(worker_count_, 1, 64));
         config.target_eps = target_eps_;
         if (rotate_filtered_) {

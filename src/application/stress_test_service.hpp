@@ -32,7 +32,7 @@ public:
 
 private:
     void run_supervisor(domain::GeneratorConfig config, std::stop_token stop_token) noexcept;
-    void run_worker(domain::EndpointConfig endpoint, std::vector<PreparedLog> logs, std::uint64_t quota, std::uint32_t worker_count, std::stop_token stop_token) noexcept;
+    void run_worker(domain::EndpointConfig endpoint, domain::TimestampGeneration timestamp_generation, std::vector<PreparedLog> logs, std::uint64_t quota, std::uint32_t worker_index, std::uint32_t worker_count, std::stop_token stop_token) noexcept;
     void publish_error(std::string message) noexcept;
 
     const ITransportFactory& transport_factory_;

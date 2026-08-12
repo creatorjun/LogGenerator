@@ -2,6 +2,7 @@
 #include "application/stress_test_service.hpp"
 
 #include <Windows.h>
+#include <timeapi.h>
 
 #include <algorithm>
 #include <charconv>
@@ -48,6 +49,22 @@ private:
     std::chrono::steady_clock::time_point next_;
 };
 
+class TimerResolution {
+public:
+    TimerResolution()
+        : active_(timeBeginPeriod(1) == TIMERR_NOERROR) {
+    }
+
+    ~TimerResolution() {
+        if (active_) {
+            timeEndPeriod(1);
+        }
+    }
+
+private:
+    bool active_{false};
+};
+
 class CachedSystemClock {
 public:
     explicit CachedSystemClock(const bool high_rate)
@@ -68,6 +85,40 @@ private:
     bool high_rate_{false};
     std::uint32_t refresh_countdown_{0};
     std::chrono::system_clock::time_point cached_;
+};
+
+class TimestampCursor {
+public:
+    TimestampCursor(const domain::TimestampGeneration& generation, const std::uint32_t worker_index, const std::uint32_t worker_count, const bool high_rate)
+        : generation_(generation), position_(worker_index), step_(worker_count), system_clock_(high_rate) {
+        if (generation_.mode == domain::TimestampGenerationMode::Range) {
+            span_ = generation_.range.inclusive_seconds();
+            if (span_ == 0) {
+                throw std::invalid_argument("Timestamp range is invalid");
+            }
+            position_ %= span_;
+        }
+    }
+
+    [[nodiscard]] std::chrono::system_clock::time_point next() {
+        if (generation_.mode == domain::TimestampGenerationMode::Offset) {
+            return system_clock_.now();
+        }
+        const auto result = generation_.range.start + std::chrono::seconds{position_};
+        position_ = (position_ + step_) % span_;
+        return result;
+    }
+
+    [[nodiscard]] bool calendar_time() const noexcept {
+        return generation_.mode == domain::TimestampGenerationMode::Range;
+    }
+
+private:
+    domain::TimestampGeneration generation_;
+    std::uint64_t position_{0};
+    std::uint64_t step_{1};
+    std::uint64_t span_{0};
+    CachedSystemClock system_clock_;
 };
 
 void append_frame(std::string& batch, const std::string_view payload, const domain::StreamFraming framing) {
@@ -100,6 +151,13 @@ std::size_t stream_batch_events(const std::uint64_t quota) {
     return static_cast<std::size_t>(std::clamp<std::uint64_t>(quota / 200, 1, 128));
 }
 
+std::size_t file_batch_events(const std::uint64_t quota) {
+    if (quota == 0) {
+        return 256;
+    }
+    return static_cast<std::size_t>(std::clamp<std::uint64_t>(quota / 20, 1, 256));
+}
+
 }
 
 StressTestService::StressTestService(const ITransportFactory& transport_factory, ILogger& logger)
@@ -115,18 +173,25 @@ void StressTestService::start(domain::GeneratorConfig config) {
     if (config.templates.empty()) {
         throw std::invalid_argument("At least one log template is required");
     }
-    if (config.endpoint.host.empty() || config.endpoint.port == 0) {
+    if (config.endpoint.protocol != domain::TransportProtocol::File && (config.endpoint.host.empty() || config.endpoint.port == 0)) {
         throw std::invalid_argument("A destination host and port are required");
     }
+    if (config.timestamp_generation.mode == domain::TimestampGenerationMode::Range && !config.timestamp_generation.range.valid()) {
+        throw std::invalid_argument("A valid timestamp range is required");
+    }
     config.worker_count = std::clamp<std::uint32_t>(config.worker_count, 1, 64);
+    if (config.endpoint.protocol == domain::TransportProtocol::File) {
+        config.worker_count = 1;
+        config.endpoint.framing = domain::StreamFraming::Newline;
+    }
     if (config.target_eps > 0) {
         config.worker_count = static_cast<std::uint32_t>(std::min<std::uint64_t>(config.worker_count, config.target_eps));
     }
+    const auto endpoint = config.endpoint.protocol == domain::TransportProtocol::File ? std::string{"generated directory"} : std::format("{}:{}", config.endpoint.host, config.endpoint.port);
     logger_.info(std::format(
-        "Stress test starting: protocol={}, endpoint={}:{}, workers={}, templates={}, target_eps={}",
+        "Stress test starting: protocol={}, endpoint={}, workers={}, templates={}, target_eps={}",
         domain::protocol_name(config.endpoint.protocol),
-        config.endpoint.host,
-        config.endpoint.port,
+        endpoint,
         config.worker_count,
         config.templates.size(),
         config.target_eps == 0 ? std::string("unlimited") : std::to_string(config.target_eps)));
@@ -235,6 +300,7 @@ domain::TransmissionStats StressTestService::snapshot() {
 
 void StressTestService::run_supervisor(domain::GeneratorConfig config, const std::stop_token stop_token) noexcept {
     try {
+        const TimerResolution timer_resolution;
         auto prepared = LogRenderer::prepare(config);
         if (stop_token.stop_requested()) {
             state_.store(domain::GeneratorState::Stopped, std::memory_order_release);
@@ -251,8 +317,8 @@ void StressTestService::run_supervisor(domain::GeneratorConfig config, const std
                     worker_logs.push_back(std::move(prepared[log_index]));
                 }
                 const auto quota = quota_for_worker(config.target_eps, worker_index, config.worker_count);
-                workers.emplace_back([this, endpoint = config.endpoint, logs = std::move(worker_logs), quota, worker_count = config.worker_count](const std::stop_token worker_stop_token) mutable {
-                    run_worker(std::move(endpoint), std::move(logs), quota, worker_count, worker_stop_token);
+                workers.emplace_back([this, endpoint = config.endpoint, timestamp_generation = config.timestamp_generation, logs = std::move(worker_logs), quota, worker_index, worker_count = config.worker_count](const std::stop_token worker_stop_token) mutable {
+                    run_worker(std::move(endpoint), timestamp_generation, std::move(logs), quota, worker_index, worker_count, worker_stop_token);
                 });
             }
         } else {
@@ -260,8 +326,8 @@ void StressTestService::run_supervisor(domain::GeneratorConfig config, const std
                 std::vector<PreparedLog> worker_logs;
                 worker_logs.push_back(prepared[worker_index % prepared.size()]);
                 const auto quota = quota_for_worker(config.target_eps, worker_index, config.worker_count);
-                workers.emplace_back([this, endpoint = config.endpoint, logs = std::move(worker_logs), quota, worker_count = config.worker_count](const std::stop_token worker_stop_token) mutable {
-                    run_worker(std::move(endpoint), std::move(logs), quota, worker_count, worker_stop_token);
+                workers.emplace_back([this, endpoint = config.endpoint, timestamp_generation = config.timestamp_generation, logs = std::move(worker_logs), quota, worker_index, worker_count = config.worker_count](const std::stop_token worker_stop_token) mutable {
+                    run_worker(std::move(endpoint), timestamp_generation, std::move(logs), quota, worker_index, worker_count, worker_stop_token);
                 });
             }
         }
@@ -286,7 +352,7 @@ void StressTestService::run_supervisor(domain::GeneratorConfig config, const std
     }
 }
 
-void StressTestService::run_worker(domain::EndpointConfig endpoint, std::vector<PreparedLog> logs, const std::uint64_t quota, const std::uint32_t worker_count, const std::stop_token stop_token) noexcept {
+void StressTestService::run_worker(domain::EndpointConfig endpoint, const domain::TimestampGeneration timestamp_generation, std::vector<PreparedLog> logs, const std::uint64_t quota, const std::uint32_t worker_index, const std::uint32_t worker_count, const std::stop_token stop_token) noexcept {
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
     std::uint64_t local_messages = 0;
     std::uint64_t local_bytes = 0;
@@ -315,7 +381,8 @@ void StressTestService::run_worker(domain::EndpointConfig endpoint, std::vector<
         }
 
         RatePacer pacer{quota};
-        CachedSystemClock clock{quota == 0 || quota >= 10'000};
+        TimestampCursor clock{timestamp_generation, worker_index, worker_count, quota == 0 || quota >= 10'000};
+        const bool calendar_time = clock.calendar_time();
         std::size_t log_index = 0;
         if (transport->is_datagram()) {
             while (!stop_token.stop_requested()) {
@@ -323,7 +390,7 @@ void StressTestService::run_worker(domain::EndpointConfig endpoint, std::vector<
                 if (stop_token.stop_requested()) {
                     break;
                 }
-                const auto payload = logs[log_index].render(clock.now());
+                const auto payload = logs[log_index].render(clock.next(), calendar_time);
                 transport->send(payload);
                 ++local_messages;
                 local_bytes += payload.size();
@@ -336,15 +403,17 @@ void StressTestService::run_worker(domain::EndpointConfig endpoint, std::vector<
                 }
             }
         } else {
-            const auto event_limit = stream_batch_events(quota);
+            const auto event_limit = endpoint.protocol == domain::TransportProtocol::File ? file_batch_events(quota) : stream_batch_events(quota);
             std::string batch;
-            batch.reserve(262'144);
+            const std::size_t batch_limit = endpoint.protocol == domain::TransportProtocol::File ? 65'536 : 262'144;
+            batch.reserve(batch_limit);
             while (!stop_token.stop_requested()) {
                 batch.clear();
                 std::size_t events = 0;
-                const auto timestamp = std::chrono::system_clock::now();
-                while (events < event_limit && batch.size() < 262'144) {
-                    const auto payload = logs[log_index].render(timestamp);
+                const auto batch_timestamp = calendar_time ? std::chrono::system_clock::time_point{} : clock.next();
+                while (events < event_limit && batch.size() < batch_limit) {
+                    const auto timestamp = calendar_time ? clock.next() : batch_timestamp;
+                    const auto payload = logs[log_index].render(timestamp, calendar_time);
                     append_frame(batch, payload, endpoint.framing);
                     ++log_index;
                     if (log_index == logs.size()) {

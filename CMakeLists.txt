@@ -54,6 +54,7 @@ set(LOGGEN_CORE_SOURCES
     src/application/log_renderer.cpp
     src/application/stress_test_service.cpp
     src/infrastructure/async_file_logger.cpp
+    src/infrastructure/file_transport.cpp
     src/infrastructure/json_log_catalog.cpp
     src/infrastructure/schannel_transport.cpp
     src/infrastructure/tcp_transport.cpp
@@ -65,7 +66,7 @@ set(LOGGEN_CORE_SOURCES
 add_library(loggen_core STATIC ${LOGGEN_CORE_SOURCES})
 target_include_directories(loggen_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_compile_definitions(loggen_core PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE SECURITY_WIN32 SCHANNEL_USE_BLACKLISTS _WIN32_WINNT=0x0A00)
-target_link_libraries(loggen_core PUBLIC nlohmann_json::nlohmann_json PRIVATE ws2_32 secur32 crypt32)
+target_link_libraries(loggen_core PUBLIC nlohmann_json::nlohmann_json PRIVATE ws2_32 secur32 crypt32 winmm)
 
 add_executable(LogGenerator WIN32
     src/main.cpp
@@ -87,6 +88,7 @@ enable_testing()
 add_executable(LogGeneratorTests
     tests/test_main.cpp
     tests/async_file_logger_tests.cpp
+    tests/file_transport_tests.cpp
     tests/log_renderer_tests.cpp
     tests/json_log_catalog_tests.cpp
     tests/stress_test_service_tests.cpp

@@ -43,6 +43,13 @@ void run_log_renderer_tests() {
     expect(arrow_result.find("2030") != std::string::npos && arrow_result.find("2021") == std::string::npos, "Syslog timestamp replacement failed");
     expect(arrow_result.find("10.10.0.1:49278 -> 10.10.0.2:60001") != std::string::npos, "Arrow IP replacement failed");
 
+    auto weekday = application::LogRenderer::prepare_one(
+        "Tue Apr 20 22:23:19 2021 event",
+        "10.0.0.1",
+        "10.0.0.2",
+        seconds{0});
+    expect(weekday.render(base_time, true).find("Wed Jan 02 03:04:05 2030") != std::string::npos, "Weekday timestamp replacement is inconsistent");
+
     const std::string cached_first{arrow.render(base_time + milliseconds{100})};
     const std::string cached_second{arrow.render(base_time + milliseconds{900})};
     expect(cached_first == cached_second, "Per-second render cache is inconsistent");
@@ -88,6 +95,10 @@ void run_log_renderer_tests() {
     auto static_log = application::LogRenderer::prepare_one("static src_ip=1.1.1.1", "10.0.0.1", "10.0.0.2", seconds{0});
     auto static_copy = static_log;
     expect(static_copy.render(base_time) == "static src_ip=10.0.0.1", "Static prepared log copy failed");
+
+    auto calendar_log = application::LogRenderer::prepare_one("timestamp=2025-07-05T13:53:53+09:00", "10.0.0.1", "10.0.0.2", seconds{0});
+    const auto calendar_start = sys_days{year{2026} / January / 1};
+    expect(calendar_log.render(calendar_start, true) == "timestamp=2026-01-01T00:00:00+09:00", "Calendar range rendering applied an unwanted timezone shift");
 }
 
 }

@@ -33,12 +33,39 @@ struct TimeOffset {
     }
 };
 
+enum class TimestampGenerationMode {
+    Offset,
+    Range
+};
+
+struct TimeRange {
+    std::chrono::sys_seconds start{};
+    std::chrono::sys_seconds end{};
+
+    [[nodiscard]] bool valid() const noexcept {
+        return start <= end;
+    }
+
+    [[nodiscard]] std::uint64_t inclusive_seconds() const noexcept {
+        if (!valid()) {
+            return 0;
+        }
+        return static_cast<std::uint64_t>((end - start).count()) + 1;
+    }
+};
+
+struct TimestampGeneration {
+    TimestampGenerationMode mode{TimestampGenerationMode::Offset};
+    TimeOffset offset;
+    TimeRange range;
+};
+
 struct GeneratorConfig {
     EndpointConfig endpoint;
     std::vector<LogTemplate> templates;
     std::string source_ip{"10.0.0.10"};
     std::string destination_ip{"10.0.0.20"};
-    TimeOffset time_offset;
+    TimestampGeneration timestamp_generation;
     std::uint32_t worker_count{1};
     std::uint64_t target_eps{0};
 };

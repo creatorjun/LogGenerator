@@ -32,6 +32,7 @@ struct TimestampToken {
     char date_time_separator{'T'};
     std::uint8_t fractional_digits{0};
     int zone_offset_minutes{0};
+    bool has_weekday{false};
     std::string zone_suffix;
 };
 
@@ -81,7 +82,7 @@ public:
     PreparedLog& operator=(const PreparedLog& other);
     PreparedLog(PreparedLog&& other) noexcept = default;
     PreparedLog& operator=(PreparedLog&& other) noexcept = default;
-    [[nodiscard]] std::string_view render(std::chrono::system_clock::time_point now);
+    [[nodiscard]] std::string_view render(std::chrono::system_clock::time_point now, bool calendar_time = false);
     [[nodiscard]] std::size_t capacity_hint() const noexcept;
 
 private:
@@ -96,6 +97,7 @@ private:
     std::shared_ptr<const CompiledLog> compiled_;
     std::string cached_;
     std::int64_t cached_second_{-1};
+    bool cached_calendar_time_{false};
     std::chrono::seconds offset_{0};
 };
 

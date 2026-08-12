@@ -1,7 +1,7 @@
 <!-- README.md -->
 # LogGenerator
 
-Windows 64비트 SIEM 스트레스 테스트를 위한 C++23 기반 고성능 로그 생성·전송기입니다. Dear ImGui Win32/DirectX 11 반응형 UI에서 UDP, TCP, TLS 전송을 선택하고 UTF-8 JSON 샘플 카탈로그를 직접 추가·수정·삭제할 수 있습니다.
+Windows 64비트 SIEM 스트레스 테스트를 위한 C++23 기반 고성능 로그 생성·전송기입니다. Dear ImGui Win32/DirectX 11 반응형 UI에서 UDP, TCP, TLS, FILE 전송을 선택하고 UTF-8 JSON 샘플 카탈로그를 직접 추가·수정·삭제할 수 있습니다.
 
 ## 프로젝트 구조
 
@@ -34,6 +34,8 @@ LogGenerator/
 │  ├─ infrastructure/
 │  │  ├─ async_file_logger.cpp
 │  │  ├─ async_file_logger.hpp
+│  │  ├─ file_transport.cpp
+│  │  ├─ file_transport.hpp
 │  │  ├─ json_log_catalog.cpp
 │  │  ├─ json_log_catalog.hpp
 │  │  ├─ schannel_transport.cpp
@@ -57,6 +59,7 @@ LogGenerator/
 │  └─ main.cpp
 └─ tests/
    ├─ async_file_logger_tests.cpp
+   ├─ file_transport_tests.cpp
    ├─ json_log_catalog_tests.cpp
    ├─ log_renderer_tests.cpp
    ├─ responsive_layout_tests.cpp
@@ -95,16 +98,33 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 
 ## 사용법
 
-1. UDP, TCP, TLS 중 프로토콜과 대상 IP 또는 Host, Port를 입력합니다.
+1. UDP, TCP, TLS, FILE 중 전송 방식을 선택합니다. 네트워크 방식은 대상 IP 또는 Host, Port를 입력합니다.
 2. TCP/TLS에서는 Newline 또는 RFC 6587 Octet Counting 프레이밍을 선택합니다.
 3. TLS 인증서 이름이 대상 IP와 다르면 `TLS 서버 이름`을 입력합니다.
 4. 샘플 로그를 검색하고 단일 로그 또는 검색 결과 전체 순환을 선택합니다.
 5. `추가`, `수정`, `삭제`로 샘플을 편집합니다. 저장 결과는 JSON 카탈로그에 즉시 반영됩니다.
-6. `src_ip`, `dst_ip`, 현재 시각 기준 `+/- 일·시간·분` 오프셋을 지정합니다.
+6. `src_ip`, `dst_ip`를 지정하고 `현재 시간 + 오프셋` 또는 `기간 지정` 날짜 생성 방식을 선택합니다.
 7. Worker 수와 목표 EPS를 설정합니다. 목표 EPS가 0이면 제한 없는 최대 성능 모드입니다.
 8. `전송 시작`을 누르고 현재 EPS, 평균 EPS, 총 로그 수, 총 바이트를 확인합니다.
 
-UDP 통계는 수신 장비의 처리 성공이 아니라 로컬 Winsock `send` 완료를 기준으로 집계합니다. TCP/TLS는 지속 연결과 최대 256 KiB 배치 전송을 사용합니다. `전송 중지`는 UI 스레드에서 연결 종료를 기다리지 않고 즉시 중지 요청만 전달합니다.
+UDP 통계는 수신 장비의 처리 성공이 아니라 로컬 Winsock `send` 완료를 기준으로 집계합니다. TCP/TLS는 지속 연결과 최대 256 KiB 배치 전송을 사용합니다. FILE은 실행 파일 옆 `generated` 폴더에 기록합니다. `전송 중지`는 UI 스레드에서 연결 종료를 기다리지 않고 즉시 중지 요청만 전달합니다.
+
+## FILE 전송
+
+FILE을 선택하고 전송을 시작하면 다음 폴더가 자동으로 생성됩니다.
+
+```text
+실행파일 경로/generated/
+```
+
+첫 파일은 로컬 시작 시각을 사용한 `yyyyMMdd_HHmmss_SSS.log` 형식입니다. 같은 실행에서 파일이 회전되면 `_0002`, `_0003` 순번이 추가됩니다.
+
+```text
+generated/20260812_173245_123.log
+generated/20260812_173245_123_0002.log
+```
+
+각 파일은 배치 경계를 유지하면서 약 1 MiB 단위로 회전합니다. 로그 이벤트 중간 절단을 피하기 때문에 파일 크기는 1 MiB보다 조금 작을 수 있습니다. FILE은 디스크 순차 처리량과 생성 순서를 유지하기 위해 Worker를 단일 writer로 고정하며 목표 EPS 설정은 동일하게 적용됩니다.
 
 ## JSON 샘플 카탈로그
 
@@ -128,7 +148,12 @@ UDP 통계는 수신 장비의 처리 성공이 아니라 로컬 Winsock `send` 
 
 ## 자동 날짜와 IP 파싱
 
-편집창은 로그 본문을 정규식으로 분석해 인식한 시간 토큰, `src_ip`, `dst_ip` 개수와 날짜 포맷을 보여줍니다. 전송 시작 시 같은 파서를 한 번 컴파일해 지정된 IP와 시간 오프셋을 적용합니다.
+편집창은 로그 본문을 정규식으로 분석해 인식한 시간 토큰, `src_ip`, `dst_ip` 개수와 날짜 포맷을 보여줍니다. 전송 시작 시 같은 파서를 한 번 컴파일해 지정된 IP와 날짜 생성 설정을 적용합니다.
+
+날짜 생성 방식은 다음 두 가지입니다.
+
+- `현재 시간 + 오프셋`: 현재 시각에 `+/- 일·시간·분`을 적용합니다.
+- `기간 지정`: `yyyy-MM-dd` 시작일 00:00:00부터 종료일 23:59:59까지 이벤트마다 1초씩 진행하고 범위 끝에서 시작일로 순환합니다. 원본 로그의 타임존 접미사는 유지하되 사용자가 입력한 달력 날짜가 다른 타임존으로 이동하지 않도록 처리합니다.
 
 지원 시간 형식은 다음과 같습니다.
 
@@ -169,6 +194,7 @@ logs/LogGenerator_yyyyMMdd.log
 - Worker별 독립 소켓과 연결로 전송 경로의 전역 잠금을 제거합니다.
 - UDP는 connected socket과 4 MiB 송신 버퍼를 사용합니다.
 - TCP/TLS는 최대 256 KiB 단위로 여러 로그를 배치합니다.
+- FILE은 최대 64 KiB 배치와 단일 순차 writer로 약 1 MiB 회전 파일을 생성합니다.
 - 정적 로그는 완성 문자열을 재사용하고 시간 포함 로그는 초 단위 결과를 캐시합니다.
 - 고속 UDP의 시스템 시각 조회는 256건 단위로 줄이고 통계는 Worker 로컬 누적 후 일괄 반영합니다.
 - TLS 암호화 버퍼는 재사용하며 DirectX 11 Flip Model 스왑 체인을 사용합니다.
