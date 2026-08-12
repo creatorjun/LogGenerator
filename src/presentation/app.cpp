@@ -8,6 +8,7 @@
 #include <imgui.h>
 #include <imgui_impl_dx11.h>
 #include <imgui_impl_win32.h>
+#include <misc/cpp/imgui_stdlib.h>
 
 #include <algorithm>
 #include <charconv>
@@ -28,7 +29,7 @@ bool is_active(const domain::GeneratorState state) {
     return state == domain::GeneratorState::Connecting || state == domain::GeneratorState::Running || state == domain::GeneratorState::Stopping;
 }
 
-std::string state_text(const domain::GeneratorState state) {
+std::string_view state_text(const domain::GeneratorState state) {
     switch (state) {
     case domain::GeneratorState::Stopped:
         return "중지됨";
@@ -135,6 +136,15 @@ std::string lowercase(std::string value) {
     return value;
 }
 
+std::string sample_preview(const std::string_view sample) {
+    const auto length = std::min<std::size_t>(sample.size(), 180);
+    std::string result{sample.substr(0, length)};
+    if (length < sample.size()) {
+        result.append("...");
+    }
+    return result;
+}
+
 std::string path_to_utf8(const std::filesystem::path& path) {
     const auto value = path.u8string();
     return {reinterpret_cast<const char*>(value.data()), value.size()};
@@ -142,17 +152,22 @@ std::string path_to_utf8(const std::filesystem::path& path) {
 
 }
 
-App::App(application::ILogCatalog& catalog, application::ILogger& logger, application::StressTestService& stress_service, std::filesystem::path sample_directory)
-    : catalog_(catalog), logger_(logger), stress_service_(stress_service), sample_directory_(std::move(sample_directory)) {
+App::App(application::ILogCatalog& catalog, application::ILogger& logger, application::StressTestService& stress_service, std::filesystem::path catalog_file)
+    : catalog_(catalog), logger_(logger), stress_service_(stress_service), catalog_file_(std::move(catalog_file)) {
 }
 
 App::~App() {
+    if (catalog_loader_.joinable()) {
+        catalog_loader_.request_stop();
+        catalog_loader_.join();
+    }
     stress_service_.stop();
     shutdown_imgui();
 }
 
 int App::run(const HINSTANCE instance, const int show_command) {
     logger_.info("UI initialization started");
+    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
     ImGui_ImplWin32_EnableDpiAwareness();
     WNDCLASSEXW window_class{};
     window_class.cbSize = sizeof(window_class);
@@ -181,10 +196,10 @@ int App::run(const HINSTANCE instance, const int show_command) {
     DwmSetWindowAttribute(window_, 20, &dark_mode, sizeof(dark_mode));
     d3d_.create(window_);
     initialize_imgui();
-    load_catalog();
-    logger_.info("UI initialization completed");
     ShowWindow(window_, show_command);
     UpdateWindow(window_);
+    request_catalog_load();
+    logger_.info("UI initialization completed");
 
     MSG message{};
     bool finished = false;
@@ -198,6 +213,10 @@ int App::run(const HINSTANCE instance, const int show_command) {
         }
         if (finished) {
             break;
+        }
+        if (IsIconic(window_)) {
+            WaitMessage();
+            continue;
         }
         ImGui_ImplDX11_NewFrame();
         ImGui_ImplWin32_NewFrame();
@@ -315,21 +334,130 @@ void App::shutdown_imgui() noexcept {
     imgui_ready_ = false;
 }
 
-void App::load_catalog() {
-    try {
-        catalog_items_ = catalog_.load(sample_directory_);
-        selected_log_ = std::min(selected_log_, catalog_items_.empty() ? std::size_t{0} : catalog_items_.size() - 1);
+void App::request_catalog_load() {
+    if (catalog_loading_.exchange(true, std::memory_order_acq_rel)) {
+        return;
+    }
+    if (catalog_loader_.joinable()) {
+        catalog_loader_.join();
+    }
+    const auto file = catalog_file_;
+    catalog_loader_ = std::jthread([this, file](std::stop_token) {
+        CatalogLoadResult result;
+        try {
+            result.items = catalog_.load(file);
+            result.search_names.reserve(result.items.size());
+            result.previews.reserve(result.items.size());
+            result.analyses.reserve(result.items.size());
+            for (const auto& item : result.items) {
+                result.search_names.push_back(lowercase(item.name));
+                result.previews.push_back(sample_preview(item.sample));
+                result.analyses.push_back(application::LogRenderer::analyze(item.sample));
+            }
+            logger_.info(std::format("Sample log catalog loaded: file={}, entries={}", path_to_utf8(file), result.items.size()));
+        } catch (const std::exception& error) {
+            result.error = error.what();
+            logger_.error(std::format("Sample log catalog load failed: {}", error.what()));
+        }
+        {
+            std::scoped_lock lock(catalog_result_mutex_);
+            pending_catalog_result_ = std::move(result);
+        }
+        catalog_result_ready_.store(true, std::memory_order_release);
+        catalog_loading_.store(false, std::memory_order_release);
+    });
+}
+
+void App::request_catalog_save() {
+    if (catalog_loading_.exchange(true, std::memory_order_acq_rel)) {
+        ui_error_ = "카탈로그 작업이 완료된 뒤 다시 시도하세요.";
+        return;
+    }
+    if (catalog_loader_.joinable()) {
+        catalog_loader_.join();
+    }
+    const auto file = catalog_file_;
+    auto items = catalog_items_;
+    catalog_loader_ = std::jthread([this, file, items = std::move(items)](std::stop_token) {
+        CatalogLoadResult result;
+        result.replace_items = false;
+        try {
+            catalog_.save(file, items);
+            logger_.info(std::format("Sample log catalog saved: file={}, entries={}", path_to_utf8(file), items.size()));
+        } catch (const std::exception& error) {
+            result.error = error.what();
+            logger_.error(std::format("Sample log catalog save failed: {}", error.what()));
+        }
+        {
+            std::scoped_lock lock(catalog_result_mutex_);
+            pending_catalog_result_ = std::move(result);
+        }
+        catalog_result_ready_.store(true, std::memory_order_release);
+        catalog_loading_.store(false, std::memory_order_release);
+    });
+}
+
+void App::apply_catalog_result() {
+    if (!catalog_result_ready_.exchange(false, std::memory_order_acq_rel)) {
+        return;
+    }
+    std::optional<CatalogLoadResult> result;
+    {
+        std::scoped_lock lock(catalog_result_mutex_);
+        result = std::move(pending_catalog_result_);
+        pending_catalog_result_.reset();
+    }
+    if (!result) {
+        return;
+    }
+    if (!result->error.empty()) {
+        ui_error_ = std::move(result->error);
+        return;
+    }
+    if (!result->replace_items) {
         ui_error_.clear();
-        logger_.info(std::format("Sample log catalog loaded: directory={}, entries={}", path_to_utf8(sample_directory_), catalog_items_.size()));
-    } catch (const std::exception& error) {
-        catalog_items_.clear();
-        ui_error_ = error.what();
-        logger_.error(std::format("Sample log catalog load failed: {}", error.what()));
+        return;
+    }
+    catalog_items_ = std::move(result->items);
+    catalog_search_names_ = std::move(result->search_names);
+    catalog_previews_ = std::move(result->previews);
+    catalog_analyses_ = std::move(result->analyses);
+    selected_log_ = std::min(selected_log_, catalog_items_.empty() ? std::size_t{0} : catalog_items_.size() - 1);
+    rebuild_filter();
+    ui_error_.clear();
+}
+
+void App::rebuild_filter() {
+    const auto query = lowercase(search_.data());
+    filtered_indices_.clear();
+    filtered_indices_.reserve(catalog_items_.size());
+    for (std::size_t index = 0; index < catalog_items_.size(); ++index) {
+        if (query.empty() || catalog_search_names_[index].find(query) != std::string::npos) {
+            filtered_indices_.push_back(index);
+        }
+    }
+    if (!filtered_indices_.empty() && std::ranges::find(filtered_indices_, selected_log_) == filtered_indices_.end()) {
+        selected_log_ = filtered_indices_.front();
     }
 }
 
+void App::refresh_stats() {
+    const auto now = std::chrono::steady_clock::now();
+    if (now < next_stats_refresh_) {
+        return;
+    }
+    cached_stats_ = stress_service_.snapshot();
+    current_eps_text_ = format_number(cached_stats_.current_eps);
+    average_eps_text_ = format_number(cached_stats_.average_eps);
+    total_messages_text_ = format_number(static_cast<double>(cached_stats_.total_messages));
+    total_bytes_text_ = format_bytes(cached_stats_.total_bytes);
+    next_stats_refresh_ = now + (is_active(cached_stats_.state) ? std::chrono::milliseconds{100} : std::chrono::milliseconds{250});
+}
+
 void App::render() {
-    const auto stats = stress_service_.snapshot();
+    apply_catalog_result();
+    refresh_stats();
+    const auto& stats = cached_stats_;
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(viewport->WorkPos);
     ImGui::SetNextWindowSize(viewport->WorkSize);
@@ -341,6 +469,7 @@ void App::render() {
     ImGui::Spacing();
     render_configuration(stats, layout);
     ImGui::Spacing();
+    render_catalog_editor();
     ImGui::End();
 }
 
@@ -354,24 +483,24 @@ void App::render_header(const domain::TransmissionStats& stats, const Responsive
     ImGui::TextDisabled("SIEM STRESS TOOL");
     const auto status = state_text(stats.state);
     if (layout.inline_header_status) {
-        const std::string status_label = "● " + status;
-        const float status_width = ImGui::CalcTextSize(status_label.c_str()).x;
+        const float status_width = ImGui::CalcTextSize("● ").x + ImGui::CalcTextSize(status.data(), status.data() + status.size()).x;
         const float right_aligned_x = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - status_width;
         ImGui::SameLine(std::max(ImGui::GetCursorPosX() + ImGui::GetStyle().ItemSpacing.x, right_aligned_x));
     }
-    ImGui::TextColored(state_color(stats.state), "● %s", status.c_str());
+    ImGui::TextColored(state_color(stats.state), "● %.*s", static_cast<int>(status.size()), status.data());
 }
 
 void App::render_metrics(const domain::TransmissionStats& stats, const ResponsiveLayout& layout) {
+    static_cast<void>(stats);
     if (ImGui::BeginTable("metrics", layout.metric_columns, ImGuiTableFlags_SizingStretchSame | ImGuiTableFlags_PadOuterX)) {
         ImGui::TableNextColumn();
-        metric_card("eps_card", "현재 EPS", format_number(stats.current_eps), {0.30F, 0.69F, 1.0F, 1.0F});
+        metric_card("eps_card", "현재 EPS", current_eps_text_, {0.30F, 0.69F, 1.0F, 1.0F});
         ImGui::TableNextColumn();
-        metric_card("avg_card", "평균 EPS", format_number(stats.average_eps), {0.64F, 0.55F, 1.0F, 1.0F});
+        metric_card("avg_card", "평균 EPS", average_eps_text_, {0.64F, 0.55F, 1.0F, 1.0F});
         ImGui::TableNextColumn();
-        metric_card("count_card", "총 전송 로그", format_number(static_cast<double>(stats.total_messages)), {0.24F, 0.84F, 0.53F, 1.0F});
+        metric_card("count_card", "총 전송 로그", total_messages_text_, {0.24F, 0.84F, 0.53F, 1.0F});
         ImGui::TableNextColumn();
-        metric_card("bytes_card", "총 전송량", format_bytes(stats.total_bytes), {1.0F, 0.68F, 0.25F, 1.0F});
+        metric_card("bytes_card", "총 전송량", total_bytes_text_, {1.0F, 0.68F, 0.25F, 1.0F});
         ImGui::EndTable();
     }
 }
@@ -400,7 +529,8 @@ void App::render_configuration(const domain::TransmissionStats& stats, const Res
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.78F, 0.19F, 0.23F, 1.0F));
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.92F, 0.25F, 0.29F, 1.0F));
         if (ImGui::Button("전송 중지", ImVec2(-1.0F, button_height))) {
-            stress_service_.stop();
+            stress_service_.request_stop();
+            next_stats_refresh_ = {};
         }
         ImGui::PopStyleColor(2);
     } else if (ImGui::Button("전송 시작", ImVec2(-1.0F, button_height))) {
@@ -509,24 +639,50 @@ void App::render_catalog_selector() {
         ImGui::SameLine();
         ImGui::TextDisabled("%zu개", catalog_items_.size());
         ImGui::TableNextColumn();
+        ImGui::BeginDisabled(catalog_loading_.load(std::memory_order_acquire));
         if (ImGui::SmallButton("새로고침")) {
-            load_catalog();
+            request_catalog_load();
         }
+        ImGui::EndDisabled();
         ImGui::EndTable();
     }
+    if (catalog_loading_.load(std::memory_order_acquire)) {
+        ImGui::TextColored(ImVec4(0.30F, 0.69F, 1.0F, 1.0F), "JSON 카탈로그 처리 중...");
+    }
+    ImGui::BeginDisabled(catalog_loading_.load(std::memory_order_acquire));
+    if (ImGui::BeginTable("catalog_actions", 3, ImGuiTableFlags_SizingStretchSame)) {
+        ImGui::TableNextColumn();
+        if (ImGui::Button("추가", ImVec2(-1.0F, 0.0F))) {
+            open_new_catalog_editor();
+        }
+        ImGui::TableNextColumn();
+        ImGui::BeginDisabled(catalog_items_.empty());
+        if (ImGui::Button("수정", ImVec2(-1.0F, 0.0F))) {
+            open_selected_catalog_editor();
+        }
+        ImGui::TableNextColumn();
+        if (ImGui::Button("삭제", ImVec2(-1.0F, 0.0F))) {
+            delete_index_ = visible_catalog_index();
+            delete_popup_requested_ = true;
+        }
+        ImGui::EndDisabled();
+        ImGui::EndTable();
+    }
+    ImGui::EndDisabled();
     ImGui::Separator();
     ImGui::SetNextItemWidth(-1.0F);
-    ImGui::InputTextWithHint("##search", "장비 / Parser 검색", search_.data(), search_.size());
-    const auto filtered = filtered_indices();
+    if (ImGui::InputTextWithHint("##search", "이름 / Parser 검색", search_.data(), search_.size())) {
+        rebuild_filter();
+    }
     ImGui::Checkbox("검색 결과 전체 순환", &rotate_filtered_);
     ImGui::SameLine();
-    ImGui::TextDisabled("%zu개", filtered.size());
+    ImGui::TextDisabled("%zu개", filtered_indices_.size());
     if (!rotate_filtered_ && !catalog_items_.empty()) {
         const char* preview = catalog_items_[selected_log_].name.c_str();
         ImGui::TextDisabled("로그 선택");
         ImGui::SetNextItemWidth(-1.0F);
         if (ImGui::BeginCombo("##log_selection", preview)) {
-            for (const auto index : filtered) {
+            for (const auto index : filtered_indices_) {
                 const bool selected = index == selected_log_;
                 if (ImGui::Selectable(catalog_items_[index].name.c_str(), selected)) {
                     selected_log_ = index;
@@ -538,20 +694,186 @@ void App::render_catalog_selector() {
             ImGui::EndCombo();
         }
     }
-    if (rotate_filtered_ && filtered.empty()) {
+    if (filtered_indices_.empty()) {
         disabled_wrapped_text("검색 조건에 맞는 샘플 로그가 없습니다.");
     }
     if (!catalog_items_.empty()) {
-        const auto preview_index = rotate_filtered_ && !filtered.empty() ? filtered.front() : selected_log_;
+        const auto preview_index = visible_catalog_index();
         const auto& sample = catalog_items_[preview_index];
         disabled_wrapped_text(sample.source.c_str());
-        const auto length = std::min<std::size_t>(sample.sample.size(), 180);
-        std::string preview_text = sample.sample.substr(0, length);
-        if (length < sample.sample.size()) {
-            preview_text.append("...");
+        disabled_wrapped_text(catalog_previews_[preview_index].c_str());
+        const auto& analysis = catalog_analyses_[preview_index];
+        ImGui::TextDisabled("자동 인식: 시간 토큰 %zu개 | src_ip %zu개 | dst_ip %zu개", analysis.timestamp_count, analysis.source_ip_count, analysis.destination_ip_count);
+        if (!analysis.timestamp_styles.empty()) {
+            ImGui::TextDisabled("날짜 포맷:");
+            ImGui::SameLine();
+            for (std::size_t index = 0; index < analysis.timestamp_styles.size(); ++index) {
+                if (index > 0) {
+                    ImGui::SameLine(0.0F, 4.0F);
+                    ImGui::TextDisabled("/");
+                    ImGui::SameLine(0.0F, 4.0F);
+                }
+                const auto name = application::timestamp_style_name(analysis.timestamp_styles[index]);
+                ImGui::TextColored(ImVec4(0.30F, 0.69F, 1.0F, 1.0F), "%.*s", static_cast<int>(name.size()), name.data());
+            }
         }
-        disabled_wrapped_text(preview_text.c_str());
     }
+}
+
+void App::render_catalog_editor() {
+    if (editor_analysis_pending_ && std::chrono::steady_clock::now() >= editor_analysis_due_) {
+        analyze_editor_sample();
+    }
+    if (editor_popup_requested_) {
+        ImGui::OpenPopup("샘플 로그 편집");
+        editor_popup_requested_ = false;
+    }
+    if (delete_popup_requested_) {
+        ImGui::OpenPopup("샘플 로그 삭제");
+        delete_popup_requested_ = false;
+    }
+
+    const auto* viewport = ImGui::GetMainViewport();
+    const ImVec2 editor_size{
+        std::min(viewport->WorkSize.x * 0.88F, 900.0F * ui_scale_),
+        std::min(viewport->WorkSize.y * 0.88F, 720.0F * ui_scale_)};
+    ImGui::SetNextWindowSize(editor_size, ImGuiCond_Appearing);
+    if (ImGui::BeginPopupModal("샘플 로그 편집", nullptr, ImGuiWindowFlags_NoSavedSettings)) {
+        ImGui::TextUnformatted(editor_is_new_ ? "새 샘플 로그" : "샘플 로그 수정");
+        ImGui::Separator();
+        ImGui::TextDisabled("이름");
+        ImGui::SetNextItemWidth(-1.0F);
+        ImGui::InputText("##editor_name", &editor_name_);
+        ImGui::TextDisabled("샘플 로그");
+        const float editor_height = std::max(180.0F * ui_scale_, ImGui::GetContentRegionAvail().y * 0.48F);
+        if (ImGui::InputTextMultiline("##editor_sample", &editor_sample_, ImVec2(-1.0F, editor_height), ImGuiInputTextFlags_AllowTabInput)) {
+            editor_analysis_pending_ = true;
+            editor_analysis_due_ = std::chrono::steady_clock::now() + std::chrono::milliseconds{120};
+        }
+        ImGui::TextUnformatted("자동 파싱 결과");
+        ImGui::Separator();
+        ImGui::Text("시간 토큰 %zu개 | src_ip %zu개 | dst_ip %zu개", editor_analysis_.timestamp_count, editor_analysis_.source_ip_count, editor_analysis_.destination_ip_count);
+        if (editor_analysis_pending_) {
+            ImGui::SameLine();
+            ImGui::TextDisabled("분석 대기...");
+        }
+        if (editor_analysis_.timestamp_styles.empty()) {
+            ImGui::TextColored(ImVec4(1.0F, 0.72F, 0.25F, 1.0F), "인식된 날짜 포맷이 없습니다.");
+        } else {
+            for (const auto style : editor_analysis_.timestamp_styles) {
+                const auto name = application::timestamp_style_name(style);
+                ImGui::BulletText("%.*s", static_cast<int>(name.size()), name.data());
+            }
+        }
+        ImGui::BeginDisabled(editor_name_.empty() || editor_sample_.empty() || catalog_loading_.load(std::memory_order_acquire));
+        if (ImGui::Button("저장", ImVec2(140.0F * ui_scale_, 0.0F))) {
+            save_catalog_editor();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        if (ImGui::Button("취소", ImVec2(140.0F * ui_scale_, 0.0F))) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
+    ImGui::SetNextWindowSize(ImVec2(460.0F * ui_scale_, 0.0F), ImGuiCond_Appearing);
+    if (ImGui::BeginPopupModal("샘플 로그 삭제", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
+        if (delete_index_ < catalog_items_.size()) {
+            ImGui::TextWrapped("'%s' 샘플 로그를 삭제하시겠습니까?", catalog_items_[delete_index_].name.c_str());
+        }
+        ImGui::TextColored(ImVec4(1.0F, 0.38F, 0.40F, 1.0F), "JSON 파일에서도 삭제됩니다.");
+        if (ImGui::Button("삭제", ImVec2(120.0F * ui_scale_, 0.0F))) {
+            delete_selected_catalog_item();
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("취소", ImVec2(120.0F * ui_scale_, 0.0F))) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+}
+
+void App::open_new_catalog_editor() {
+    editor_is_new_ = true;
+    editor_index_ = catalog_items_.size();
+    editor_name_.clear();
+    editor_sample_.clear();
+    analyze_editor_sample();
+    editor_popup_requested_ = true;
+}
+
+void App::open_selected_catalog_editor() {
+    if (catalog_items_.empty()) {
+        return;
+    }
+    editor_is_new_ = false;
+    editor_index_ = visible_catalog_index();
+    editor_name_ = catalog_items_[editor_index_].name;
+    editor_sample_ = catalog_items_[editor_index_].sample;
+    analyze_editor_sample();
+    editor_popup_requested_ = true;
+}
+
+void App::save_catalog_editor() {
+    if (editor_name_.empty() || editor_sample_.empty()) {
+        return;
+    }
+    if (editor_analysis_pending_) {
+        analyze_editor_sample();
+    }
+    if (editor_is_new_) {
+        const auto ticks = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        auto identifier = std::format("user-{:x}", static_cast<std::uint64_t>(ticks));
+        std::uint32_t suffix = 0;
+        while (std::ranges::any_of(catalog_items_, [&identifier](const domain::LogTemplate& item) { return item.id == identifier; })) {
+            identifier = std::format("user-{:x}-{}", static_cast<std::uint64_t>(ticks), ++suffix);
+        }
+        catalog_items_.push_back(domain::LogTemplate{std::move(identifier), editor_name_, editor_sample_, "사용자 정의"});
+        catalog_search_names_.push_back(lowercase(editor_name_));
+        catalog_previews_.push_back(sample_preview(editor_sample_));
+        catalog_analyses_.push_back(editor_analysis_);
+        selected_log_ = catalog_items_.size() - 1;
+    } else if (editor_index_ < catalog_items_.size()) {
+        catalog_items_[editor_index_].name = editor_name_;
+        catalog_items_[editor_index_].sample = editor_sample_;
+        catalog_search_names_[editor_index_] = lowercase(editor_name_);
+        catalog_previews_[editor_index_] = sample_preview(editor_sample_);
+        catalog_analyses_[editor_index_] = editor_analysis_;
+        selected_log_ = editor_index_;
+    }
+    rebuild_filter();
+    request_catalog_save();
+}
+
+void App::delete_selected_catalog_item() {
+    if (delete_index_ >= catalog_items_.size()) {
+        return;
+    }
+    catalog_items_.erase(catalog_items_.begin() + static_cast<std::ptrdiff_t>(delete_index_));
+    catalog_search_names_.erase(catalog_search_names_.begin() + static_cast<std::ptrdiff_t>(delete_index_));
+    catalog_previews_.erase(catalog_previews_.begin() + static_cast<std::ptrdiff_t>(delete_index_));
+    catalog_analyses_.erase(catalog_analyses_.begin() + static_cast<std::ptrdiff_t>(delete_index_));
+    selected_log_ = catalog_items_.empty() ? 0 : std::min(delete_index_, catalog_items_.size() - 1);
+    rebuild_filter();
+    request_catalog_save();
+}
+
+void App::analyze_editor_sample() {
+    editor_analysis_ = application::LogRenderer::analyze(editor_sample_);
+    editor_analysis_pending_ = false;
+}
+
+std::size_t App::visible_catalog_index() const noexcept {
+    if (catalog_items_.empty()) {
+        return 0;
+    }
+    if (rotate_filtered_ && !filtered_indices_.empty()) {
+        return filtered_indices_.front();
+    }
+    return std::min(selected_log_, catalog_items_.size() - 1);
 }
 
 void App::start_test() {
@@ -581,7 +903,8 @@ void App::start_test() {
         config.worker_count = static_cast<std::uint32_t>(std::clamp(worker_count_, 1, 64));
         config.target_eps = target_eps_;
         if (rotate_filtered_) {
-            for (const auto index : filtered_indices()) {
+            config.templates.reserve(filtered_indices_.size());
+            for (const auto index : filtered_indices_) {
                 config.templates.push_back(catalog_items_[index]);
             }
         } else {
@@ -591,23 +914,12 @@ void App::start_test() {
             throw std::invalid_argument("검색 조건에 맞는 샘플 로그가 없습니다.");
         }
         stress_service_.start(std::move(config));
+        next_stats_refresh_ = {};
         ui_error_.clear();
     } catch (const std::exception& error) {
         ui_error_ = error.what();
         logger_.warning(std::format("Stress test start rejected: {}", error.what()));
     }
-}
-
-std::vector<std::size_t> App::filtered_indices() const {
-    std::vector<std::size_t> result;
-    const auto query = lowercase(search_.data());
-    result.reserve(catalog_items_.size());
-    for (std::size_t index = 0; index < catalog_items_.size(); ++index) {
-        if (query.empty() || lowercase(catalog_items_[index].name).find(query) != std::string::npos) {
-            result.push_back(index);
-        }
-    }
-    return result;
 }
 
 }

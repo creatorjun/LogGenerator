@@ -168,7 +168,7 @@ struct SchannelTransport::Impl {
         while (offset < payload.size()) {
             const auto chunk_size = std::min<std::size_t>(payload.size() - offset, sizes.cbMaximumMessage);
             const auto storage_size = static_cast<std::size_t>(sizes.cbHeader) + chunk_size + sizes.cbTrailer;
-            encrypted.assign(storage_size, std::byte{0});
+            encrypted.resize(storage_size);
             std::memcpy(encrypted.data() + sizes.cbHeader, payload.data() + offset, chunk_size);
 
             SecBuffer buffers[4]{

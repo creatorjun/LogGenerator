@@ -4,6 +4,8 @@
 #include "application/log_renderer.hpp"
 
 #include <chrono>
+#include <cstdio>
+#include <ctime>
 #include <string>
 
 namespace loggen::tests {
@@ -44,6 +46,48 @@ void run_log_renderer_tests() {
     const std::string cached_first{arrow.render(base_time + milliseconds{100})};
     const std::string cached_second{arrow.render(base_time + milliseconds{900})};
     expect(cached_first == cached_second, "Per-second render cache is inconsistent");
+
+    auto month_first = application::LogRenderer::prepare_one(
+        "event_time=Jul 05 2025 13:53:53 UTC",
+        "10.0.0.1",
+        "10.0.0.2",
+        hours{2});
+    const std::string month_first_result{month_first.render(base_time)};
+    expect(month_first_result.find("Jan 02 2030 05:04:05 UTC") != std::string::npos, "Month-first UTC timestamp replacement failed");
+
+    auto separated = application::LogRenderer::prepare_one(
+        "date=2025/07/05 time=13:53:53.123 src-ip=192.0.2.1 destination-address=192.0.2.2",
+        "198.51.100.1",
+        "198.51.100.2",
+        hours{2});
+    const auto adjusted_time = system_clock::to_time_t(base_time + hours{2});
+    std::tm adjusted_local{};
+    localtime_s(&adjusted_local, &adjusted_time);
+    char separated_expected[48]{};
+    std::snprintf(
+        separated_expected,
+        sizeof(separated_expected),
+        "date=%04d/%02d/%02d time=%02d:%02d:%02d.000",
+        adjusted_local.tm_year + 1900,
+        adjusted_local.tm_mon + 1,
+        adjusted_local.tm_mday,
+        adjusted_local.tm_hour,
+        adjusted_local.tm_min,
+        adjusted_local.tm_sec);
+    const std::string separated_result{separated.render(base_time)};
+    expect(separated_result.find(separated_expected) != std::string::npos, "Separated date and time replacement failed");
+    expect(separated_result.find("src-ip=198.51.100.1") != std::string::npos, "Hyphenated source IP replacement failed");
+    expect(separated_result.find("destination-address=198.51.100.2") != std::string::npos, "Hyphenated destination IP replacement failed");
+
+    const auto analysis = application::LogRenderer::analyze(
+        "Jul 05 2025 13:53:53 UTC date=2025-07-05 time=13:53:53 srp_ip=1.1.1.1 src-ip=1.1.1.2 clientipaddr=1.1.1.3 dest_ip=2.2.2.1 destination-address=2.2.2.2 dstn_ip=2.2.2.3");
+    expect(analysis.timestamp_count == 3, "Timestamp analysis count is incorrect");
+    expect(analysis.source_ip_count == 3, "Source IP analysis count is incorrect");
+    expect(analysis.destination_ip_count == 3, "Destination IP analysis count is incorrect");
+
+    auto static_log = application::LogRenderer::prepare_one("static src_ip=1.1.1.1", "10.0.0.1", "10.0.0.2", seconds{0});
+    auto static_copy = static_log;
+    expect(static_copy.render(base_time) == "static src_ip=10.0.0.1", "Static prepared log copy failed");
 }
 
 }

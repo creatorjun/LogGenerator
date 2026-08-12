@@ -34,6 +34,7 @@ add_library(imgui STATIC
     "${imgui_SOURCE_DIR}/imgui_draw.cpp"
     "${imgui_SOURCE_DIR}/imgui_tables.cpp"
     "${imgui_SOURCE_DIR}/imgui_widgets.cpp"
+    "${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp"
     "${imgui_SOURCE_DIR}/backends/imgui_impl_dx11.cpp"
     "${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp"
 )
@@ -41,25 +42,19 @@ target_include_directories(imgui PUBLIC "${imgui_SOURCE_DIR}" "${imgui_SOURCE_DI
 target_compile_definitions(imgui PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE)
 target_link_libraries(imgui PUBLIC d3d11 dxgi)
 
-set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
-set(OPENXLSX_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
-set(OPENXLSX_CREATE_DOCS OFF CACHE BOOL "" FORCE)
-set(OPENXLSX_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(OPENXLSX_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
-
 FetchContent_Declare(
-    openxlsx
-    GIT_REPOSITORY https://github.com/troldal/OpenXLSX.git
-    GIT_TAG v0.5.1
+    nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG v3.12.0
     GIT_SHALLOW TRUE
 )
-FetchContent_MakeAvailable(openxlsx)
+FetchContent_MakeAvailable(nlohmann_json)
 
 set(LOGGEN_CORE_SOURCES
     src/application/log_renderer.cpp
     src/application/stress_test_service.cpp
     src/infrastructure/async_file_logger.cpp
-    src/infrastructure/excel_log_catalog.cpp
+    src/infrastructure/json_log_catalog.cpp
     src/infrastructure/schannel_transport.cpp
     src/infrastructure/tcp_transport.cpp
     src/infrastructure/transport_factory.cpp
@@ -70,7 +65,7 @@ set(LOGGEN_CORE_SOURCES
 add_library(loggen_core STATIC ${LOGGEN_CORE_SOURCES})
 target_include_directories(loggen_core PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_compile_definitions(loggen_core PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE SECURITY_WIN32 SCHANNEL_USE_BLACKLISTS _WIN32_WINNT=0x0A00)
-target_link_libraries(loggen_core PUBLIC OpenXLSX::OpenXLSX PRIVATE ws2_32 secur32 crypt32)
+target_link_libraries(loggen_core PUBLIC nlohmann_json::nlohmann_json PRIVATE ws2_32 secur32 crypt32)
 
 add_executable(LogGenerator WIN32
     src/main.cpp
@@ -81,14 +76,20 @@ add_executable(LogGenerator WIN32
 target_include_directories(LogGenerator PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_compile_definitions(LogGenerator PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _WIN32_WINNT=0x0A00)
 target_link_libraries(LogGenerator PRIVATE loggen_core imgui d3d11 dxgi dwmapi)
-add_custom_command(TARGET LogGenerator POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/Sample Logs" "$<TARGET_FILE_DIR:LogGenerator>/Sample Logs")
+add_custom_command(
+    TARGET LogGenerator
+    POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E remove_directory "$<TARGET_FILE_DIR:LogGenerator>/Sample Logs"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/Sample Logs" "$<TARGET_FILE_DIR:LogGenerator>/Sample Logs"
+)
 
 enable_testing()
 add_executable(LogGeneratorTests
     tests/test_main.cpp
     tests/async_file_logger_tests.cpp
     tests/log_renderer_tests.cpp
-    tests/excel_log_catalog_tests.cpp
+    tests/json_log_catalog_tests.cpp
+    tests/stress_test_service_tests.cpp
     tests/responsive_layout_tests.cpp
 )
 target_include_directories(LogGeneratorTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_SOURCE_DIR}/tests")

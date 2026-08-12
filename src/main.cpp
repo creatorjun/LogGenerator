@@ -1,7 +1,7 @@
 // src/main.cpp
 #include "application/stress_test_service.hpp"
 #include "infrastructure/async_file_logger.hpp"
-#include "infrastructure/excel_log_catalog.hpp"
+#include "infrastructure/json_log_catalog.hpp"
 #include "infrastructure/transport_factory.hpp"
 #include "presentation/app.hpp"
 
@@ -31,14 +31,14 @@ int WINAPI wWinMain(const HINSTANCE instance, HINSTANCE, PWSTR, const int show_c
         loggen::infrastructure::AsyncFileLogger logger{application_directory / L"logs"};
         try {
             logger.info("LogGenerator startup");
-            loggen::infrastructure::ExcelLogCatalog catalog;
+            loggen::infrastructure::JsonLogCatalog catalog;
             loggen::infrastructure::TransportFactory transport_factory;
             loggen::application::StressTestService stress_service{transport_factory, logger};
-            auto sample_directory = application_directory / L"Sample Logs";
-            if (!std::filesystem::exists(sample_directory)) {
-                sample_directory = std::filesystem::current_path() / L"Sample Logs";
+            auto catalog_file = application_directory / L"Sample Logs" / L"sample_logs.json";
+            if (!std::filesystem::exists(catalog_file)) {
+                catalog_file = std::filesystem::current_path() / L"Sample Logs" / L"sample_logs.json";
             }
-            loggen::presentation::App app{catalog, logger, stress_service, std::move(sample_directory)};
+            loggen::presentation::App app{catalog, logger, stress_service, std::move(catalog_file)};
             const int result = app.run(instance, show_command);
             logger.info("LogGenerator shutdown completed");
             return result;

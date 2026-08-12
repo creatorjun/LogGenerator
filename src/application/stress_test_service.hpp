@@ -26,11 +26,13 @@ public:
     StressTestService& operator=(const StressTestService&) = delete;
 
     void start(domain::GeneratorConfig config);
+    void request_stop() noexcept;
     void stop() noexcept;
     [[nodiscard]] domain::TransmissionStats snapshot();
 
 private:
-    void run_worker(domain::GeneratorConfig config, std::vector<PreparedLog> logs, std::uint32_t worker_index, std::uint32_t worker_count, std::stop_token stop_token) noexcept;
+    void run_supervisor(domain::GeneratorConfig config, std::stop_token stop_token) noexcept;
+    void run_worker(domain::EndpointConfig endpoint, std::vector<PreparedLog> logs, std::uint64_t quota, std::uint32_t worker_count, std::stop_token stop_token) noexcept;
     void publish_error(std::string message) noexcept;
 
     const ITransportFactory& transport_factory_;
@@ -38,7 +40,7 @@ private:
     std::mutex lifecycle_mutex_;
     std::mutex error_mutex_;
     std::mutex meter_mutex_;
-    std::vector<std::jthread> workers_;
+    std::jthread supervisor_;
     std::stop_source stop_source_;
     std::atomic<domain::GeneratorState> state_{domain::GeneratorState::Stopped};
     std::atomic<std::uint64_t> total_messages_{0};

@@ -14,7 +14,8 @@ inline void expect(const bool condition, const std::string_view message) {
 }
 
 void run_log_renderer_tests();
-void run_excel_log_catalog_tests();
+void run_json_log_catalog_tests();
+void run_stress_test_service_tests();
 void run_async_file_logger_tests();
 void run_responsive_layout_tests();
 
