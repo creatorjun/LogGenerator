@@ -2,6 +2,7 @@
 #include "test_support.hpp"
 
 #include "infrastructure/file_transport.hpp"
+#include "infrastructure/transport_factory.hpp"
 
 #include <Windows.h>
 
@@ -22,13 +23,16 @@ void run_file_transport_tests() {
     constexpr std::size_t payload_count = 35;
     const std::string payload(payload_size, 'L');
     {
-        infrastructure::FileTransport transport{directory};
+        const infrastructure::TransportFactory factory{directory};
+        auto created = factory.create(domain::TransportProtocol::File);
+        auto* transport = dynamic_cast<infrastructure::FileTransport*>(created.get());
+        expect(transport != nullptr, "FILE protocol created a network transport");
         domain::EndpointConfig endpoint;
         endpoint.protocol = domain::TransportProtocol::File;
-        transport.connect(endpoint);
-        expect(!transport.is_datagram(), "FILE transport must use batched stream writes");
+        transport->connect(endpoint);
+        expect(!transport->is_datagram(), "FILE transport must use batched stream writes");
         for (std::size_t index = 0; index < payload_count; ++index) {
-            transport.send(payload);
+            transport->send(payload);
         }
     }
 

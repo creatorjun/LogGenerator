@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <ctime>
@@ -19,6 +20,7 @@ struct MatchCandidate {
     std::size_t length{0};
     int priority{0};
     TimestampToken token;
+    PrivacyTokenKind privacy{PrivacyTokenKind::None};
 };
 
 struct TimestampPattern {
@@ -90,6 +92,24 @@ std::string replace_capture(const std::string& input, const std::regex& pattern,
     }
     output.append(input, cursor, std::string::npos);
     return output;
+}
+
+void replace_all(std::string& input, const std::string_view marker, const std::string_view replacement) {
+    std::size_t position = 0;
+    while ((position = input.find(marker, position)) != std::string::npos) {
+        input.replace(position, marker.size(), replacement);
+        position += replacement.size();
+    }
+}
+
+std::size_t count_occurrences(const std::string_view input, const std::string_view marker) {
+    std::size_t result = 0;
+    std::size_t position = 0;
+    while ((position = input.find(marker, position)) != std::string_view::npos) {
+        ++result;
+        position += marker.size();
+    }
+    return result;
 }
 
 int parse_zone_offset(const std::string_view suffix) {
@@ -164,7 +184,15 @@ std::vector<RenderSegment> compile_segments(const std::string& input) {
             }
             const auto position = static_cast<std::size_t>(match[pattern.capture_group].first - input.begin());
             const auto length = static_cast<std::size_t>(match[pattern.capture_group].length());
-            candidates.push_back(MatchCandidate{position, length, pattern.priority, make_token(pattern.style, std::string_view(input).substr(position, length))});
+            candidates.push_back(MatchCandidate{position, length, pattern.priority, make_token(pattern.style, std::string_view(input).substr(position, length)), PrivacyTokenKind::None});
+        }
+    }
+    for (const auto kind : privacy_token_kinds) {
+        const auto marker = PrivacyAnonymizer::marker(kind);
+        std::size_t position = 0;
+        while ((position = input.find(marker, position)) != std::string::npos) {
+            candidates.push_back(MatchCandidate{position, marker.size(), 100, {}, kind});
+            position += marker.size();
         }
     }
     std::ranges::sort(candidates, [](const MatchCandidate& left, const MatchCandidate& right) {
@@ -186,7 +214,11 @@ std::vector<RenderSegment> compile_segments(const std::string& input) {
         if (candidate.position > cursor) {
             segments.push_back(RenderSegment{input.substr(cursor, candidate.position - cursor), false, {}});
         }
-        segments.push_back(RenderSegment{{}, true, candidate.token});
+        if (candidate.privacy == PrivacyTokenKind::None) {
+            segments.push_back(RenderSegment{{}, true, candidate.token, PrivacyTokenKind::None});
+        } else {
+            segments.push_back(RenderSegment{{}, false, {}, candidate.privacy});
+        }
         cursor = candidate.position + candidate.length;
     }
     if (cursor < input.size()) {
@@ -306,15 +338,18 @@ PreparedLog::PreparedLog(std::vector<RenderSegment> segments, const std::chrono:
     auto compiled = std::make_shared<CompiledLog>();
     compiled->segments = std::move(segments);
     for (const auto& segment : compiled->segments) {
-        compiled->capacity_hint += segment.is_timestamp ? 40 : segment.text.size();
+        compiled->capacity_hint += segment.is_timestamp ? 40 : segment.privacy == PrivacyTokenKind::None ? segment.text.size() : 64;
         compiled->has_timestamp = compiled->has_timestamp || segment.is_timestamp;
+        compiled->has_privacy = compiled->has_privacy || segment.privacy != PrivacyTokenKind::None;
     }
     compiled_ = std::move(compiled);
+    initialize_random_state();
     initialize_cache();
 }
 
 PreparedLog::PreparedLog(const PreparedLog& other)
     : compiled_(other.compiled_), offset_(other.offset_) {
+    initialize_random_state();
     initialize_cache();
 }
 
@@ -323,7 +358,9 @@ PreparedLog& PreparedLog::operator=(const PreparedLog& other) {
         compiled_ = other.compiled_;
         offset_ = other.offset_;
         cached_.clear();
+        timestamp_cache_.clear();
         cached_second_ = -1;
+        initialize_random_state();
         initialize_cache();
     }
     return *this;
@@ -333,27 +370,71 @@ void PreparedLog::initialize_cache() {
     if (!compiled_) {
         return;
     }
+    if (compiled_->has_privacy) {
+        static_cast<void>(PrivacyAnonymizer::synthetic_value(PrivacyTokenKind::Person, 0));
+    }
     cached_.reserve(compiled_->capacity_hint);
-    if (!compiled_->has_timestamp) {
+    timestamp_cache_.resize(compiled_->segments.size());
+    for (std::size_t index = 0; index < compiled_->segments.size(); ++index) {
+        if (compiled_->segments[index].is_timestamp) {
+            timestamp_cache_[index].reserve(40);
+        }
+    }
+    if (!compiled_->has_timestamp && !compiled_->has_privacy) {
         for (const auto& segment : compiled_->segments) {
             cached_.append(segment.text);
         }
     }
 }
 
+void PreparedLog::initialize_random_state() noexcept {
+    static std::atomic<std::uint64_t> sequence{0x9E3779B97F4A7C15ULL};
+    auto value = sequence.fetch_add(0x9E3779B97F4A7C15ULL, std::memory_order_relaxed);
+    value ^= value >> 30U;
+    value *= 0xBF58476D1CE4E5B9ULL;
+    value ^= value >> 27U;
+    value *= 0x94D049BB133111EBULL;
+    value ^= value >> 31U;
+    random_state_ = value == 0 ? 0xA0761D6478BD642FULL : value;
+}
+
+std::size_t PreparedLog::next_profile_index() noexcept {
+    random_state_ ^= random_state_ >> 12U;
+    random_state_ ^= random_state_ << 25U;
+    random_state_ ^= random_state_ >> 27U;
+    return static_cast<std::size_t>((random_state_ * 0x2545F4914F6CDD1DULL) % PrivacyAnonymizer::synthetic_profile_count);
+}
+
 std::string_view PreparedLog::render(const std::chrono::system_clock::time_point now, const bool calendar_time) {
-    if (!compiled_->has_timestamp) {
+    if (!compiled_->has_timestamp && !compiled_->has_privacy) {
         return cached_;
     }
     const auto adjusted = now + offset_;
     const auto second = std::chrono::duration_cast<std::chrono::seconds>(adjusted.time_since_epoch()).count();
-    if (second == cached_second_ && calendar_time == cached_calendar_time_) {
+    if (!compiled_->has_privacy && second == cached_second_ && calendar_time == cached_calendar_time_) {
         return cached_;
     }
+    if (compiled_->has_privacy && compiled_->has_timestamp && (second != cached_second_ || calendar_time != cached_calendar_time_)) {
+        for (std::size_t index = 0; index < compiled_->segments.size(); ++index) {
+            if (!compiled_->segments[index].is_timestamp) {
+                continue;
+            }
+            timestamp_cache_[index].clear();
+            append_timestamp(timestamp_cache_[index], compiled_->segments[index].timestamp, adjusted, calendar_time);
+        }
+    }
     cached_.clear();
-    for (const auto& segment : compiled_->segments) {
+    const auto profile_index = compiled_->has_privacy ? next_profile_index() : std::size_t{0};
+    for (std::size_t index = 0; index < compiled_->segments.size(); ++index) {
+        const auto& segment = compiled_->segments[index];
         if (segment.is_timestamp) {
-            append_timestamp(cached_, segment.timestamp, adjusted, calendar_time);
+            if (compiled_->has_privacy) {
+                cached_.append(timestamp_cache_[index]);
+            } else {
+                append_timestamp(cached_, segment.timestamp, adjusted, calendar_time);
+            }
+        } else if (segment.privacy != PrivacyTokenKind::None) {
+            cached_.append(PrivacyAnonymizer::synthetic_value(segment.privacy, profile_index));
         } else {
             cached_.append(segment.text);
         }
@@ -370,18 +451,21 @@ std::size_t PreparedLog::capacity_hint() const noexcept {
 LogTemplateAnalysis LogRenderer::analyze(const std::string_view sample) {
     const std::string input{sample};
     LogTemplateAnalysis result;
-    const auto segments = compile_segments(input);
+    const auto segments = compile_segments(PrivacyAnonymizer::sanitize(input));
     for (const auto& segment : segments) {
-        if (!segment.is_timestamp) {
-            continue;
+        if (segment.privacy != PrivacyTokenKind::None) {
+            ++result.privacy_token_count;
+            result.privacy_token_mask |= privacy_token_bit(segment.privacy);
         }
-        ++result.timestamp_count;
-        if (std::ranges::find(result.timestamp_styles, segment.timestamp.style) == result.timestamp_styles.end()) {
-            result.timestamp_styles.push_back(segment.timestamp.style);
+        if (segment.is_timestamp) {
+            ++result.timestamp_count;
+            if (std::ranges::find(result.timestamp_styles, segment.timestamp.style) == result.timestamp_styles.end()) {
+                result.timestamp_styles.push_back(segment.timestamp.style);
+            }
         }
     }
-    result.source_ip_count = count_captures(input, source_field_pattern()) + count_captures(input, arrow_source_pattern());
-    result.destination_ip_count = count_captures(input, destination_field_pattern()) + count_captures(input, arrow_destination_pattern());
+    result.source_ip_count = count_captures(input, source_field_pattern()) + count_captures(input, arrow_source_pattern()) + count_occurrences(input, "{{SRC_IP}}");
+    result.destination_ip_count = count_captures(input, destination_field_pattern()) + count_captures(input, arrow_destination_pattern()) + count_occurrences(input, "{{DST_IP}}");
     return result;
 }
 
@@ -396,10 +480,13 @@ std::vector<PreparedLog> LogRenderer::prepare(const domain::GeneratorConfig& con
 }
 
 PreparedLog LogRenderer::prepare_one(std::string sample, const std::string& source_ip, const std::string& destination_ip, const std::chrono::seconds offset) {
+    replace_all(sample, "{{SRC_IP}}", source_ip);
+    replace_all(sample, "{{DST_IP}}", destination_ip);
     sample = replace_capture(sample, source_field_pattern(), source_ip);
     sample = replace_capture(sample, destination_field_pattern(), destination_ip);
     sample = replace_capture(sample, arrow_source_pattern(), source_ip);
     sample = replace_capture(sample, arrow_destination_pattern(), destination_ip);
+    sample = PrivacyAnonymizer::sanitize(sample);
     return PreparedLog{compile_segments(sample), offset};
 }
 

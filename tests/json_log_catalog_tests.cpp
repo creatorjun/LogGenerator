@@ -6,7 +6,10 @@
 
 #include <Windows.h>
 
+#include <algorithm>
+#include <cctype>
 #include <filesystem>
+#include <regex>
 #include <string>
 #include <vector>
 
@@ -16,35 +19,50 @@ void run_json_log_catalog_tests() {
     const infrastructure::JsonLogCatalog catalog;
     const auto source = std::filesystem::path{LOGGEN_SOURCE_DIR} / "Sample Logs" / "sample_logs.json";
     const auto items = catalog.load(source);
-    expect(items.size() == 345, "Expected 345 migrated sample logs");
+    expect(items.size() == 84, "Expected 84 CSV replacement sample logs");
     expect(!items.front().id.empty(), "First sample log id is empty");
     expect(!items.front().name.empty(), "First sample log name is empty");
     expect(!items.front().sample.empty(), "First sample log body is empty");
-    expect(items.front().id == "sample-0001", "Migrated JSON sample ids were not normalized");
-    expect(items.front().source == "기본 내장 샘플", "Migrated JSON sample source was not normalized");
+    expect(items.front().id == "csv-0001", "CSV sample ids were not normalized");
+    expect(items.front().source.empty(), "CSV sample source should be omitted");
 
     std::size_t timestamp_templates = 0;
     std::size_t source_ip_templates = 0;
     std::size_t destination_ip_templates = 0;
-    bool found_separated_date = false;
-    bool found_separated_time = false;
-    bool found_month_day_year = false;
+    std::size_t privacy_templates = 0;
+    std::size_t person_tokens = 0;
+    std::size_t store_tokens = 0;
+    const std::regex ipv4_pattern{R"(\b(?:(?:25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])\b)", std::regex::ECMAScript};
     for (const auto& item : items) {
+        expect(item.id.starts_with("csv-"), "An old sample catalog entry remains");
+        std::string lowercase_text = item.name + item.sample;
+        std::ranges::transform(lowercase_text, lowercase_text.begin(), [](const unsigned char value) { return static_cast<char>(std::tolower(value)); });
+        expect(lowercase_text.find("lotte") == std::string::npos && lowercase_text.find("mart") == std::string::npos && lowercase_text.find("yourcompany") == std::string::npos, "A requested company token remains");
+        expect(item.sample.find("당진점") == std::string::npos, "A real store name remains");
+        std::smatch ipv4_match;
+        const auto has_ipv4 = std::regex_search(item.sample, ipv4_match, ipv4_pattern);
+        expect(!has_ipv4, "An original IPv4 address remains in CSV catalog item " + item.id + " length " + std::to_string(ipv4_match.empty() ? 0 : ipv4_match[0].length()));
+        person_tokens += item.sample.find("{{PERSON}}") != std::string::npos ? 1 : 0;
+        store_tokens += item.sample.find("{{STORE}}") != std::string::npos ? 1 : 0;
         const auto analysis = application::LogRenderer::analyze(item.sample);
         timestamp_templates += analysis.timestamp_count > 0 ? 1 : 0;
         source_ip_templates += analysis.source_ip_count > 0 ? 1 : 0;
         destination_ip_templates += analysis.destination_ip_count > 0 ? 1 : 0;
-        for (const auto style : analysis.timestamp_styles) {
-            found_separated_date = found_separated_date || style == application::TimestampStyle::DateOnly;
-            found_separated_time = found_separated_time || style == application::TimestampStyle::TimeOnly;
-            found_month_day_year = found_month_day_year || style == application::TimestampStyle::MonthDayYear;
-        }
+        privacy_templates += analysis.privacy_token_count > 0 ? 1 : 0;
     }
-    expect(timestamp_templates >= 250, "Too few migrated templates have recognized timestamps");
-    expect(source_ip_templates >= 100, "Too few migrated templates have recognized source IP fields");
-    expect(destination_ip_templates >= 90, "Too few migrated templates have recognized destination IP fields");
-    expect(found_separated_date && found_separated_time, "Separated date and time formats were not found in migrated samples");
-    expect(found_month_day_year, "Month-first date format was not found in migrated samples");
+    expect(timestamp_templates >= 40, "Too few CSV templates have recognized timestamps");
+    expect(source_ip_templates >= 10, "Too few CSV templates have recognized source IP fields");
+    expect(destination_ip_templates >= 10, "Too few CSV templates have recognized destination IP fields");
+    expect(privacy_templates >= 50, "Too few CSV templates have privacy tokens");
+    expect(person_tokens >= 10 && store_tokens >= 3, "Person or store anonymization coverage is too low");
+    for (const auto index : {std::size_t{79}, std::size_t{82}}) {
+        const auto& item = items[index];
+        expect(item.sample.find("{{PERSON}}") != std::string::npos, "Position-based person anonymization is missing in " + item.id);
+        expect(item.sample.find("{{USER_ID}}") != std::string::npos, "Position-based account anonymization is missing in " + item.id);
+        expect(item.sample.find("{{DEPARTMENT}}") != std::string::npos, "Position-based department anonymization is missing in " + item.id);
+        expect(item.sample.find("{{HOST}}") != std::string::npos, "Position-based host anonymization is missing in " + item.id);
+        expect(item.sample.find("{{SRC_IP}}") != std::string::npos, "Position-based source IP anonymization is missing in " + item.id);
+    }
 
     const auto directory = std::filesystem::current_path() / (".test_json_catalog_" + std::to_string(GetCurrentProcessId()));
     const auto file = directory / "sample_logs.json";

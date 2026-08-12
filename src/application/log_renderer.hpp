@@ -1,6 +1,7 @@
 // src/application/log_renderer.hpp
 #pragma once
 
+#include "application/privacy_anonymizer.hpp"
 #include "domain/generator_config.hpp"
 
 #include <chrono>
@@ -40,12 +41,15 @@ struct RenderSegment {
     std::string text;
     bool is_timestamp{false};
     TimestampToken timestamp;
+    PrivacyTokenKind privacy{PrivacyTokenKind::None};
 };
 
 struct LogTemplateAnalysis {
     std::size_t timestamp_count{0};
     std::size_t source_ip_count{0};
     std::size_t destination_ip_count{0};
+    std::size_t privacy_token_count{0};
+    std::uint32_t privacy_token_mask{0};
     std::vector<TimestampStyle> timestamp_styles;
 };
 
@@ -90,15 +94,20 @@ private:
         std::vector<RenderSegment> segments;
         std::size_t capacity_hint{0};
         bool has_timestamp{false};
+        bool has_privacy{false};
     };
 
     void initialize_cache();
+    void initialize_random_state() noexcept;
+    [[nodiscard]] std::size_t next_profile_index() noexcept;
 
     std::shared_ptr<const CompiledLog> compiled_;
     std::string cached_;
+    std::vector<std::string> timestamp_cache_;
     std::int64_t cached_second_{-1};
     bool cached_calendar_time_{false};
     std::chrono::seconds offset_{0};
+    std::uint64_t random_state_{0};
 };
 
 class LogRenderer {

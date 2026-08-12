@@ -55,7 +55,7 @@ std::vector<domain::LogTemplate> JsonLogCatalog::load(const std::filesystem::pat
         item.id = required_text(value, "id", file);
         item.name = required_text(value, "name", file);
         item.sample = required_text(value, "sample", file);
-        item.source = value.value("source", std::string{"사용자 정의"});
+        item.source = value.value("source", std::string{});
         if (item.id.empty() || item.name.empty() || item.sample.empty()) {
             throw catalog_error(file, "id, name and sample must not be empty");
         }
@@ -78,7 +78,11 @@ void JsonLogCatalog::save(const std::filesystem::path& file, const std::span<con
         if (!identifiers.insert(item.id).second) {
             throw catalog_error(file, "duplicate id '" + item.id + "'");
         }
-        logs.push_back({{"id", item.id}, {"name", item.name}, {"sample", item.sample}, {"source", item.source}});
+        Json value{{"id", item.id}, {"name", item.name}, {"sample", item.sample}};
+        if (!item.source.empty()) {
+            value["source"] = item.source;
+        }
+        logs.push_back(std::move(value));
     }
     const Json root{{"schema_version", 1}, {"logs", std::move(logs)}};
     std::filesystem::create_directories(file.parent_path());

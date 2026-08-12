@@ -1,6 +1,7 @@
 // src/presentation/app.cpp
 #include "presentation/app.hpp"
 
+#include "application/privacy_anonymizer.hpp"
 #include "domain/generator_config.hpp"
 #include "presentation/ui_theme.hpp"
 
@@ -143,6 +144,24 @@ std::string sample_preview(const std::string_view sample) {
         result.append("...");
     }
     return result;
+}
+
+std::string catalog_search_text(const domain::LogTemplate& item, const application::LogTemplateAnalysis& analysis) {
+    std::string result;
+    result.reserve(item.name.size() + item.source.size() + item.sample.size() + 256);
+    result.append(item.name);
+    result.push_back(' ');
+    result.append(item.source);
+    result.push_back(' ');
+    result.append(item.sample);
+    for (const auto kind : application::privacy_token_kinds) {
+        if ((analysis.privacy_token_mask & application::privacy_token_bit(kind)) == 0) {
+            continue;
+        }
+        result.push_back(' ');
+        result.append(application::PrivacyAnonymizer::search_terms(kind));
+    }
+    return lowercase(std::move(result));
 }
 
 std::string path_to_utf8(const std::filesystem::path& path) {
@@ -369,10 +388,12 @@ void App::request_catalog_load() {
             result.search_names.reserve(result.items.size());
             result.previews.reserve(result.items.size());
             result.analyses.reserve(result.items.size());
-            for (const auto& item : result.items) {
-                result.search_names.push_back(lowercase(item.name));
+            for (auto& item : result.items) {
+                item.sample = application::PrivacyAnonymizer::sanitize(item.sample);
+                auto analysis = application::LogRenderer::analyze(item.sample);
+                result.search_names.push_back(catalog_search_text(item, analysis));
                 result.previews.push_back(sample_preview(item.sample));
-                result.analyses.push_back(application::LogRenderer::analyze(item.sample));
+                result.analyses.push_back(std::move(analysis));
             }
             logger_.info(std::format("Sample log catalog loaded: file={}, entries={}", path_to_utf8(file), result.items.size()));
         } catch (const std::exception& error) {
@@ -730,7 +751,7 @@ void App::render_catalog_selector() {
     ImGui::EndDisabled();
     ImGui::Separator();
     ImGui::SetNextItemWidth(-1.0F);
-    if (ImGui::InputTextWithHint("##search", "이름 / Parser 검색", search_.data(), search_.size())) {
+    if (ImGui::InputTextWithHint("##search", "이름 / 본문 / 개인정보 범주 검색", search_.data(), search_.size())) {
         rebuild_filter();
     }
     ImGui::Checkbox("검색 결과 전체 순환", &rotate_filtered_);
@@ -759,10 +780,13 @@ void App::render_catalog_selector() {
     if (!catalog_items_.empty()) {
         const auto preview_index = visible_catalog_index();
         const auto& sample = catalog_items_[preview_index];
-        disabled_wrapped_text(sample.source.c_str());
+        if (!sample.source.empty()) {
+            disabled_wrapped_text(sample.source.c_str());
+        }
         disabled_wrapped_text(catalog_previews_[preview_index].c_str());
         const auto& analysis = catalog_analyses_[preview_index];
         ImGui::TextDisabled("자동 인식: 시간 토큰 %zu개 | src_ip %zu개 | dst_ip %zu개", analysis.timestamp_count, analysis.source_ip_count, analysis.destination_ip_count);
+        ImGui::TextDisabled("개인정보 익명화 토큰 %zu개", analysis.privacy_token_count);
         if (!analysis.timestamp_styles.empty()) {
             ImGui::TextDisabled("날짜 포맷:");
             ImGui::SameLine();
@@ -812,6 +836,7 @@ void App::render_catalog_editor() {
         ImGui::TextUnformatted("자동 파싱 결과");
         ImGui::Separator();
         ImGui::Text("시간 토큰 %zu개 | src_ip %zu개 | dst_ip %zu개", editor_analysis_.timestamp_count, editor_analysis_.source_ip_count, editor_analysis_.destination_ip_count);
+        ImGui::Text("개인정보 익명화 토큰 %zu개", editor_analysis_.privacy_token_count);
         if (editor_analysis_pending_) {
             ImGui::SameLine();
             ImGui::TextDisabled("분석 대기...");
@@ -880,9 +905,8 @@ void App::save_catalog_editor() {
     if (editor_name_.empty() || editor_sample_.empty()) {
         return;
     }
-    if (editor_analysis_pending_) {
-        analyze_editor_sample();
-    }
+    editor_sample_ = application::PrivacyAnonymizer::sanitize(editor_sample_);
+    analyze_editor_sample();
     if (editor_is_new_) {
         const auto ticks = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         auto identifier = std::format("user-{:x}", static_cast<std::uint64_t>(ticks));
@@ -891,14 +915,14 @@ void App::save_catalog_editor() {
             identifier = std::format("user-{:x}-{}", static_cast<std::uint64_t>(ticks), ++suffix);
         }
         catalog_items_.push_back(domain::LogTemplate{std::move(identifier), editor_name_, editor_sample_, "사용자 정의"});
-        catalog_search_names_.push_back(lowercase(editor_name_));
+        catalog_search_names_.push_back(catalog_search_text(catalog_items_.back(), editor_analysis_));
         catalog_previews_.push_back(sample_preview(editor_sample_));
         catalog_analyses_.push_back(editor_analysis_);
         selected_log_ = catalog_items_.size() - 1;
     } else if (editor_index_ < catalog_items_.size()) {
         catalog_items_[editor_index_].name = editor_name_;
         catalog_items_[editor_index_].sample = editor_sample_;
-        catalog_search_names_[editor_index_] = lowercase(editor_name_);
+        catalog_search_names_[editor_index_] = catalog_search_text(catalog_items_[editor_index_], editor_analysis_);
         catalog_previews_[editor_index_] = sample_preview(editor_sample_);
         catalog_analyses_[editor_index_] = editor_analysis_;
         selected_log_ = editor_index_;

@@ -52,6 +52,7 @@ FetchContent_MakeAvailable(nlohmann_json)
 
 set(LOGGEN_CORE_SOURCES
     src/application/log_renderer.cpp
+    src/application/privacy_anonymizer.cpp
     src/application/stress_test_service.cpp
     src/infrastructure/async_file_logger.cpp
     src/infrastructure/file_transport.cpp
