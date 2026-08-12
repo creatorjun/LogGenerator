@@ -1,0 +1,10 @@
+# .gitignore
+/build/
+/out/
+/.vs/
+/.codex_xlsx_inspect/
+*.user
+*.suo
+*.VC.db
+*.VC.opendb
+*.log
