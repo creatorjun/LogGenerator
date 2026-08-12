@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <charconv>
 #include <cmath>
+#include <format>
 #include <limits>
 #include <stdexcept>
 #include <string_view>
@@ -79,8 +80,8 @@ std::size_t stream_batch_events(const std::uint64_t quota) {
 
 }
 
-StressTestService::StressTestService(const ITransportFactory& transport_factory)
-    : transport_factory_(transport_factory) {
+StressTestService::StressTestService(const ITransportFactory& transport_factory, ILogger& logger)
+    : transport_factory_(transport_factory), logger_(logger) {
 }
 
 StressTestService::~StressTestService() {
@@ -100,6 +101,14 @@ void StressTestService::start(domain::GeneratorConfig config) {
         config.worker_count = static_cast<std::uint32_t>(std::min<std::uint64_t>(config.worker_count, config.target_eps));
     }
     auto prepared = LogRenderer::prepare(config);
+    logger_.info(std::format(
+        "Stress test starting: protocol={}, endpoint={}:{}, workers={}, templates={}, target_eps={}",
+        domain::protocol_name(config.endpoint.protocol),
+        config.endpoint.host,
+        config.endpoint.port,
+        config.worker_count,
+        config.templates.size(),
+        config.target_eps == 0 ? std::string("unlimited") : std::to_string(config.target_eps)));
 
     std::scoped_lock lock(lifecycle_mutex_);
     total_messages_.store(0, std::memory_order_relaxed);
@@ -138,6 +147,11 @@ void StressTestService::stop() noexcept {
     workers_.clear();
     state_.store(domain::GeneratorState::Stopped, std::memory_order_release);
     current_eps_ = 0.0;
+    logger_.info(std::format(
+        "Stress test stopped: messages={}, bytes={}, errors={}",
+        total_messages_.load(std::memory_order_relaxed),
+        total_bytes_.load(std::memory_order_relaxed),
+        send_errors_.load(std::memory_order_relaxed)));
 }
 
 domain::TransmissionStats StressTestService::snapshot() {
@@ -191,6 +205,7 @@ void StressTestService::run_worker(domain::GeneratorConfig config, std::vector<P
         const auto ready = connected_workers_.fetch_add(1, std::memory_order_acq_rel) + 1;
         if (ready == worker_count && state_.load(std::memory_order_acquire) != domain::GeneratorState::Failed) {
             state_.store(domain::GeneratorState::Running, std::memory_order_release);
+            logger_.info(std::format("All {} workers connected", worker_count));
         }
 
         const auto quota = quota_for_worker(config.target_eps, worker_index, worker_count);
@@ -249,6 +264,7 @@ void StressTestService::run_worker(domain::GeneratorConfig config, std::vector<P
 }
 
 void StressTestService::publish_error(std::string message) noexcept {
+    logger_.error(std::format("Stress test failure: {}", message));
     {
         std::scoped_lock lock(error_mutex_);
         if (last_error_.empty()) {

@@ -14,6 +14,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <format>
 #include <limits>
 #include <stdexcept>
 #include <string_view>
@@ -133,8 +134,8 @@ std::string path_to_utf8(const std::filesystem::path& path) {
 
 }
 
-App::App(application::ILogCatalog& catalog, application::StressTestService& stress_service, std::filesystem::path sample_directory)
-    : catalog_(catalog), stress_service_(stress_service), sample_directory_(std::move(sample_directory)) {
+App::App(application::ILogCatalog& catalog, application::ILogger& logger, application::StressTestService& stress_service, std::filesystem::path sample_directory)
+    : catalog_(catalog), logger_(logger), stress_service_(stress_service), sample_directory_(std::move(sample_directory)) {
 }
 
 App::~App() {
@@ -143,6 +144,7 @@ App::~App() {
 }
 
 int App::run(const HINSTANCE instance, const int show_command) {
+    logger_.info("UI initialization started");
     ImGui_ImplWin32_EnableDpiAwareness();
     WNDCLASSEXW window_class{};
     window_class.cbSize = sizeof(window_class);
@@ -167,6 +169,7 @@ int App::run(const HINSTANCE instance, const int show_command) {
     d3d_.create(window_);
     initialize_imgui();
     load_catalog();
+    logger_.info("UI initialization completed");
     ShowWindow(window_, show_command);
     UpdateWindow(window_);
 
@@ -198,6 +201,7 @@ int App::run(const HINSTANCE instance, const int show_command) {
         DestroyWindow(window_);
     }
     UnregisterClassW(window_class.lpszClassName, instance);
+    logger_.info("UI event loop stopped");
     return static_cast<int>(message.wParam);
 }
 
@@ -283,9 +287,11 @@ void App::load_catalog() {
         catalog_items_ = catalog_.load(sample_directory_);
         selected_log_ = std::min(selected_log_, catalog_items_.empty() ? std::size_t{0} : catalog_items_.size() - 1);
         ui_error_.clear();
+        logger_.info(std::format("Sample log catalog loaded: directory={}, entries={}", path_to_utf8(sample_directory_), catalog_items_.size()));
     } catch (const std::exception& error) {
         catalog_items_.clear();
         ui_error_ = error.what();
+        logger_.error(std::format("Sample log catalog load failed: {}", error.what()));
     }
 }
 
@@ -508,6 +514,7 @@ void App::start_test() {
         ui_error_.clear();
     } catch (const std::exception& error) {
         ui_error_ = error.what();
+        logger_.warning(std::format("Stress test start rejected: {}", error.what()));
     }
 }
 

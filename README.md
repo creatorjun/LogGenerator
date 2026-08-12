@@ -18,18 +18,22 @@ LogGenerator/
 ├─ src/
 │  ├─ domain/
 │  │  ├─ generator_config.hpp
+│  │  ├─ log_level.hpp
 │  │  ├─ log_template.hpp
 │  │  ├─ protocol.hpp
 │  │  └─ transmission_stats.hpp
 │  ├─ application/
 │  │  ├─ ports/
 │  │  │  ├─ log_catalog.hpp
+│  │  │  ├─ logger.hpp
 │  │  │  └─ log_transport.hpp
 │  │  ├─ log_renderer.cpp
 │  │  ├─ log_renderer.hpp
 │  │  ├─ stress_test_service.cpp
 │  │  └─ stress_test_service.hpp
 │  ├─ infrastructure/
+│  │  ├─ async_file_logger.cpp
+│  │  ├─ async_file_logger.hpp
 │  │  ├─ excel_log_catalog.cpp
 │  │  ├─ excel_log_catalog.hpp
 │  │  ├─ schannel_transport.cpp
@@ -51,6 +55,7 @@ LogGenerator/
 │  │  └─ ui_theme.hpp
 │  └─ main.cpp
 └─ tests/
+   ├─ async_file_logger_tests.cpp
    ├─ excel_log_catalog_tests.cpp
    ├─ log_renderer_tests.cpp
    ├─ test_main.cpp
@@ -87,6 +92,18 @@ Python 런타임 의존성은 없으므로 `requirements.txt`에는 패키지가
 7. `전송 시작`을 누르고 현재 EPS, 평균 EPS, 총 로그 수, 총 바이트를 확인합니다.
 
 UDP 전송 통계는 수신 장비의 처리 성공이 아니라 로컬 Winsock `send` 완료를 기준으로 집계합니다. TCP/TLS는 지속 연결과 배치 전송을 사용합니다.
+
+## 애플리케이션 로그
+
+프로그램 자체의 실행 로그는 실행 파일 옆 `logs` 폴더에 UTF-8 텍스트로 저장됩니다.
+
+```text
+logs/LogGenerator_yyyyMMdd.log
+```
+
+파일 기록은 최대 8,192건의 제한된 큐와 전용 백그라운드 스레드를 사용합니다. 큐가 가득 차더라도 로그 전송 Worker를 대기시키지 않으며, 누락된 애플리케이션 로그 수는 다음 기록 시 경고로 남깁니다. 로그 파일은 1초 이내 주기로 flush되고 오류 및 정상 종료 시 즉시 flush됩니다.
+
+기록 대상은 프로그램 시작·종료, UI 초기화, Excel 카탈로그 로딩, 스트레스 테스트 설정과 시작·중지, Worker 연결 완료 및 전송 오류입니다. 개별 보안 로그 전송 성공은 최대 EPS를 훼손하지 않도록 애플리케이션 로그에 기록하지 않습니다.
 
 ## Excel 형식
 

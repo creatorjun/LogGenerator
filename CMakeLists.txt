@@ -58,6 +58,7 @@ FetchContent_MakeAvailable(openxlsx)
 set(LOGGEN_CORE_SOURCES
     src/application/log_renderer.cpp
     src/application/stress_test_service.cpp
+    src/infrastructure/async_file_logger.cpp
     src/infrastructure/excel_log_catalog.cpp
     src/infrastructure/schannel_transport.cpp
     src/infrastructure/tcp_transport.cpp
@@ -85,6 +86,7 @@ add_custom_command(TARGET LogGenerator POST_BUILD COMMAND ${CMAKE_COMMAND} -E co
 enable_testing()
 add_executable(LogGeneratorTests
     tests/test_main.cpp
+    tests/async_file_logger_tests.cpp
     tests/log_renderer_tests.cpp
     tests/excel_log_catalog_tests.cpp
 )

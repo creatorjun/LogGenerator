@@ -2,6 +2,7 @@
 #pragma once
 
 #include "application/ports/log_catalog.hpp"
+#include "application/ports/logger.hpp"
 #include "application/stress_test_service.hpp"
 #include "domain/log_template.hpp"
 #include "presentation/d3d11_context.hpp"
@@ -19,7 +20,7 @@ namespace loggen::presentation {
 
 class App {
 public:
-    App(application::ILogCatalog& catalog, application::StressTestService& stress_service, std::filesystem::path sample_directory);
+    App(application::ILogCatalog& catalog, application::ILogger& logger, application::StressTestService& stress_service, std::filesystem::path sample_directory);
     ~App();
 
     int run(HINSTANCE instance, int show_command);
@@ -39,6 +40,7 @@ private:
     [[nodiscard]] std::vector<std::size_t> filtered_indices() const;
 
     application::ILogCatalog& catalog_;
+    application::ILogger& logger_;
     application::StressTestService& stress_service_;
     std::filesystem::path sample_directory_;
     D3d11Context d3d_;
