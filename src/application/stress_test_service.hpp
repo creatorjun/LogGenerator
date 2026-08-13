@@ -50,7 +50,9 @@ private:
     std::atomic<std::uint32_t> connected_workers_{0};
     std::chrono::steady_clock::time_point started_at_{};
     std::chrono::steady_clock::time_point meter_at_{};
+    std::chrono::steady_clock::time_point meter_progress_at_{};
     std::uint64_t meter_messages_{0};
+    double meter_idle_seconds_{3.0};
     double current_eps_{0.0};
     std::string last_error_;
     std::string status_message_;

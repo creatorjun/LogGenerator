@@ -138,6 +138,35 @@ void run_stress_test_service_tests() {
     expect(stats.total_messages == transport_sends, std::format("Stress service message count is {}, transport count is {}", stats.total_messages, transport_sends));
     expect(stats.send_errors == 0, "Stress service reported an unexpected send error");
 
+    auto meter_state = std::make_shared<TransportState>();
+    meter_state->block_after = 2;
+    meter_state->datagram = false;
+    BlockingTransportFactory meter_factory{meter_state};
+    application::StressTestService meter_service{meter_factory, logger};
+    domain::GeneratorConfig meter_config;
+    meter_config.endpoint.protocol = domain::TransportProtocol::File;
+    meter_config.templates.push_back({"meter", "meter", "meter-event", "test"});
+    meter_service.start(std::move(meter_config));
+    {
+        std::unique_lock lock(meter_state->mutex);
+        expect(meter_state->condition.wait_for(lock, seconds{2}, [&meter_state] { return meter_state->payloads.size() >= 2; }), "FILE worker did not complete a batch before blocking");
+    }
+    std::this_thread::sleep_for(milliseconds{250});
+    const auto first_meter_stats = meter_service.snapshot();
+    expect(first_meter_stats.total_messages >= 256, "FILE batch totals were not published immediately");
+    expect(first_meter_stats.current_eps > 0.0, "FILE EPS did not capture a completed batch");
+    std::this_thread::sleep_for(milliseconds{250});
+    const auto held_meter_stats = meter_service.snapshot();
+    expect(held_meter_stats.current_eps > 0.0, "FILE EPS dropped to zero between completed batches");
+    meter_service.request_stop();
+    {
+        std::scoped_lock lock(meter_state->mutex);
+        meter_state->release_send = true;
+    }
+    meter_state->condition.notify_all();
+    meter_service.stop();
+    expect(meter_service.snapshot().current_eps == 0.0, "Stopped FILE service retained a current EPS value");
+
     auto range_state = std::make_shared<TransportState>();
     range_state->block_after = 4;
     BlockingTransportFactory range_factory{range_state};

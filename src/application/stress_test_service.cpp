@@ -235,7 +235,9 @@ void StressTestService::start(domain::GeneratorConfig config) {
         {
             std::scoped_lock meter_lock(meter_mutex_);
             meter_at_ = started_at_;
+            meter_progress_at_ = started_at_;
             meter_messages_ = 0;
+            meter_idle_seconds_ = 3.0;
             current_eps_ = 0.0;
         }
         state_.store(domain::GeneratorState::Connecting, std::memory_order_release);
@@ -305,9 +307,20 @@ domain::TransmissionStats StressTestService::snapshot() {
     {
         std::scoped_lock lock(meter_mutex_);
         const auto meter_seconds = std::chrono::duration<double>(now - meter_at_).count();
-        if (meter_seconds >= 0.2) {
+        if (result.total_messages < meter_messages_) {
+            meter_messages_ = result.total_messages;
+            meter_at_ = now;
+            meter_progress_at_ = now;
+            meter_idle_seconds_ = 3.0;
+            current_eps_ = 0.0;
+        } else if (result.total_messages > meter_messages_ && meter_seconds >= 0.2) {
             current_eps_ = static_cast<double>(result.total_messages - meter_messages_) / meter_seconds;
             meter_messages_ = result.total_messages;
+            meter_at_ = now;
+            meter_progress_at_ = now;
+            meter_idle_seconds_ = std::max(3.0, meter_seconds * 3.0);
+        } else if (result.total_messages == meter_messages_ && current_eps_ > 0.0 && std::chrono::duration<double>(now - meter_progress_at_).count() >= meter_idle_seconds_) {
+            current_eps_ = 0.0;
             meter_at_ = now;
         }
         result.current_eps = result.state == domain::GeneratorState::Running ? current_eps_ : 0.0;
@@ -463,7 +476,7 @@ void StressTestService::run_worker(domain::EndpointConfig endpoint, const domain
                 }
                 local_messages += events;
                 local_bytes += batch.size();
-                if (local_messages >= 1024) {
+                if (endpoint.protocol == domain::TransportProtocol::File || local_messages >= 1024) {
                     flush();
                 }
             }
