@@ -7,6 +7,7 @@
 #include <Windows.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <regex>
@@ -32,7 +33,7 @@ void run_file_transport_tests() {
         transport->connect(endpoint);
         expect(!transport->is_datagram(), "FILE transport must use batched stream writes");
         for (std::size_t index = 0; index < payload_count; ++index) {
-            transport->send(payload);
+            expect(transport->send(payload) == application::SendResult::Sent, "FILE transport stopped before its configured limits");
         }
     }
 
@@ -57,6 +58,47 @@ void run_file_transport_tests() {
     }
     expect(total_size == payload_size * payload_count, "FILE transport lost generated log bytes");
     expect(domain::protocol_name(domain::TransportProtocol::File) == "FILE", "FILE protocol name is incorrect");
+
+    const auto limit_directory = directory / "limits";
+    {
+        infrastructure::FileTransport transport{limit_directory / "bytes"};
+        domain::EndpointConfig endpoint;
+        endpoint.protocol = domain::TransportProtocol::File;
+        endpoint.file_max_total_bytes = 100 * 1024;
+        endpoint.file_max_count = 0;
+        endpoint.file_max_duration = std::chrono::milliseconds{0};
+        transport.connect(endpoint);
+        expect(transport.send(payload) == application::SendResult::Sent, "FILE total byte limit rejected a fitting payload");
+        expect(transport.send(payload) == application::SendResult::TotalBytesLimitReached, "FILE total byte limit was not enforced");
+    }
+    {
+        infrastructure::FileTransport transport{limit_directory / "files"};
+        domain::EndpointConfig endpoint;
+        endpoint.protocol = domain::TransportProtocol::File;
+        endpoint.file_max_total_bytes = 0;
+        endpoint.file_max_count = 1;
+        endpoint.file_max_duration = std::chrono::milliseconds{0};
+        transport.connect(endpoint);
+        for (std::size_t index = 0; index < 18; ++index) {
+            const auto result = transport.send(payload);
+            if (index < 18 - 1) {
+                expect(result == application::SendResult::Sent, "FILE count limit stopped before the first slice was full");
+            } else {
+                expect(result == application::SendResult::FileCountLimitReached, "FILE count limit was not enforced");
+            }
+        }
+    }
+    {
+        infrastructure::FileTransport transport{limit_directory / "duration"};
+        domain::EndpointConfig endpoint;
+        endpoint.protocol = domain::TransportProtocol::File;
+        endpoint.file_max_total_bytes = 0;
+        endpoint.file_max_count = 0;
+        endpoint.file_max_duration = std::chrono::milliseconds{1};
+        transport.connect(endpoint);
+        Sleep(5);
+        expect(transport.send(payload) == application::SendResult::DurationLimitReached, "FILE duration limit was not enforced");
+    }
     std::filesystem::remove_all(directory, cleanup_error);
 }
 

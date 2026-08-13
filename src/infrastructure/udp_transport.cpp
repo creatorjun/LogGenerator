@@ -16,7 +16,7 @@ void UdpTransport::connect(const domain::EndpointConfig& endpoint) {
     WSAIoctl(socket_.get(), SIO_UDP_CONNRESET, &disabled, sizeof(disabled), nullptr, 0, &returned, nullptr, nullptr);
 }
 
-void UdpTransport::send(const std::string_view payload) {
+application::SendResult UdpTransport::send(const std::string_view payload) {
     if (payload.size() > 65'507) {
         throw std::runtime_error("UDP payload exceeds 65,507 bytes");
     }
@@ -27,6 +27,7 @@ void UdpTransport::send(const std::string_view payload) {
     if (sent != static_cast<int>(payload.size())) {
         throw std::runtime_error("UDP send was incomplete");
     }
+    return application::SendResult::Sent;
 }
 
 bool UdpTransport::is_datagram() const noexcept {

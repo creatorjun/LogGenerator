@@ -34,8 +34,11 @@ void run_async_file_logger_tests() {
     }
     expect(file_count == 1, "Expected one daily application log file");
 
-    std::ifstream input(log_file, std::ios::binary);
-    const std::string contents{std::istreambuf_iterator<char>{input}, std::istreambuf_iterator<char>{}};
+    std::string contents;
+    {
+        std::ifstream input(log_file, std::ios::binary);
+        contents.assign(std::istreambuf_iterator<char>{input}, std::istreambuf_iterator<char>{});
+    }
     expect(contents.find("[INFO]") != std::string::npos, "Info log level is missing");
     expect(contents.find("[WARN]") != std::string::npos, "Warning log level is missing");
     expect(contents.find("[ERROR]") != std::string::npos, "Error log level is missing");
@@ -44,6 +47,7 @@ void run_async_file_logger_tests() {
     expect(contents.find("sample failure") != std::string::npos, "Error log message is missing");
 
     std::filesystem::remove_all(directory, cleanup_error);
+    expect(!cleanup_error, "Application logger test directory cleanup failed");
 }
 
 }

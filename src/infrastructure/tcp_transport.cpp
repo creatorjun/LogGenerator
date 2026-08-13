@@ -17,8 +17,9 @@ void TcpTransport::connect(const domain::EndpointConfig& endpoint) {
     setsockopt(socket_.get(), SOL_SOCKET, SO_KEEPALIVE, reinterpret_cast<const char*>(&enabled), sizeof(enabled));
 }
 
-void TcpTransport::send(const std::string_view payload) {
+application::SendResult TcpTransport::send(const std::string_view payload) {
     send_all(socket_.get(), payload);
+    return application::SendResult::Sent;
 }
 
 bool TcpTransport::is_datagram() const noexcept {

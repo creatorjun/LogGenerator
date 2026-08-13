@@ -16,7 +16,7 @@ public:
     SchannelTransport& operator=(const SchannelTransport&) = delete;
 
     void connect(const domain::EndpointConfig& endpoint) override;
-    void send(std::string_view payload) override;
+    [[nodiscard]] application::SendResult send(std::string_view payload) override;
     [[nodiscard]] bool is_datagram() const noexcept override;
 
 private:

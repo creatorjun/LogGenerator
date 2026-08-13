@@ -6,6 +6,7 @@
 #include <Windows.h>
 
 #include <cstddef>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -23,7 +24,7 @@ public:
     FileTransport& operator=(const FileTransport&) = delete;
 
     void connect(const domain::EndpointConfig& endpoint) override;
-    void send(std::string_view payload) override;
+    [[nodiscard]] application::SendResult send(std::string_view payload) override;
     [[nodiscard]] bool is_datagram() const noexcept override;
 
 private:
@@ -36,6 +37,11 @@ private:
     std::wstring timestamp_;
     std::uint32_t slice_index_{0};
     std::uint64_t current_size_{0};
+    std::uint64_t total_size_{0};
+    std::uint64_t max_total_bytes_{0};
+    std::uint32_t max_file_count_{0};
+    std::chrono::milliseconds max_duration_{0};
+    std::chrono::steady_clock::time_point started_at_{};
 };
 
 }

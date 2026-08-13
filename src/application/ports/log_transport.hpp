@@ -8,11 +8,18 @@
 
 namespace loggen::application {
 
+enum class SendResult {
+    Sent,
+    TotalBytesLimitReached,
+    FileCountLimitReached,
+    DurationLimitReached
+};
+
 class ILogTransport {
 public:
     virtual ~ILogTransport() = default;
     virtual void connect(const domain::EndpointConfig& endpoint) = 0;
-    virtual void send(std::string_view payload) = 0;
+    [[nodiscard]] virtual SendResult send(std::string_view payload) = 0;
     [[nodiscard]] virtual bool is_datagram() const noexcept = 0;
 };
 

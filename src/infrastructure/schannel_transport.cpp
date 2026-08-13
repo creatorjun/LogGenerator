@@ -210,8 +210,9 @@ void SchannelTransport::connect(const domain::EndpointConfig& endpoint) {
     impl_->handshake(utf8_to_wide(identity), endpoint.verify_certificate);
 }
 
-void SchannelTransport::send(const std::string_view payload) {
+application::SendResult SchannelTransport::send(const std::string_view payload) {
     impl_->send_encrypted(payload);
+    return application::SendResult::Sent;
 }
 
 bool SchannelTransport::is_datagram() const noexcept {

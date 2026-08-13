@@ -103,10 +103,10 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 1. UDP, TCP, TLS, FILE 중 실행 방식을 선택합니다. 네트워크 방식만 대상 IP 또는 Host, Port를 입력합니다.
 2. TCP/TLS에서는 Newline 또는 RFC 6587 Octet Counting 프레이밍을 선택합니다.
 3. TLS 인증서 이름이 대상 IP와 다르면 `TLS 서버 이름`을 입력합니다.
-4. 샘플 이름·본문·개인정보 범주를 검색하고 단일 로그 또는 검색 결과 전체 순환을 선택합니다. `이름`, `계정`, `부서`, `호스트`, `IP` 같은 범주 검색어도 사용할 수 있습니다.
+4. 샘플 이름·본문·개인정보 범주를 검색하고 기본 단일 로그 또는 선택적인 검색 결과 전체 순환을 선택합니다. `이름`, `계정`, `부서`, `호스트`, `IP` 같은 범주 검색어도 사용할 수 있습니다.
 5. `추가`, `수정`, `삭제`로 샘플을 편집합니다. 저장 시 인식된 개인정보는 익명화 토큰으로 바뀌고 JSON 카탈로그에 즉시 반영됩니다.
 6. `src_ip`, `dst_ip`를 지정하고 `현재 시간 + 오프셋` 또는 `기간 지정` 날짜 생성 방식을 선택합니다.
-7. Worker 수와 목표 EPS를 설정합니다. 목표 EPS가 0이면 제한 없는 최대 성능 모드입니다.
+7. Worker 수와 목표 EPS를 설정합니다. 목표 EPS가 0이면 제한 없는 최대 성능 모드입니다. FILE에서는 총 생성량·파일 개수·실행 시간 안전 제한을 함께 설정합니다.
 8. `전송 시작`을 누르고 현재 EPS, 평균 EPS, 총 로그 수, 총 바이트를 확인합니다. FILE에서는 각각 파일 기록 완료 EPS, 로그 수, 바이트입니다.
 
 UDP 통계는 수신 장비의 처리 성공이 아니라 로컬 Winsock `send` 완료를 기준으로 집계합니다. TCP/TLS는 지속 연결과 최대 256 KiB 배치 전송을 사용합니다. FILE은 소켓이나 네트워크 전송 객체를 만들지 않고 실행 파일 옆 `generated` 폴더에만 기록하며 별도 어댑터가 해당 파일을 수집할 수 있습니다. `전송 중지`는 UI 스레드에서 종료를 기다리지 않고 즉시 중지 요청만 전달합니다.
@@ -126,7 +126,7 @@ generated/20260812_173245_123.log
 generated/20260812_173245_123_0002.log
 ```
 
-각 파일은 배치 경계를 유지하면서 약 1 MiB 단위로 회전합니다. 로그 이벤트 중간 절단을 피하기 때문에 파일 크기는 1 MiB보다 조금 작을 수 있습니다. FILE은 디스크 순차 처리량과 생성 순서를 유지하기 위해 Worker를 단일 writer로 고정하며 목표 EPS 설정은 동일하게 적용됩니다.
+각 파일은 배치 경계를 유지하면서 약 1 MiB 단위로 회전합니다. 로그 이벤트 중간 절단을 피하기 때문에 파일 크기는 1 MiB보다 조금 작을 수 있습니다. FILE은 디스크 순차 처리량과 생성 순서를 유지하기 위해 Worker를 단일 writer로 고정하며 목표 EPS 설정은 동일하게 적용됩니다. 기본 안전 제한은 총 512 MiB, 512개, 60초이며 먼저 도달한 제한에서 오류 없이 정상 종료합니다. 각 입력값을 0으로 지정하면 해당 제한만 해제됩니다.
 
 ## JSON 샘플 카탈로그
 
@@ -153,11 +153,13 @@ generated/20260812_173245_123_0002.log
 
 회사 문자열은 대소문자 구분 없이 긴 문자열부터 `lottermart → Your-Company`, `lotte → Your`, `mart → company` 순서로 치환합니다. 필드명으로 사람, 점포, 계정, 사번, 부서, 조직, 이메일, 전화번호, 주소, 일반 IP, MAC, 호스트, 식별자, 비밀값, 파일 경로를 판별합니다. 이메일·전화번호·주민등록번호 형태·MAC·Windows 사용자 경로는 필드명이 없어도 보조 패턴으로 제거합니다.
 
-카탈로그에는 `{{PERSON}}`, `{{STORE}}`, `{{USER_ID}}`, `{{EMPLOYEE_ID}}`, `{{DEPARTMENT}}`, `{{EMAIL}}` 등의 토큰을 저장합니다. 프로그램은 시작 시 50개의 연관된 합성 프로필을 한 번만 준비합니다. 로그 한 건마다 프로필 하나를 선택하므로 같은 이벤트의 계정·성명·부서·호스트·IP는 모두 같은 프로필 번호를 공유합니다.
+카탈로그에는 `{{PERSON}}`, `{{STORE}}`, `{{STORE_CODE}}`, `{{USER_ID}}`, `{{EMPLOYEE_ID}}`, `{{DEPARTMENT}}`, `{{EMAIL}}` 등의 토큰을 저장합니다. 점포 표시명과 숫자 코드 필드를 구분하므로 SQL과 숫자 필드에 `호점` 문자열이 삽입되지 않습니다. 프로그램은 시작 시 50개의 연관된 합성 프로필을 한 번만 준비합니다. 로그 한 건마다 프로필 하나를 선택하므로 같은 이벤트의 계정·성명·부서·호스트·IP는 모두 같은 프로필 번호를 공유합니다.
 
 - 사람 이름: `홍길동 1` ~ `홍길동 50`
 - 점포명: `1호점` ~ `50호점`
+- 점포 코드: `1` ~ `50`
 - 계정·사번·부서·이메일·전화·호스트 등: 종류별 테스트 전용 합성값
+- 파일 경로: JSON에서도 별도 escape 없이 안전한 `C:/Test/file-N.log`
 - 일반 개인정보 IP: 문서용 대역 `198.51.100.1` ~ `198.51.100.50`
 - 소스·목적지 IP: `{{SRC_IP}}`, `{{DST_IP}}`를 UI에 입력한 값으로 치환
 
@@ -174,12 +176,12 @@ UI에서 새 샘플을 저장하거나 기존 샘플을 수정해도 같은 필�
 
 지원 시간 형식은 다음과 같습니다.
 
-- ISO 8601 및 Year First: `yyyy-MM-dd HH:mm:ss`, `yyyy/MM/ddTHH:mm:ss`, 소수초, `Z`, `+09:00`
+- ISO 8601 및 Year First: `yyyy-MM-dd HH:mm:ss`, `yyyy-MM-dd H:mm`, `yyyy/MM/ddTHH:mm:ss`, 소수초, `Z`, `+09:00`
 - Syslog: `MMM dd HH:mm:ss`, `MMM dd HH:mm:ss yyyy`
 - Month First: `MMM dd yyyy HH:mm:ss`, 선택적 `GMT` 또는 `UTC`
 - Apache: `dd/MMM/yyyy:HH:mm:ss +0900`
-- Compact: `yyyyMMddHHmmss`
-- 분리 필드: `date=yyyy-MM-dd` 또는 `date=yyyy/MM/dd`, `time=HH:mm:ss[.fraction]`
+- Compact: `yyyyMMddHHmmss`, `yyyyMMddTHHmmss[.fraction]`, 파일명의 `yyyyMMdd`와 `yyyyMM`, 필드형 `HHmmss`
+- 분리 필드: 모든 `yyyy-MM-dd` 또는 `yyyy/MM/dd`, `yyyy-MM`, `time=HH:mm:ss[.fraction]`
 
 소스 IP는 `src`, `srcip`, `src_ip`, `srp_ip`, `src-ip`, `srcaddr`, `source_ip`, `source-address`, `clientip`, `clientipaddr`, `sip` 계열을 인식합니다. 목적지 IP는 `dst`, `dstip`, `dst_ip`, `dest_ip`, `dstn_ip`, `dstaddr`, `destination_ip`, `destination-address`, `server_ip`, `dip` 계열을 인식합니다. `IP:Port -> IP:Port` 형식도 소스와 목적지로 자동 인식합니다.
 
@@ -211,7 +213,7 @@ logs/LogGenerator_yyyyMMdd.log
 - Worker별 독립 소켓과 연결로 전송 경로의 전역 잠금을 제거합니다.
 - UDP는 connected socket과 4 MiB 송신 버퍼를 사용합니다.
 - TCP/TLS는 최대 256 KiB 단위로 여러 로그를 배치합니다.
-- FILE은 최대 64 KiB 배치와 단일 순차 writer로 약 1 MiB 회전 파일을 생성합니다.
+- FILE은 최대 64 KiB 배치와 단일 순차 writer로 약 1 MiB 회전 파일을 생성하고 배치 기록 전에 총량·개수·시간 제한을 검사합니다.
 - 정적 로그는 완성 문자열을 재사용하고 시간 포함 로그는 초 단위 결과를 캐시합니다. 개인정보 토큰은 정규식을 반복 실행하지 않으며 이벤트당 PRNG를 한 번만 호출한 뒤 50개 사전 생성 프로필의 문자열을 바로 추가합니다.
 - 고속 UDP의 시스템 시각 조회는 256건 단위로 줄이고 통계는 Worker 로컬 누적 후 일괄 반영합니다.
 - TLS 암호화 버퍼는 재사용하며 DirectX 11 Flip Model 스왑 체인을 사용합니다.

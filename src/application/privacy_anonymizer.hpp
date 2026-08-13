@@ -13,6 +13,7 @@ enum class PrivacyTokenKind : std::uint8_t {
     None,
     Person,
     Store,
+    StoreCode,
     UserId,
     EmployeeId,
     Department,
@@ -31,6 +32,7 @@ enum class PrivacyTokenKind : std::uint8_t {
 inline constexpr std::array privacy_token_kinds{
     PrivacyTokenKind::Person,
     PrivacyTokenKind::Store,
+    PrivacyTokenKind::StoreCode,
     PrivacyTokenKind::UserId,
     PrivacyTokenKind::EmployeeId,
     PrivacyTokenKind::Department,

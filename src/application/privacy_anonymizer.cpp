@@ -14,6 +14,7 @@ namespace {
 struct SyntheticProfile {
     std::string person;
     std::string store;
+    std::string store_code;
     std::string user_id;
     std::string employee_id;
     std::string department;
@@ -39,6 +40,8 @@ std::array<SyntheticProfile, PrivacyAnonymizer::synthetic_profile_count> make_pr
         profile.person = buffer;
         std::snprintf(buffer, sizeof(buffer), "%u호점", number);
         profile.store = buffer;
+        std::snprintf(buffer, sizeof(buffer), "%u", number);
+        profile.store_code = buffer;
         std::snprintf(buffer, sizeof(buffer), "user%u", number);
         profile.user_id = buffer;
         std::snprintf(buffer, sizeof(buffer), "EMP%04u", number);
@@ -62,7 +65,7 @@ std::array<SyntheticProfile, PrivacyAnonymizer::synthetic_profile_count> make_pr
         profile.identifier = buffer;
         std::snprintf(buffer, sizeof(buffer), "secret-%04u", number);
         profile.secret = buffer;
-        std::snprintf(buffer, sizeof(buffer), "C:\\Test\\file-%u.log", number);
+        std::snprintf(buffer, sizeof(buffer), "C:/Test/file-%u.log", number);
         profile.file_path = buffer;
     }
     return result;
@@ -119,6 +122,13 @@ const std::regex& assigned_field_pattern() {
     static const std::regex pattern(
         R"privacy(((?:^|[\s,;|{])["']?([A-Za-z_][A-Za-z0-9_.-]{0,63})["']?\s*[:=]\s*)(?:"([^"]*)"|'([^']*)'|([^\s,;|}\]]+)))privacy",
         std::regex::ECMAScript | std::regex::optimize);
+    return pattern;
+}
+
+const std::regex& legacy_store_code_pattern() {
+    static const std::regex pattern(
+        R"(((?:\b(?:store_code|branch_code|shop_code|site_num|site_code|site_cd|str_cd|bizpl_cd))\s*[:=]\s*["']?)\{\{STORE\}\})",
+        std::regex::ECMAScript | std::regex::icase | std::regex::optimize);
     return pattern;
 }
 
@@ -182,6 +192,7 @@ std::string PrivacyAnonymizer::sanitize(const std::string_view sample) {
     replace_ascii_case_insensitive(result, "lottemart", "Your-Company");
     replace_ascii_case_insensitive(result, "lotte", "Your");
     replace_ascii_case_insensitive(result, "mart", "company");
+    result = std::regex_replace(result, legacy_store_code_pattern(), "$1{{STORE_CODE}}");
     result = replace_sensitive_fields(result);
 
     static const std::regex email_pattern(R"(\b[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\b)", std::regex::ECMAScript | std::regex::optimize);
@@ -215,7 +226,10 @@ PrivacyTokenKind PrivacyAnonymizer::classify_field(const std::string_view field_
     if (equals_any(field, {"src", "srcip", "src_ip", "srp_ip", "srcaddr", "src_addr", "srcaddress", "src_address", "sourceip", "source_ip", "sourceaddress", "source_address", "clientip", "client_ip", "clientipaddr", "sip", "dst", "dstip", "dst_ip", "dest_ip", "dstnip", "dstn_ip", "dstaddr", "dst_addr", "dstaddress", "dst_address", "destinationip", "destination_ip", "destinationaddress", "destination_address", "serverip", "server_ip", "dip"})) {
         return PrivacyTokenKind::None;
     }
-    if (contains_any(field, {"store", "branch", "shop", "site_name", "site_nm", "site_num", "str_nm", "str_cd", "bizpl"})) {
+    if (contains_any(field, {"store_code", "branch_code", "shop_code", "site_num", "site_code", "site_cd", "str_cd", "bizpl_cd"})) {
+        return PrivacyTokenKind::StoreCode;
+    }
+    if (contains_any(field, {"store", "branch", "shop", "site_name", "site_nm", "str_nm", "bizpl"})) {
         return PrivacyTokenKind::Store;
     }
     if (field == "name" || contains_any(field, {"user_name", "user_nm", "emp_name", "emp_nm", "employee_name", "person_name", "customer_name", "customer_nm", "cust_name", "cust_nm", "member_name", "member_nm", "client_name", "manager_name", "manager_nm", "mgr_name", "mgr_nm", "operator_name", "admin_name", "requester_name", "approver_name", "owner_name", "suser_name", "duser_name", "first_name", "firstname", "last_name", "lastname", "full_name", "fullname", "given_name", "family_name", "srcnm", "dstnm"})) {
@@ -245,7 +259,7 @@ PrivacyTokenKind PrivacyAnonymizer::classify_field(const std::string_view field_
     if (contains_any(field, {"company", "corporate", "organization", "org_name", "org_nm", "com_name"})) {
         return PrivacyTokenKind::Organization;
     }
-    if (equals_any(field, {"suser", "duser"}) || contains_any(field, {"username", "user_id", "userid", "login_id", "loginid", "account", "suser_id", "duser_id", "chakra_user_id", "manager_id", "mgr_id", "decide_mgr_id"})) {
+    if (equals_any(field, {"suser", "duser", "srcid", "src_id"}) || contains_any(field, {"username", "user_id", "userid", "login_id", "loginid", "account", "suser_id", "duser_id", "chakra_user_id", "manager_id", "mgr_id", "decide_mgr_id"})) {
         return PrivacyTokenKind::UserId;
     }
     if (contains_any(field, {"emp_id", "employee_id", "empno", "emp_no", "employee_no"})) {
@@ -257,7 +271,7 @@ PrivacyTokenKind PrivacyAnonymizer::classify_field(const std::string_view field_
     if (field == "path" || contains_any(field, {"file_path", "filepath", "filename", "file_name", "origin_filename", "install_location", "application_path", "directory", "folder"})) {
         return PrivacyTokenKind::FilePath;
     }
-    if (contains_any(field, {"resident", "rrn", "ssn", "passport", "card_no", "card_number", "customer_id", "customer_no", "cust_id", "cust_no", "member_id", "member_no", "birth", "birthday", "date_of_birth", "dob", "vehicle_no", "car_no", "license_no", "uuid", "guid", "session_id", "sessionid", "user_num", "client_num", "dept_num", "personal_id", "user_info", "user_key_id"}) || field == "_uid" || field == "uid") {
+    if (contains_any(field, {"resident", "rrn", "ssn", "passport", "card_no", "card_number", "customer_id", "customer_no", "cust_id", "cust_no", "member_id", "member_no", "birth", "birthday", "date_of_birth", "dob", "vehicle_no", "car_no", "license_no", "uuid", "guid", "session_id", "sessionid", "user_num", "client_num", "dept_num", "personal_id", "user_info", "user_key_id", "dstid", "dst_id", "srcgrpid", "src_grp_id", "dstgrpid", "dst_grp_id"}) || field == "_uid" || field == "uid") {
         return PrivacyTokenKind::Identifier;
     }
     return PrivacyTokenKind::None;
@@ -269,6 +283,8 @@ std::string_view PrivacyAnonymizer::marker(const PrivacyTokenKind kind) noexcept
         return "{{PERSON}}";
     case PrivacyTokenKind::Store:
         return "{{STORE}}";
+    case PrivacyTokenKind::StoreCode:
+        return "{{STORE_CODE}}";
     case PrivacyTokenKind::UserId:
         return "{{USER_ID}}";
     case PrivacyTokenKind::EmployeeId:
@@ -317,6 +333,8 @@ std::string_view PrivacyAnonymizer::synthetic_value(const PrivacyTokenKind kind,
         return profile.person;
     case PrivacyTokenKind::Store:
         return profile.store;
+    case PrivacyTokenKind::StoreCode:
+        return profile.store_code;
     case PrivacyTokenKind::UserId:
         return profile.user_id;
     case PrivacyTokenKind::EmployeeId:
@@ -355,6 +373,8 @@ std::string_view PrivacyAnonymizer::search_terms(const PrivacyTokenKind kind) no
         return "person name user_name user_nm emp_nm 성명 이름 사람";
     case PrivacyTokenKind::Store:
         return "store branch shop site str_nm 점포 지점 매장 호점";
+    case PrivacyTokenKind::StoreCode:
+        return "store_code branch_code site_num str_cd bizpl_cd 점포코드 매장코드 지점코드";
     case PrivacyTokenKind::UserId:
         return "user account login id 계정 사용자 아이디";
     case PrivacyTokenKind::EmployeeId:

@@ -585,8 +585,10 @@ void App::render_configuration(const domain::TransmissionStats& stats, const Res
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0F, 0.38F, 0.40F, 1.0F));
         ImGui::TextWrapped("%s", ui_error_.c_str());
         ImGui::PopStyleColor();
+    } else if (!stats.status_message.empty()) {
+        ImGui::TextColored(ImVec4(0.24F, 0.84F, 0.53F, 1.0F), "%s", stats.status_message.c_str());
     } else if (protocol_index_ == static_cast<int>(domain::TransportProtocol::File)) {
-        disabled_wrapped_text("FILE은 실행 파일 옆 generated 폴더에 약 1 MiB 단위로 분할 저장합니다.");
+        disabled_wrapped_text("FILE은 generated 폴더에 약 1 MiB 단위로 분할 저장하며 설정한 안전 제한에 도달하면 정상 종료합니다.");
     } else {
         disabled_wrapped_text("UDP 통계는 로컬 소켓 전송 완료를 기준으로 집계합니다.");
     }
@@ -607,6 +609,16 @@ void App::render_destination_panel() {
         ImGui::TextDisabled("저장 폴더");
         disabled_wrapped_text(path_to_utf8(generated_directory_).c_str());
         disabled_wrapped_text("파일명: yyyyMMdd_HHmmss_SSS.log");
+        ImGui::TextDisabled("최대 총 생성량 (MiB)");
+        ImGui::SetNextItemWidth(-1.0F);
+        ImGui::InputScalar("##file_max_total_mib", ImGuiDataType_U64, &file_max_total_mib_);
+        ImGui::TextDisabled("최대 파일 개수");
+        ImGui::SetNextItemWidth(-1.0F);
+        ImGui::InputInt("##file_max_count", &file_max_count_, 0, 0);
+        ImGui::TextDisabled("최대 실행 시간 (초)");
+        ImGui::SetNextItemWidth(-1.0F);
+        ImGui::InputInt("##file_max_duration", &file_max_duration_seconds_, 0, 0);
+        disabled_wrapped_text("각 제한에서 0은 무제한입니다. 기본값은 512 MiB / 512개 / 60초입니다.");
     } else {
         ImGui::TextDisabled("대상 IP / Host");
         ImGui::SetNextItemWidth(-1.0F);
@@ -978,6 +990,18 @@ void App::start_test() {
         config.endpoint.framing = static_cast<domain::StreamFraming>(framing_index_);
         config.endpoint.tls_server_name = tls_server_name_.data();
         config.endpoint.verify_certificate = verify_certificate_;
+        if (protocol == domain::TransportProtocol::File) {
+            if (file_max_count_ < 0 || file_max_duration_seconds_ < 0) {
+                throw std::invalid_argument("FILE 생성 제한은 0 이상의 값이어야 합니다.");
+            }
+            constexpr std::uint64_t bytes_per_mib = 1024ULL * 1024ULL;
+            if (file_max_total_mib_ > std::numeric_limits<std::uint64_t>::max() / bytes_per_mib) {
+                throw std::invalid_argument("FILE 최대 총 생성량이 너무 큽니다.");
+            }
+            config.endpoint.file_max_total_bytes = file_max_total_mib_ * bytes_per_mib;
+            config.endpoint.file_max_count = static_cast<std::uint32_t>(file_max_count_);
+            config.endpoint.file_max_duration = std::chrono::seconds{file_max_duration_seconds_};
+        }
         config.source_ip = source_ip_.data();
         config.destination_ip = destination_ip_.data();
         config.timestamp_generation.mode = static_cast<domain::TimestampGenerationMode>(timestamp_mode_index_);

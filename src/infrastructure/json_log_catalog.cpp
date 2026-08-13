@@ -5,6 +5,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <atomic>
 #include <fstream>
 #include <stdexcept>
 #include <string>
@@ -24,6 +25,33 @@ std::string required_text(const Json& value, const char* key, const std::filesys
         throw catalog_error(file, std::string("missing string field '") + key + "'");
     }
     return value[key].get<std::string>();
+}
+
+std::filesystem::path temporary_path_for(const std::filesystem::path& file) {
+    static std::atomic_uint64_t sequence{0};
+    auto temporary = file;
+    temporary += L".tmp." + std::to_wstring(GetCurrentProcessId()) + L"." + std::to_wstring(sequence.fetch_add(1, std::memory_order_relaxed));
+    return temporary;
+}
+
+bool replace_file_with_retry(const std::filesystem::path& source, const std::filesystem::path& destination, DWORD& final_error) {
+    constexpr DWORD retryable_errors[]{ERROR_ACCESS_DENIED, ERROR_SHARING_VIOLATION, ERROR_LOCK_VIOLATION};
+    for (DWORD attempt = 0; attempt < 7; ++attempt) {
+        if (MoveFileExW(source.c_str(), destination.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+            final_error = ERROR_SUCCESS;
+            return true;
+        }
+        final_error = GetLastError();
+        bool retryable = false;
+        for (const auto error : retryable_errors) {
+            retryable = retryable || final_error == error;
+        }
+        if (!retryable || attempt == 6) {
+            return false;
+        }
+        Sleep(1U << attempt);
+    }
+    return false;
 }
 
 }
@@ -86,8 +114,7 @@ void JsonLogCatalog::save(const std::filesystem::path& file, const std::span<con
     }
     const Json root{{"schema_version", 1}, {"logs", std::move(logs)}};
     std::filesystem::create_directories(file.parent_path());
-    auto temporary = file;
-    temporary += L".tmp";
+    const auto temporary = temporary_path_for(file);
     {
         std::ofstream output(temporary, std::ios::binary | std::ios::trunc);
         if (!output) {
@@ -99,8 +126,8 @@ void JsonLogCatalog::save(const std::filesystem::path& file, const std::span<con
             throw catalog_error(file, "temporary file write failed");
         }
     }
-    if (!MoveFileExW(temporary.c_str(), file.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-        const auto error = GetLastError();
+    DWORD error = ERROR_SUCCESS;
+    if (!replace_file_with_retry(temporary, file, error)) {
         std::error_code cleanup_error;
         std::filesystem::remove(temporary, cleanup_error);
         throw catalog_error(file, "atomic replacement failed (" + std::to_string(error) + ")");

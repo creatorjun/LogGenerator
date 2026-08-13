@@ -4,6 +4,8 @@
 #include "application/log_renderer.hpp"
 #include "application/privacy_anonymizer.hpp"
 
+#include <nlohmann/json.hpp>
+
 #include <chrono>
 #include <cstdio>
 #include <ctime>
@@ -90,16 +92,30 @@ void run_log_renderer_tests() {
     expect(separated_result.find("src-ip=198.51.100.1") != std::string::npos, "Hyphenated source IP replacement failed");
     expect(separated_result.find("destination-address=198.51.100.2") != std::string::npos, "Hyphenated destination IP replacement failed");
 
+    auto extended_dates = application::LogRenderer::prepare_one(
+        "minute=2025-12-03 1:17 file=20260224__transaction monthly=202512_archive access_hms=\"174130\" compact=20251203T015908.232 checkmonth=2025-11",
+        "10.0.0.1",
+        "10.0.0.2",
+        seconds{0});
+    const std::string extended_date_result{extended_dates.render(base_time, true)};
+    expect(extended_date_result.find("minute=2030-01-02 3:04") != std::string::npos, "Minute timestamp replacement failed");
+    expect(extended_date_result.find("file=20300102__transaction") != std::string::npos, "Compact filename date replacement failed");
+    expect(extended_date_result.find("monthly=203001_archive") != std::string::npos, "Compact filename month replacement failed");
+    expect(extended_date_result.find("access_hms=\"030405\"") != std::string::npos, "Compact time replacement failed");
+    expect(extended_date_result.find("compact=20300102T030405.000") != std::string::npos, "Compact T timestamp replacement failed");
+    expect(extended_date_result.find("checkmonth=2030-01") != std::string::npos, "Year-month replacement failed");
+
     const auto analysis = application::LogRenderer::analyze(
         "Jul 05 2025 13:53:53 UTC date=2025-07-05 time=13:53:53 srp_ip=1.1.1.1 src-ip=1.1.1.2 clientipaddr=1.1.1.3 dest_ip=2.2.2.1 destination-address=2.2.2.2 dstn_ip=2.2.2.3");
     expect(analysis.timestamp_count == 3, "Timestamp analysis count is incorrect");
     expect(analysis.source_ip_count == 3, "Source IP analysis count is incorrect");
     expect(analysis.destination_ip_count == 3, "Destination IP analysis count is incorrect");
 
-    const auto privacy_analysis = application::LogRenderer::analyze("{{PERSON}} {{STORE}} {{USER_ID}}");
-    expect(privacy_analysis.privacy_token_count == 3, "Privacy token analysis count is incorrect");
+    const auto privacy_analysis = application::LogRenderer::analyze("{{PERSON}} {{STORE}} {{STORE_CODE}} {{USER_ID}}");
+    expect(privacy_analysis.privacy_token_count == 4, "Privacy token analysis count is incorrect");
     expect((privacy_analysis.privacy_token_mask & application::privacy_token_bit(application::PrivacyTokenKind::Person)) != 0, "Person category mask is missing");
     expect((privacy_analysis.privacy_token_mask & application::privacy_token_bit(application::PrivacyTokenKind::Store)) != 0, "Store category mask is missing");
+    expect((privacy_analysis.privacy_token_mask & application::privacy_token_bit(application::PrivacyTokenKind::StoreCode)) != 0, "Store code category mask is missing");
     expect(application::PrivacyAnonymizer::search_terms(application::PrivacyTokenKind::Person).find("이름") != std::string_view::npos, "Privacy search metadata is missing");
 
     auto static_log = application::LogRenderer::prepare_one("static src_ip=1.1.1.1", "10.0.0.1", "10.0.0.2", seconds{0});
@@ -122,6 +138,20 @@ void run_log_renderer_tests() {
     expect(sanitized.find("src_ip=10.0.0.10") != std::string::npos && sanitized.find("dst_ip=10.0.0.20") != std::string::npos, "Configurable source or destination IP was anonymized too early");
     expect(sanitized.find("hmac=abcdef") != std::string::npos, "HMAC was misclassified as a MAC address");
     expect(application::PrivacyAnonymizer::sanitize(sanitized) == sanitized, "Privacy sanitization is not idempotent");
+
+    const auto store_sanitized = application::PrivacyAnonymizer::sanitize("str_cd=2201 str_nm=당진점 pspsa.str_cd = {{STORE}}");
+    expect(store_sanitized.find("str_cd={{STORE_CODE}}") != std::string::npos, "Store code field was not classified separately");
+    expect(store_sanitized.find("str_nm={{STORE}}") != std::string::npos, "Store name field was not classified as a display name");
+    expect(store_sanitized.find("pspsa.str_cd = {{STORE_CODE}}") != std::string::npos, "Legacy store marker was not upgraded in a code field");
+    auto store_log = application::LogRenderer::prepare_one(store_sanitized, "192.0.2.10", "192.0.2.20", seconds{0});
+    const std::string store_result{store_log.render(base_time)};
+    expect(std::regex_search(store_result, std::regex{R"(str_cd=([1-4][0-9]|50|[1-9])\b)"}), "Generated store code is not numeric");
+    expect(std::regex_search(store_result, std::regex{R"(str_nm=([1-4][0-9]|50|[1-9])호점)"}), "Generated store display name is invalid");
+
+    auto json_privacy = application::LogRenderer::prepare_one(R"({"path":"{{FILE_PATH}}","name":"{{PERSON}}"})", "192.0.2.10", "192.0.2.20", seconds{0});
+    const std::string json_privacy_result{json_privacy.render(base_time)};
+    const auto parsed_privacy_json = nlohmann::json::parse(json_privacy_result);
+    expect(parsed_privacy_json.at("path").get<std::string>().starts_with("C:/Test/"), "Generated file path is not JSON-safe");
 
     auto positioned_ips = application::LogRenderer::prepare_one("{{SRC_IP}}:1000 -> {{DST_IP}}:2000", "192.0.2.10", "192.0.2.20", seconds{0});
     expect(positioned_ips.render(base_time) == "192.0.2.10:1000 -> 192.0.2.20:2000", "Position-based source or destination IP marker failed");

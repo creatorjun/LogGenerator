@@ -18,7 +18,7 @@ FileTransport::~FileTransport() {
     close();
 }
 
-void FileTransport::connect(const domain::EndpointConfig&) {
+void FileTransport::connect(const domain::EndpointConfig& endpoint) {
     close();
     std::filesystem::create_directories(output_directory_);
     SYSTEMTIME value{};
@@ -26,17 +26,31 @@ void FileTransport::connect(const domain::EndpointConfig&) {
     timestamp_ = std::format(L"{:04}{:02}{:02}_{:02}{:02}{:02}_{:03}", value.wYear, value.wMonth, value.wDay, value.wHour, value.wMinute, value.wSecond, value.wMilliseconds);
     slice_index_ = 0;
     current_size_ = 0;
+    total_size_ = 0;
+    max_total_bytes_ = endpoint.file_max_total_bytes;
+    max_file_count_ = endpoint.file_max_count;
+    max_duration_ = endpoint.file_max_duration;
+    started_at_ = std::chrono::steady_clock::now();
     open_next_slice();
 }
 
-void FileTransport::send(const std::string_view payload) {
+application::SendResult FileTransport::send(const std::string_view payload) {
     if (file_ == INVALID_HANDLE_VALUE) {
         throw std::runtime_error("Generated log file is not open");
     }
     if (payload.empty()) {
-        return;
+        return application::SendResult::Sent;
+    }
+    if (max_duration_.count() > 0 && std::chrono::steady_clock::now() - started_at_ >= max_duration_) {
+        return application::SendResult::DurationLimitReached;
+    }
+    if (max_total_bytes_ > 0 && (total_size_ >= max_total_bytes_ || payload.size() > max_total_bytes_ - total_size_)) {
+        return application::SendResult::TotalBytesLimitReached;
     }
     if (current_size_ > 0 && current_size_ + payload.size() > slice_size_bytes) {
+        if (max_file_count_ > 0 && slice_index_ + 1 >= max_file_count_) {
+            return application::SendResult::FileCountLimitReached;
+        }
         close();
         ++slice_index_;
         current_size_ = 0;
@@ -57,6 +71,8 @@ void FileTransport::send(const std::string_view payload) {
         offset += written;
     }
     current_size_ += payload.size();
+    total_size_ += payload.size();
+    return application::SendResult::Sent;
 }
 
 bool FileTransport::is_datagram() const noexcept {

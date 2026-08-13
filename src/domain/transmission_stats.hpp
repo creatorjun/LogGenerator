@@ -23,6 +23,7 @@ struct TransmissionStats {
     double average_eps{0.0};
     double elapsed_seconds{0.0};
     std::string last_error;
+    std::string status_message;
 };
 
 }

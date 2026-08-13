@@ -85,7 +85,7 @@ private:
     std::vector<application::LogTemplateAnalysis> catalog_analyses_;
     std::vector<std::size_t> filtered_indices_;
     std::size_t selected_log_{0};
-    bool rotate_filtered_{true};
+    bool rotate_filtered_{false};
     int protocol_index_{0};
     int framing_index_{0};
     int timestamp_mode_index_{0};
@@ -96,6 +96,9 @@ private:
     int offset_hours_{0};
     int offset_minutes_{0};
     std::uint64_t target_eps_{0};
+    std::uint64_t file_max_total_mib_{512};
+    int file_max_count_{512};
+    int file_max_duration_seconds_{60};
     bool verify_certificate_{true};
     std::array<char, 256> host_{"127.0.0.1"};
     std::array<char, 256> tls_server_name_{};

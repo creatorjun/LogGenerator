@@ -158,6 +158,20 @@ std::size_t file_batch_events(const std::uint64_t quota) {
     return static_cast<std::size_t>(std::clamp<std::uint64_t>(quota / 20, 1, 256));
 }
 
+std::string_view completion_message(const SendResult result) {
+    switch (result) {
+    case SendResult::TotalBytesLimitReached:
+        return "FILE 총 생성량 제한에 도달하여 자동 중지했습니다.";
+    case SendResult::FileCountLimitReached:
+        return "FILE 생성 파일 개수 제한에 도달하여 자동 중지했습니다.";
+    case SendResult::DurationLimitReached:
+        return "FILE 실행 시간 제한에 도달하여 자동 중지했습니다.";
+    case SendResult::Sent:
+        return {};
+    }
+    return "FILE 생성 제한에 도달하여 자동 중지했습니다.";
+}
+
 }
 
 StressTestService::StressTestService(const ITransportFactory& transport_factory, ILogger& logger)
@@ -205,6 +219,7 @@ void StressTestService::start(domain::GeneratorConfig config) {
         {
             std::scoped_lock error_lock(error_mutex_);
             last_error_.clear();
+            status_message_.clear();
         }
         stop_source_ = std::stop_source{};
         started_at_ = std::chrono::steady_clock::now();
@@ -294,6 +309,7 @@ domain::TransmissionStats StressTestService::snapshot() {
     {
         std::scoped_lock lock(error_mutex_);
         result.last_error = last_error_;
+        result.status_message = status_message_;
     }
     return result;
 }
@@ -391,7 +407,12 @@ void StressTestService::run_worker(domain::EndpointConfig endpoint, const domain
                     break;
                 }
                 const auto payload = logs[log_index].render(clock.next(), calendar_time);
-                transport->send(payload);
+                const auto send_result = transport->send(payload);
+                if (send_result != SendResult::Sent) {
+                    flush();
+                    publish_completion(std::string{completion_message(send_result)});
+                    return;
+                }
                 ++local_messages;
                 local_bytes += payload.size();
                 ++log_index;
@@ -425,7 +446,12 @@ void StressTestService::run_worker(domain::EndpointConfig endpoint, const domain
                 if (stop_token.stop_requested()) {
                     break;
                 }
-                transport->send(batch);
+                const auto send_result = transport->send(batch);
+                if (send_result != SendResult::Sent) {
+                    flush();
+                    publish_completion(std::string{completion_message(send_result)});
+                    return;
+                }
                 local_messages += events;
                 local_bytes += batch.size();
                 if (local_messages >= 1024) {
@@ -458,6 +484,21 @@ void StressTestService::publish_error(std::string message) noexcept {
         }
     }
     state_.store(domain::GeneratorState::Failed, std::memory_order_release);
+    stop_source_.request_stop();
+}
+
+void StressTestService::publish_completion(std::string message) noexcept {
+    try {
+        logger_.info(message);
+    } catch (...) {
+    }
+    {
+        std::scoped_lock lock(error_mutex_);
+        status_message_ = std::move(message);
+    }
+    if (state_.load(std::memory_order_acquire) != domain::GeneratorState::Failed) {
+        state_.store(domain::GeneratorState::Stopping, std::memory_order_release);
+    }
     stop_source_.request_stop();
 }
 

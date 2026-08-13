@@ -12,6 +12,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace loggen::tests {
@@ -36,7 +37,7 @@ public:
     void connect(const domain::EndpointConfig&) override {
     }
 
-    void send(const std::string_view payload) override {
+    [[nodiscard]] application::SendResult send(const std::string_view payload) override {
         {
             std::unique_lock lock(state_->mutex);
             state_->payloads.emplace_back(payload);
@@ -47,6 +48,7 @@ public:
             }
         }
         state_->sends.fetch_add(1, std::memory_order_relaxed);
+        return application::SendResult::Sent;
     }
 
     [[nodiscard]] bool is_datagram() const noexcept override {
@@ -69,6 +71,27 @@ public:
 
 private:
     std::shared_ptr<TransportState> state_;
+};
+
+class LimitingTransport final : public application::ILogTransport {
+public:
+    void connect(const domain::EndpointConfig&) override {
+    }
+
+    [[nodiscard]] application::SendResult send(std::string_view) override {
+        return application::SendResult::FileCountLimitReached;
+    }
+
+    [[nodiscard]] bool is_datagram() const noexcept override {
+        return false;
+    }
+};
+
+class LimitingTransportFactory final : public application::ITransportFactory {
+public:
+    [[nodiscard]] std::unique_ptr<application::ILogTransport> create(const domain::TransportProtocol) const override {
+        return std::make_unique<LimitingTransport>();
+    }
 };
 
 class NullLogger final : public application::ILogger {
@@ -142,6 +165,26 @@ void run_stress_test_service_tests() {
     range_state->condition.notify_all();
     range_service.stop();
     expect(range_service.snapshot().send_errors == 0, "Timestamp range service reported an unexpected error");
+
+    LimitingTransportFactory limiting_factory;
+    application::StressTestService limiting_service{limiting_factory, logger};
+    domain::GeneratorConfig limiting_config;
+    limiting_config.endpoint.protocol = domain::TransportProtocol::File;
+    limiting_config.templates.push_back({"limit", "limit", "timestamp=2025-07-05T13:53:53Z", "test"});
+    limiting_service.start(std::move(limiting_config));
+    domain::TransmissionStats limiting_stats;
+    const auto limit_deadline = steady_clock::now() + seconds{2};
+    do {
+        limiting_stats = limiting_service.snapshot();
+        if (!limiting_stats.status_message.empty()) {
+            break;
+        }
+        std::this_thread::sleep_for(milliseconds{1});
+    } while (steady_clock::now() < limit_deadline);
+    limiting_service.stop();
+    limiting_stats = limiting_service.snapshot();
+    expect(!limiting_stats.status_message.empty(), "Configured FILE limit did not publish a completion message");
+    expect(limiting_stats.last_error.empty() && limiting_stats.send_errors == 0, "Configured FILE limit was reported as a transmission error");
 }
 
 }

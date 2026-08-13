@@ -60,14 +60,20 @@ const std::regex& arrow_destination_pattern() {
 
 const std::vector<TimestampPattern>& timestamp_patterns() {
     static const std::vector<TimestampPattern> patterns{
-        {std::regex(R"(\b\d{4}[-/]\d{2}[-/]\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:?\d{2})?)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::Iso8601, 0, 0},
-        {std::regex(R"(\b(?:[A-Z][a-z]{2}\s+)?[A-Z][a-z]{2}\s+\d{1,2}\s+\d{4}\s+\d{2}:\d{2}:\d{2}(?:\s+(?:GMT|UTC))?\b)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::MonthDayYear, 1, 0},
-        {std::regex(R"(\b(?:[A-Z][a-z]{2}\s+)?[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\d{4}\b)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::SyslogWithYear, 2, 0},
-        {std::regex(R"(\b\d{1,2}/[A-Z][a-z]{2}/\d{4}:\d{2}:\d{2}:\d{2}\s+[+-]\d{4}\b)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::Apache, 3, 0},
-        {std::regex(R"(\b(?:[A-Z][a-z]{2}\s+)?[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\b)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::SyslogWithoutYear, 4, 0},
-        {std::regex(R"(\b\d{14}\b)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::Compact, 5, 0},
-        {std::regex(R"((\bdate\s*=\s*["']?)(\d{4}[-/]\d{2}[-/]\d{2}))", std::regex::ECMAScript | std::regex::icase | std::regex::optimize), TimestampStyle::DateOnly, 6, 2},
-        {std::regex(R"((\btime\s*=\s*["']?)(\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?))", std::regex::ECMAScript | std::regex::icase | std::regex::optimize), TimestampStyle::TimeOnly, 7, 2},
+        {std::regex(R"(\b\d{4}[-/]\d{2}[-/]\d{2}[T ]\d{1,2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:?\d{2})?)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::Iso8601, 0, 0},
+        {std::regex(R"((^|[^0-9])((?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])T\d{6}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:?\d{2})?)(?![0-9]))", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::CompactWithT, 1, 2},
+        {std::regex(R"(\b(?:[A-Z][a-z]{2}\s+)?[A-Z][a-z]{2}\s+\d{1,2}\s+\d{4}\s+\d{2}:\d{2}:\d{2}(?:\s+(?:GMT|UTC))?\b)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::MonthDayYear, 2, 0},
+        {std::regex(R"(\b(?:[A-Z][a-z]{2}\s+)?[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\d{4}\b)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::SyslogWithYear, 3, 0},
+        {std::regex(R"(\b\d{1,2}/[A-Z][a-z]{2}/\d{4}:\d{2}:\d{2}:\d{2}\s+[+-]\d{4}\b)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::Apache, 4, 0},
+        {std::regex(R"(\b(?:[A-Z][a-z]{2}\s+)?[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\b)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::SyslogWithoutYear, 5, 0},
+        {std::regex(R"((^|[^0-9])((?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{6})(?![0-9]))", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::Compact, 6, 2},
+        {std::regex(R"(\b\d{4}[-/]\d{2}[-/]\d{2}[ T]\d{1,2}:\d{2}(?!:))", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::YearFirstMinute, 7, 0},
+        {std::regex(R"((^|[^0-9])((?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01]))(?![0-9]))", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::CompactDate, 8, 2},
+        {std::regex(R"((^|[^0-9])((?:19|20)\d{2}(?:0[1-9]|1[0-2]))(?=_))", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::CompactYearMonth, 9, 2},
+        {std::regex(R"((\b(?:time|[A-Za-z0-9_]*hms)["']?\s*[:=]\s*["']?)(\d{6})(?!\d))", std::regex::ECMAScript | std::regex::icase | std::regex::optimize), TimestampStyle::CompactTime, 10, 2},
+        {std::regex(R"(\b\d{4}[-/]\d{2}[-/]\d{2}\b)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::DateOnly, 11, 0},
+        {std::regex(R"(\b\d{4}[-/]\d{2}\b)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::YearMonth, 12, 0},
+        {std::regex(R"((\btime["']?\s*[:=]\s*["']?)(\d{1,2}:\d{2}:\d{2}(?:\.\d{1,9})?))", std::regex::ECMAScript | std::regex::icase | std::regex::optimize), TimestampStyle::TimeOnly, 13, 2},
     };
     return patterns;
 }
@@ -134,7 +140,8 @@ TimestampToken make_token(const TimestampStyle style, const std::string_view val
     if (style == TimestampStyle::Iso8601) {
         token.date_separator = value.size() > 4 ? value[4] : '-';
         token.date_time_separator = value.size() > 10 ? value[10] : 'T';
-        const auto dot = value.find('.', 19);
+        token.hour_width = value.size() > 12 && value[12] == ':' ? 1 : 2;
+        const auto dot = value.find('.', 11);
         if (dot != std::string_view::npos) {
             auto end = dot + 1;
             while (end < value.size() && value[end] >= '0' && value[end] <= '9') {
@@ -142,7 +149,21 @@ TimestampToken make_token(const TimestampStyle style, const std::string_view val
             }
             token.fractional_digits = static_cast<std::uint8_t>(std::min<std::size_t>(9, end - dot - 1));
         }
-        const auto zone_position = value.find_first_of("Z+-", 19);
+        const auto zone_position = value.find_first_of("Z+-", 11);
+        if (zone_position != std::string_view::npos) {
+            token.zone_suffix = std::string(value.substr(zone_position));
+            token.zone_offset_minutes = parse_zone_offset(token.zone_suffix);
+        }
+    } else if (style == TimestampStyle::CompactWithT) {
+        const auto dot = value.find('.');
+        if (dot != std::string_view::npos) {
+            auto end = dot + 1;
+            while (end < value.size() && value[end] >= '0' && value[end] <= '9') {
+                ++end;
+            }
+            token.fractional_digits = static_cast<std::uint8_t>(std::min<std::size_t>(9, end - dot - 1));
+        }
+        const auto zone_position = value.find_first_of("Z+-", 15);
         if (zone_position != std::string_view::npos) {
             token.zone_suffix = std::string(value.substr(zone_position));
             token.zone_offset_minutes = parse_zone_offset(token.zone_suffix);
@@ -165,7 +186,14 @@ TimestampToken make_token(const TimestampStyle style, const std::string_view val
         }
     } else if (style == TimestampStyle::DateOnly) {
         token.date_separator = value.size() > 4 ? value[4] : '-';
+    } else if (style == TimestampStyle::YearMonth) {
+        token.date_separator = value.size() > 4 ? value[4] : '-';
+    } else if (style == TimestampStyle::YearFirstMinute) {
+        token.date_separator = value.size() > 4 ? value[4] : '-';
+        token.date_time_separator = value.size() > 10 ? value[10] : ' ';
+        token.hour_width = value.size() > 12 && value[12] == ':' ? 1 : 2;
     } else if (style == TimestampStyle::TimeOnly) {
+        token.hour_width = value.size() > 1 && value[1] == ':' ? 1 : 2;
         const auto dot = value.find('.');
         if (dot != std::string_view::npos) {
             token.fractional_digits = static_cast<std::uint8_t>(std::min<std::size_t>(9, value.size() - dot - 1));
@@ -286,7 +314,11 @@ void append_timestamp(std::string& output, const TimestampToken& token, const st
     switch (token.style) {
     case TimestampStyle::Iso8601:
     case TimestampStyle::YearFirst:
-        std::snprintf(buffer, sizeof(buffer), "%04d%c%02d%c%02d%c%02d:%02d:%02d", value.tm_year + 1900, token.date_separator, value.tm_mon + 1, token.date_separator, value.tm_mday, token.date_time_separator, value.tm_hour, value.tm_min, value.tm_sec);
+        if (token.hour_width == 1) {
+            std::snprintf(buffer, sizeof(buffer), "%04d%c%02d%c%02d%c%d:%02d:%02d", value.tm_year + 1900, token.date_separator, value.tm_mon + 1, token.date_separator, value.tm_mday, token.date_time_separator, value.tm_hour, value.tm_min, value.tm_sec);
+        } else {
+            std::snprintf(buffer, sizeof(buffer), "%04d%c%02d%c%02d%c%02d:%02d:%02d", value.tm_year + 1900, token.date_separator, value.tm_mon + 1, token.date_separator, value.tm_mday, token.date_time_separator, value.tm_hour, value.tm_min, value.tm_sec);
+        }
         output.append(buffer);
         append_fraction(output, point, token.fractional_digits);
         output.append(token.zone_suffix);
@@ -311,6 +343,32 @@ void append_timestamp(std::string& output, const TimestampToken& token, const st
         std::snprintf(buffer, sizeof(buffer), "%04d%02d%02d%02d%02d%02d", value.tm_year + 1900, value.tm_mon + 1, value.tm_mday, value.tm_hour, value.tm_min, value.tm_sec);
         output.append(buffer);
         break;
+    case TimestampStyle::CompactWithT:
+        std::snprintf(buffer, sizeof(buffer), "%04d%02d%02dT%02d%02d%02d", value.tm_year + 1900, value.tm_mon + 1, value.tm_mday, value.tm_hour, value.tm_min, value.tm_sec);
+        output.append(buffer);
+        append_fraction(output, point, token.fractional_digits);
+        output.append(token.zone_suffix);
+        break;
+    case TimestampStyle::CompactDate:
+        std::snprintf(buffer, sizeof(buffer), "%04d%02d%02d", value.tm_year + 1900, value.tm_mon + 1, value.tm_mday);
+        output.append(buffer);
+        break;
+    case TimestampStyle::CompactYearMonth:
+        std::snprintf(buffer, sizeof(buffer), "%04d%02d", value.tm_year + 1900, value.tm_mon + 1);
+        output.append(buffer);
+        break;
+    case TimestampStyle::CompactTime:
+        std::snprintf(buffer, sizeof(buffer), "%02d%02d%02d", value.tm_hour, value.tm_min, value.tm_sec);
+        output.append(buffer);
+        break;
+    case TimestampStyle::YearFirstMinute:
+        if (token.hour_width == 1) {
+            std::snprintf(buffer, sizeof(buffer), "%04d%c%02d%c%02d%c%d:%02d", value.tm_year + 1900, token.date_separator, value.tm_mon + 1, token.date_separator, value.tm_mday, token.date_time_separator, value.tm_hour, value.tm_min);
+        } else {
+            std::snprintf(buffer, sizeof(buffer), "%04d%c%02d%c%02d%c%02d:%02d", value.tm_year + 1900, token.date_separator, value.tm_mon + 1, token.date_separator, value.tm_mday, token.date_time_separator, value.tm_hour, value.tm_min);
+        }
+        output.append(buffer);
+        break;
     case TimestampStyle::MonthDayYear:
         std::snprintf(buffer, sizeof(buffer), "%s %02d %04d %02d:%02d:%02d", months[static_cast<std::size_t>(value.tm_mon)].data(), value.tm_mday, value.tm_year + 1900, value.tm_hour, value.tm_min, value.tm_sec);
         output.append(buffer);
@@ -323,8 +381,16 @@ void append_timestamp(std::string& output, const TimestampToken& token, const st
         std::snprintf(buffer, sizeof(buffer), "%04d%c%02d%c%02d", value.tm_year + 1900, token.date_separator, value.tm_mon + 1, token.date_separator, value.tm_mday);
         output.append(buffer);
         break;
+    case TimestampStyle::YearMonth:
+        std::snprintf(buffer, sizeof(buffer), "%04d%c%02d", value.tm_year + 1900, token.date_separator, value.tm_mon + 1);
+        output.append(buffer);
+        break;
     case TimestampStyle::TimeOnly:
-        std::snprintf(buffer, sizeof(buffer), "%02d:%02d:%02d", value.tm_hour, value.tm_min, value.tm_sec);
+        if (token.hour_width == 1) {
+            std::snprintf(buffer, sizeof(buffer), "%d:%02d:%02d", value.tm_hour, value.tm_min, value.tm_sec);
+        } else {
+            std::snprintf(buffer, sizeof(buffer), "%02d:%02d:%02d", value.tm_hour, value.tm_min, value.tm_sec);
+        }
         output.append(buffer);
         append_fraction(output, point, token.fractional_digits);
         break;

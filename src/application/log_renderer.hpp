@@ -22,8 +22,14 @@ enum class TimestampStyle {
     MonthFirstGmt,
     Apache,
     Compact,
+    CompactWithT,
+    CompactDate,
+    CompactYearMonth,
+    CompactTime,
+    YearFirstMinute,
     MonthDayYear,
     DateOnly,
+    YearMonth,
     TimeOnly
 };
 
@@ -32,6 +38,7 @@ struct TimestampToken {
     char date_separator{'-'};
     char date_time_separator{'T'};
     std::uint8_t fractional_digits{0};
+    std::uint8_t hour_width{2};
     int zone_offset_minutes{0};
     bool has_weekday{false};
     std::string zone_suffix;
@@ -69,10 +76,22 @@ struct LogTemplateAnalysis {
         return "Apache";
     case TimestampStyle::Compact:
         return "Compact yyyyMMddHHmmss";
+    case TimestampStyle::CompactWithT:
+        return "Compact yyyyMMddTHHmmss";
+    case TimestampStyle::CompactDate:
+        return "Compact yyyyMMdd";
+    case TimestampStyle::CompactYearMonth:
+        return "Compact yyyyMM";
+    case TimestampStyle::CompactTime:
+        return "Compact HHmmss";
+    case TimestampStyle::YearFirstMinute:
+        return "Year First yyyy-MM-dd HH:mm";
     case TimestampStyle::MonthDayYear:
         return "MMM dd yyyy HH:mm:ss";
     case TimestampStyle::DateOnly:
         return "Separated Date";
+    case TimestampStyle::YearMonth:
+        return "Year Month";
     case TimestampStyle::TimeOnly:
         return "Separated Time";
     }
