@@ -134,7 +134,7 @@ const std::regex& legacy_store_code_pattern() {
 
 const std::regex& partial_mac_marker_pattern() {
     static const std::regex pattern(
-        R"((?:[0-9A-Fa-f]{2}:)+["']?\{\{MAC_ADDRESS\}\})",
+        R"((^|[^0-9A-Za-z_])(?:[0-9A-Fa-f]{2}:)+["']?\{\{MAC_ADDRESS\}\})",
         std::regex::ECMAScript | std::regex::optimize);
     return pattern;
 }
@@ -221,7 +221,7 @@ std::string PrivacyAnonymizer::sanitize(const std::string_view sample) {
     replace_ascii_case_insensitive(result, "lotte", "Your");
     replace_ascii_case_insensitive(result, "mart", "company");
     result = std::regex_replace(result, legacy_store_code_pattern(), "$1{{STORE_CODE}}");
-    result = std::regex_replace(result, partial_mac_marker_pattern(), "{{MAC_ADDRESS}}");
+    result = std::regex_replace(result, partial_mac_marker_pattern(), "$1{{MAC_ADDRESS}}");
     result = replace_sensitive_fields(result);
 
     static const std::regex email_pattern(R"(\b[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\b)", std::regex::ECMAScript | std::regex::optimize);

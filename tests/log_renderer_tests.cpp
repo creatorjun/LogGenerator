@@ -152,6 +152,8 @@ void run_log_renderer_tests() {
     expect(metric_sanitized.find("{{PHONE}}") == std::string::npos, "System metrics were misclassified as phone numbers");
     expect(application::PrivacyAnonymizer::sanitize("mobile=+82-10-1234-5678").find("{{PHONE}}") != std::string::npos, "International mobile number was not anonymized");
     expect(application::PrivacyAnonymizer::sanitize("mac=\"B8:\"{{MAC_ADDRESS}}\"") == "mac=\"{{MAC_ADDRESS}}\"", "A partial MAC marker was not normalized");
+    const std::string mac_key_sample = R"privacy(db.log.deleteMany({mac:"{{MAC_ADDRESS}}"})db.log.deleteMany({mac: "{{MAC_ADDRESS}}"}))privacy";
+    expect(application::PrivacyAnonymizer::sanitize(mac_key_sample) == mac_key_sample, "A MAC field name was misclassified as a partial MAC address");
     expect(application::PrivacyAnonymizer::sanitize(std::string{"value="} + '\b') == "value=\\b", "A backspace control character was not escaped");
 
     const auto revised_fields = application::PrivacyAnonymizer::sanitize(
