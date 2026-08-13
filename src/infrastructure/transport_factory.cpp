@@ -18,11 +18,11 @@ TransportFactory::TransportFactory(std::filesystem::path generated_directory)
 std::unique_ptr<application::ILogTransport> TransportFactory::create(const domain::TransportProtocol protocol) const {
     switch (protocol) {
     case domain::TransportProtocol::Udp:
-        return std::make_unique<UdpTransport>();
+        return std::make_unique<UdpTransport>(winsock_);
     case domain::TransportProtocol::Tcp:
-        return std::make_unique<TcpTransport>();
+        return std::make_unique<TcpTransport>(winsock_);
     case domain::TransportProtocol::Tls:
-        return std::make_unique<SchannelTransport>();
+        return std::make_unique<SchannelTransport>(winsock_);
     case domain::TransportProtocol::File:
         return std::make_unique<FileTransport>(generated_directory_);
     }

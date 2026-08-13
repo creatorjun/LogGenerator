@@ -2,6 +2,7 @@
 #pragma once
 
 #include "application/log_renderer.hpp"
+#include "application/ports/execution_runtime.hpp"
 #include "application/ports/logger.hpp"
 #include "application/ports/log_transport.hpp"
 #include "domain/transmission_stats.hpp"
@@ -19,7 +20,7 @@ namespace loggen::application {
 
 class StressTestService {
 public:
-    StressTestService(const ITransportFactory& transport_factory, ILogger& logger);
+    StressTestService(const ITransportFactory& transport_factory, const IExecutionRuntime& execution_runtime, ILogger& logger);
     ~StressTestService();
 
     StressTestService(const StressTestService&) = delete;
@@ -37,6 +38,7 @@ private:
     void publish_completion(std::string message) noexcept;
 
     const ITransportFactory& transport_factory_;
+    const IExecutionRuntime& execution_runtime_;
     ILogger& logger_;
     std::mutex lifecycle_mutex_;
     std::mutex error_mutex_;

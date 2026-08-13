@@ -8,8 +8,12 @@
 
 namespace loggen::infrastructure {
 
+UdpTransport::UdpTransport(const WinsockRuntime& runtime) noexcept
+    : runtime_(runtime) {
+}
+
 void UdpTransport::connect(const domain::EndpointConfig& endpoint) {
-    socket_ = connect_socket(endpoint.host, endpoint.port, SOCK_DGRAM, IPPROTO_UDP);
+    socket_ = connect_socket(runtime_, endpoint.host, endpoint.port, SOCK_DGRAM, IPPROTO_UDP);
     configure_send_buffer(socket_.get(), 4 * 1024 * 1024);
     BOOL disabled = FALSE;
     DWORD returned = 0;

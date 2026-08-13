@@ -1,8 +1,8 @@
 // src/presentation/app.hpp
 #pragma once
 
+#include "application/log_catalog_service.hpp"
 #include "application/log_renderer.hpp"
-#include "application/ports/log_catalog.hpp"
 #include "application/ports/logger.hpp"
 #include "application/stress_test_service.hpp"
 #include "domain/log_template.hpp"
@@ -29,7 +29,7 @@ namespace loggen::presentation {
 
 class App {
 public:
-    App(application::ILogCatalog& catalog, application::ILogger& logger, application::StressTestService& stress_service, std::filesystem::path catalog_file, std::filesystem::path generated_directory);
+    App(application::LogCatalogService& catalog_service, application::ILogger& logger, application::StressTestService& stress_service, std::filesystem::path catalog_file, std::filesystem::path generated_directory);
     ~App();
 
     int run(HINSTANCE instance, int show_command);
@@ -49,6 +49,7 @@ private:
     void initialize_imgui();
     void update_ui_scale();
     void shutdown_imgui() noexcept;
+    void release_window_resources() noexcept;
     void request_catalog_load();
     void request_catalog_save();
     void apply_catalog_result();
@@ -72,13 +73,15 @@ private:
     [[nodiscard]] std::size_t visible_catalog_index() const noexcept;
     void start_test();
 
-    application::ILogCatalog& catalog_;
+    application::LogCatalogService& catalog_service_;
     application::ILogger& logger_;
     application::StressTestService& stress_service_;
     std::filesystem::path catalog_file_;
     std::filesystem::path generated_directory_;
     D3d11Context d3d_;
+    HINSTANCE instance_{nullptr};
     HWND window_{nullptr};
+    bool window_class_registered_{false};
     bool imgui_ready_{false};
     float ui_scale_{1.0F};
     float dpi_scale_{1.0F};

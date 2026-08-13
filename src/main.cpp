@@ -1,8 +1,10 @@
 // src/main.cpp
+#include "application/log_catalog_service.hpp"
 #include "application/stress_test_service.hpp"
 #include "infrastructure/async_file_logger.hpp"
 #include "infrastructure/json_log_catalog.hpp"
 #include "infrastructure/transport_factory.hpp"
+#include "infrastructure/windows_execution_runtime.hpp"
 #include "presentation/app.hpp"
 #include "presentation/windows_icon.hpp"
 
@@ -34,14 +36,16 @@ int WINAPI wWinMain(const HINSTANCE instance, HINSTANCE, PWSTR, const int show_c
         try {
             logger.info("LogGenerator startup");
             loggen::infrastructure::JsonLogCatalog catalog;
+            loggen::application::LogCatalogService catalog_service{catalog};
             const auto generated_directory = application_directory / L"generated";
             loggen::infrastructure::TransportFactory transport_factory{generated_directory};
-            loggen::application::StressTestService stress_service{transport_factory, logger};
+            loggen::infrastructure::WindowsExecutionRuntime execution_runtime;
+            loggen::application::StressTestService stress_service{transport_factory, execution_runtime, logger};
             auto catalog_file = application_directory / L"Sample Logs" / L"sample_logs.json";
             if (!std::filesystem::exists(catalog_file)) {
                 catalog_file = std::filesystem::current_path() / L"Sample Logs" / L"sample_logs.json";
             }
-            loggen::presentation::App app{catalog, logger, stress_service, std::move(catalog_file), generated_directory};
+            loggen::presentation::App app{catalog_service, logger, stress_service, std::move(catalog_file), generated_directory};
             const int result = app.run(instance, show_command);
             logger.info("LogGenerator shutdown completed");
             return result;

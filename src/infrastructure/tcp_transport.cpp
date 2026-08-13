@@ -7,8 +7,12 @@
 
 namespace loggen::infrastructure {
 
+TcpTransport::TcpTransport(const WinsockRuntime& runtime) noexcept
+    : runtime_(runtime) {
+}
+
 void TcpTransport::connect(const domain::EndpointConfig& endpoint) {
-    socket_ = connect_socket(endpoint.host, endpoint.port, SOCK_STREAM, IPPROTO_TCP);
+    socket_ = connect_socket(runtime_, endpoint.host, endpoint.port, SOCK_STREAM, IPPROTO_TCP);
     configure_send_buffer(socket_.get(), 4 * 1024 * 1024);
     BOOL enabled = TRUE;
     if (setsockopt(socket_.get(), IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&enabled), sizeof(enabled)) == SOCKET_ERROR) {

@@ -199,8 +199,8 @@ std::optional<std::chrono::sys_days> parse_iso_date(const std::string_view value
 
 }
 
-App::App(application::ILogCatalog& catalog, application::ILogger& logger, application::StressTestService& stress_service, std::filesystem::path catalog_file, std::filesystem::path generated_directory)
-    : catalog_(catalog), logger_(logger), stress_service_(stress_service), catalog_file_(std::move(catalog_file)), generated_directory_(std::move(generated_directory)) {
+App::App(application::LogCatalogService& catalog_service, application::ILogger& logger, application::StressTestService& stress_service, std::filesystem::path catalog_file, std::filesystem::path generated_directory)
+    : catalog_service_(catalog_service), logger_(logger), stress_service_(stress_service), catalog_file_(std::move(catalog_file)), generated_directory_(std::move(generated_directory)) {
 }
 
 App::~App() {
@@ -209,10 +209,11 @@ App::~App() {
         catalog_loader_.join();
     }
     stress_service_.stop();
-    shutdown_imgui();
+    release_window_resources();
 }
 
 int App::run(const HINSTANCE instance, const int show_command) {
+    instance_ = instance;
     logger_.info("UI initialization started");
     SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
     ImGui_ImplWin32_EnableDpiAwareness();
@@ -231,6 +232,7 @@ int App::run(const HINSTANCE instance, const int show_command) {
     if (RegisterClassExW(&window_class) == 0) {
         throw std::runtime_error("Window class registration failed");
     }
+    window_class_registered_ = true;
 
     const UINT dpi = GetDpiForSystem();
     RECT bounds{0, 0, MulDiv(1180, static_cast<int>(dpi), 96), MulDiv(900, static_cast<int>(dpi), 96)};
@@ -241,7 +243,6 @@ int App::run(const HINSTANCE instance, const int show_command) {
     const int window_height = std::min(bounds.bottom - bounds.top, work_area.bottom - work_area.top);
     window_ = CreateWindowExW(0, window_class.lpszClassName, L"LogGenerator", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, window_width, window_height, nullptr, nullptr, instance, this);
     if (window_ == nullptr) {
-        UnregisterClassW(window_class.lpszClassName, instance);
         throw std::runtime_error("Window creation failed");
     }
     set_application_window_icons(window_, instance);
@@ -281,11 +282,7 @@ int App::run(const HINSTANCE instance, const int show_command) {
         d3d_.present();
     }
     stress_service_.stop();
-    shutdown_imgui();
-    if (IsWindow(window_)) {
-        DestroyWindow(window_);
-    }
-    UnregisterClassW(window_class.lpszClassName, instance);
+    release_window_resources();
     logger_.info("UI event loop stopped");
     return static_cast<int>(message.wParam);
 }
@@ -417,6 +414,19 @@ void App::shutdown_imgui() noexcept {
     imgui_ready_ = false;
 }
 
+void App::release_window_resources() noexcept {
+    shutdown_imgui();
+    if (window_ != nullptr && IsWindow(window_)) {
+        DestroyWindow(window_);
+    }
+    window_ = nullptr;
+    if (window_class_registered_ && instance_ != nullptr) {
+        UnregisterClassW(L"LogGeneratorWindow", instance_);
+    }
+    window_class_registered_ = false;
+    instance_ = nullptr;
+}
+
 void App::request_catalog_load() {
     if (catalog_loading_.exchange(true, std::memory_order_acq_rel)) {
         return;
@@ -428,12 +438,11 @@ void App::request_catalog_load() {
     catalog_loader_ = std::jthread([this, file](std::stop_token) {
         CatalogLoadResult result;
         try {
-            result.items = catalog_.load(file);
+            result.items = catalog_service_.load(file);
             result.search_names.reserve(result.items.size());
             result.previews.reserve(result.items.size());
             result.analyses.reserve(result.items.size());
             for (auto& item : result.items) {
-                item.sample = application::PrivacyAnonymizer::sanitize(item.sample);
                 auto analysis = application::LogRenderer::analyze(item);
                 result.search_names.push_back(catalog_search_text(item, analysis));
                 result.previews.push_back(sample_preview(item.sample));
@@ -467,7 +476,7 @@ void App::request_catalog_save() {
         CatalogLoadResult result;
         result.replace_items = false;
         try {
-            catalog_.save(file, items);
+            catalog_service_.save(file, items);
             logger_.info(std::format("Sample log catalog saved: file={}, entries={}", path_to_utf8(file), items.size()));
         } catch (const std::exception& error) {
             result.error = error.what();

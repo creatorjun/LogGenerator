@@ -15,21 +15,6 @@
 namespace loggen::infrastructure {
 namespace {
 
-class WinsockLifetime {
-public:
-    WinsockLifetime() {
-        WSADATA data{};
-        const int result = WSAStartup(MAKEWORD(2, 2), &data);
-        if (result != 0) {
-            throw std::runtime_error(socket_error_message("WSAStartup", result));
-        }
-    }
-
-    ~WinsockLifetime() {
-        WSACleanup();
-    }
-};
-
 void set_blocking(const SOCKET socket, const bool blocking) {
     u_long mode = blocking ? 0UL : 1UL;
     if (ioctlsocket(socket, FIONBIO, &mode) == SOCKET_ERROR) {
@@ -60,6 +45,18 @@ bool wait_for_connect(const SOCKET socket, const int timeout_milliseconds) {
     return socket_error == 0 && FD_ISSET(socket, &write_set);
 }
 
+}
+
+WinsockRuntime::WinsockRuntime() {
+    WSADATA data{};
+    const int result = WSAStartup(MAKEWORD(2, 2), &data);
+    if (result != 0) {
+        throw std::runtime_error(socket_error_message("WSAStartup", result));
+    }
+}
+
+WinsockRuntime::~WinsockRuntime() {
+    WSACleanup();
 }
 
 SocketHandle::SocketHandle(const SOCKET value) noexcept
@@ -101,13 +98,8 @@ void SocketHandle::reset(const SOCKET value) noexcept {
     value_ = value;
 }
 
-void ensure_winsock() {
-    static WinsockLifetime lifetime;
-    static_cast<void>(lifetime);
-}
-
-SocketHandle connect_socket(const std::string& host, const std::uint16_t port, const int socket_type, const int protocol, const int timeout_milliseconds) {
-    ensure_winsock();
+SocketHandle connect_socket(const WinsockRuntime& runtime, const std::string& host, const std::uint16_t port, const int socket_type, const int protocol, const int timeout_milliseconds) {
+    static_cast<void>(runtime);
     addrinfo hints{};
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = socket_type;

@@ -9,6 +9,15 @@
 
 namespace loggen::infrastructure {
 
+class WinsockRuntime final {
+public:
+    WinsockRuntime();
+    ~WinsockRuntime();
+
+    WinsockRuntime(const WinsockRuntime&) = delete;
+    WinsockRuntime& operator=(const WinsockRuntime&) = delete;
+};
+
 class SocketHandle {
 public:
     SocketHandle() noexcept = default;
@@ -29,8 +38,7 @@ private:
     SOCKET value_{INVALID_SOCKET};
 };
 
-void ensure_winsock();
-[[nodiscard]] SocketHandle connect_socket(const std::string& host, std::uint16_t port, int socket_type, int protocol, int timeout_milliseconds = 5000);
+[[nodiscard]] SocketHandle connect_socket(const WinsockRuntime& runtime, const std::string& host, std::uint16_t port, int socket_type, int protocol, int timeout_milliseconds = 5000);
 void configure_send_buffer(SOCKET socket, int bytes);
 void configure_send_timeout(SOCKET socket, int milliseconds);
 void send_all(SOCKET socket, std::string_view payload);

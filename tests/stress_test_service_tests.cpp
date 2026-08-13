@@ -1,6 +1,7 @@
 // tests/stress_test_service_tests.cpp
 #include "test_support.hpp"
 
+#include "application/ports/execution_runtime.hpp"
 #include "application/ports/log_transport.hpp"
 #include "application/ports/logger.hpp"
 #include "application/stress_test_service.hpp"
@@ -102,14 +103,32 @@ public:
     }
 };
 
+class ExecutionLease final : public application::IExecutionLease {
+};
+
+class TestExecutionRuntime final : public application::IExecutionRuntime {
+public:
+    [[nodiscard]] std::unique_ptr<application::IExecutionLease> acquire_high_resolution_timer() const override {
+        return std::make_unique<ExecutionLease>();
+    }
+
+    void configure_current_worker() const noexcept override {
+    }
+
+    void pause_current_thread() const noexcept override {
+        std::this_thread::yield();
+    }
+};
+
 }
 
 void run_stress_test_service_tests() {
     using namespace std::chrono;
     auto state = std::make_shared<TransportState>();
     BlockingTransportFactory factory{state};
+    TestExecutionRuntime execution_runtime;
     NullLogger logger;
-    application::StressTestService service{factory, logger};
+    application::StressTestService service{factory, execution_runtime, logger};
     domain::GeneratorConfig config;
     config.endpoint.host = "127.0.0.1";
     config.endpoint.port = 5514;
@@ -142,7 +161,7 @@ void run_stress_test_service_tests() {
     meter_state->block_after = 2;
     meter_state->datagram = false;
     BlockingTransportFactory meter_factory{meter_state};
-    application::StressTestService meter_service{meter_factory, logger};
+    application::StressTestService meter_service{meter_factory, execution_runtime, logger};
     domain::GeneratorConfig meter_config;
     meter_config.endpoint.protocol = domain::TransportProtocol::File;
     meter_config.templates.push_back({"meter", "meter", "meter-event", "test"});
@@ -170,7 +189,7 @@ void run_stress_test_service_tests() {
     auto range_state = std::make_shared<TransportState>();
     range_state->block_after = 4;
     BlockingTransportFactory range_factory{range_state};
-    application::StressTestService range_service{range_factory, logger};
+    application::StressTestService range_service{range_factory, execution_runtime, logger};
     domain::GeneratorConfig range_config;
     range_config.endpoint.host = "127.0.0.1";
     range_config.endpoint.port = 5514;
@@ -200,7 +219,7 @@ void run_stress_test_service_tests() {
     auto stream_state = std::make_shared<TransportState>();
     stream_state->datagram = false;
     BlockingTransportFactory stream_factory{stream_state};
-    application::StressTestService stream_service{stream_factory, logger};
+    application::StressTestService stream_service{stream_factory, execution_runtime, logger};
     domain::GeneratorConfig stream_config;
     stream_config.endpoint.protocol = domain::TransportProtocol::File;
     stream_config.templates.push_back({"multiline", "multiline", "alpha\r\nbeta", "test"});
@@ -227,7 +246,7 @@ void run_stress_test_service_tests() {
     expect(stream_service.snapshot().send_errors == 0, "Stream framing service reported an unexpected error");
 
     LimitingTransportFactory limiting_factory;
-    application::StressTestService limiting_service{limiting_factory, logger};
+    application::StressTestService limiting_service{limiting_factory, execution_runtime, logger};
     domain::GeneratorConfig limiting_config;
     limiting_config.endpoint.protocol = domain::TransportProtocol::File;
     limiting_config.templates.push_back({"limit", "limit", "timestamp=2025-07-05T13:53:53Z", "test"});

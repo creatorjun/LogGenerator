@@ -1,9 +1,6 @@
 // src/application/stress_test_service.cpp
 #include "application/stress_test_service.hpp"
 
-#include <Windows.h>
-#include <timeapi.h>
-
 #include <algorithm>
 #include <charconv>
 #include <cmath>
@@ -18,8 +15,8 @@ namespace {
 
 class RatePacer {
 public:
-    explicit RatePacer(const std::uint64_t events_per_second)
-        : events_per_second_(events_per_second), next_(std::chrono::steady_clock::now()) {
+    RatePacer(const IExecutionRuntime& execution_runtime, const std::uint64_t events_per_second)
+        : execution_runtime_(execution_runtime), events_per_second_(events_per_second), next_(std::chrono::steady_clock::now()) {
     }
 
     void wait(const std::uint64_t events, const std::stop_token stop_token) {
@@ -40,29 +37,14 @@ public:
             now = std::chrono::steady_clock::now();
         }
         while (!stop_token.stop_requested() && std::chrono::steady_clock::now() < next_) {
-            YieldProcessor();
+            execution_runtime_.pause_current_thread();
         }
     }
 
 private:
+    const IExecutionRuntime& execution_runtime_;
     std::uint64_t events_per_second_{0};
     std::chrono::steady_clock::time_point next_;
-};
-
-class TimerResolution {
-public:
-    TimerResolution()
-        : active_(timeBeginPeriod(1) == TIMERR_NOERROR) {
-    }
-
-    ~TimerResolution() {
-        if (active_) {
-            timeEndPeriod(1);
-        }
-    }
-
-private:
-    bool active_{false};
 };
 
 class CachedSystemClock {
@@ -183,8 +165,8 @@ std::string_view completion_message(const SendResult result) {
 
 }
 
-StressTestService::StressTestService(const ITransportFactory& transport_factory, ILogger& logger)
-    : transport_factory_(transport_factory), logger_(logger) {
+StressTestService::StressTestService(const ITransportFactory& transport_factory, const IExecutionRuntime& execution_runtime, ILogger& logger)
+    : transport_factory_(transport_factory), execution_runtime_(execution_runtime), logger_(logger) {
 }
 
 StressTestService::~StressTestService() {
@@ -301,8 +283,13 @@ domain::TransmissionStats StressTestService::snapshot() {
     result.total_bytes = total_bytes_.load(std::memory_order_relaxed);
     result.send_errors = send_errors_.load(std::memory_order_relaxed);
     const auto now = std::chrono::steady_clock::now();
-    if (started_at_.time_since_epoch().count() != 0) {
-        result.elapsed_seconds = std::chrono::duration<double>(now - started_at_).count();
+    std::chrono::steady_clock::time_point started_at;
+    {
+        std::scoped_lock lock(lifecycle_mutex_);
+        started_at = started_at_;
+    }
+    if (started_at.time_since_epoch().count() != 0) {
+        result.elapsed_seconds = std::chrono::duration<double>(now - started_at).count();
     }
     {
         std::scoped_lock lock(meter_mutex_);
@@ -338,7 +325,8 @@ domain::TransmissionStats StressTestService::snapshot() {
 
 void StressTestService::run_supervisor(domain::GeneratorConfig config, const std::stop_token stop_token) noexcept {
     try {
-        const TimerResolution timer_resolution;
+        const auto timer_resolution = execution_runtime_.acquire_high_resolution_timer();
+        static_cast<void>(timer_resolution);
         auto prepared = LogRenderer::prepare(config);
         if (stop_token.stop_requested()) {
             state_.store(domain::GeneratorState::Stopped, std::memory_order_release);
@@ -391,7 +379,7 @@ void StressTestService::run_supervisor(domain::GeneratorConfig config, const std
 }
 
 void StressTestService::run_worker(domain::EndpointConfig endpoint, const domain::TimestampGeneration timestamp_generation, std::vector<PreparedLog> logs, const std::uint64_t quota, const std::uint32_t worker_index, const std::uint32_t worker_count, const std::stop_token stop_token) noexcept {
-    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
+    execution_runtime_.configure_current_worker();
     std::uint64_t local_messages = 0;
     std::uint64_t local_bytes = 0;
     auto flush = [this, &local_messages, &local_bytes] {
@@ -418,7 +406,7 @@ void StressTestService::run_worker(domain::EndpointConfig endpoint, const domain
             }
         }
 
-        RatePacer pacer{quota};
+        RatePacer pacer{execution_runtime_, quota};
         TimestampCursor clock{timestamp_generation, worker_index, worker_count, quota == 0 || quota >= 10'000};
         const bool calendar_time = clock.calendar_time();
         std::size_t log_index = 0;

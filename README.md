@@ -28,9 +28,12 @@ LogGenerator/
 │  │  └─ transmission_stats.hpp
 │  ├─ application/
 │  │  ├─ ports/
+│  │  │  ├─ execution_runtime.hpp
 │  │  │  ├─ log_catalog.hpp
 │  │  │  ├─ logger.hpp
 │  │  │  └─ log_transport.hpp
+│  │  ├─ log_catalog_service.cpp
+│  │  ├─ log_catalog_service.hpp
 │  │  ├─ log_renderer.cpp
 │  │  ├─ log_renderer.hpp
 │  │  ├─ privacy_anonymizer.cpp
@@ -52,6 +55,8 @@ LogGenerator/
 │  │  ├─ transport_factory.hpp
 │  │  ├─ udp_transport.cpp
 │  │  ├─ udp_transport.hpp
+│  │  ├─ windows_execution_runtime.cpp
+│  │  ├─ windows_execution_runtime.hpp
 │  │  ├─ winsock_support.cpp
 │  │  └─ winsock_support.hpp
 │  ├─ presentation/
@@ -67,9 +72,11 @@ LogGenerator/
 │  │  └─ windows_resource.hpp
 │  └─ main.cpp
 └─ tests/
+   ├─ architecture_tests.cmake
    ├─ async_file_logger_tests.cpp
    ├─ file_transport_tests.cpp
    ├─ json_log_catalog_tests.cpp
+   ├─ log_catalog_service_tests.cpp
    ├─ log_renderer_tests.cpp
    ├─ responsive_layout_tests.cpp
    ├─ stress_test_service_tests.cpp
@@ -77,6 +84,16 @@ LogGenerator/
    ├─ test_support.hpp
    └─ windows_icon_tests.cpp
 ```
+
+## 아키텍처
+
+의존성 방향은 `Presentation/Infrastructure → Application → Domain`으로 고정합니다. `src/main.cpp`만 Composition Root 역할을 하며 JSON 카탈로그, 전송 팩토리, Windows 실행 환경과 파일 로거를 생성해 애플리케이션 서비스와 UI에 주입합니다.
+
+- Domain은 C++ 표준 라이브러리 외의 프레임워크와 다른 계층을 참조하지 않습니다.
+- Application은 전송, 카탈로그 저장, 실행 환경, 로깅을 `application/ports` 계약으로만 사용합니다.
+- Infrastructure는 JSON, FILE, Winsock, Schannel, Win32 타이머 구현을 소유합니다. Winsock과 타이머 해상도는 명시적인 RAII 수명으로 관리됩니다.
+- Presentation은 Application 유스케이스와 Domain 모델만 사용하며 Infrastructure 구현을 직접 참조하지 않습니다.
+- CMake는 `loggen_application`과 `loggen_infrastructure`를 별도 타깃으로 빌드합니다. `LogGeneratorArchitecture` CTest가 금지된 역방향 include와 애플리케이션 계층의 플랫폼 API 유입을 검사합니다.
 
 ## 요구 환경
 

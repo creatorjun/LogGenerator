@@ -192,14 +192,14 @@ struct SchannelTransport::Impl {
     }
 };
 
-SchannelTransport::SchannelTransport()
-    : impl_(std::make_unique<Impl>()) {
+SchannelTransport::SchannelTransport(const WinsockRuntime& runtime)
+    : runtime_(runtime), impl_(std::make_unique<Impl>()) {
 }
 
 SchannelTransport::~SchannelTransport() = default;
 
 void SchannelTransport::connect(const domain::EndpointConfig& endpoint) {
-    impl_->socket = connect_socket(endpoint.host, endpoint.port, SOCK_STREAM, IPPROTO_TCP);
+    impl_->socket = connect_socket(runtime_, endpoint.host, endpoint.port, SOCK_STREAM, IPPROTO_TCP);
     configure_send_buffer(impl_->socket.get(), 4 * 1024 * 1024);
     BOOL enabled = TRUE;
     if (setsockopt(impl_->socket.get(), IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&enabled), sizeof(enabled)) == SOCKET_ERROR) {
