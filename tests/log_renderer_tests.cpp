@@ -151,7 +151,21 @@ void run_log_renderer_tests() {
     auto json_privacy = application::LogRenderer::prepare_one(R"({"path":"{{FILE_PATH}}","name":"{{PERSON}}"})", "192.0.2.10", "192.0.2.20", seconds{0});
     const std::string json_privacy_result{json_privacy.render(base_time)};
     const auto parsed_privacy_json = nlohmann::json::parse(json_privacy_result);
-    expect(parsed_privacy_json.at("path").get<std::string>().starts_with("C:/Test/"), "Generated file path is not JSON-safe");
+    expect(parsed_privacy_json.at("path").get<std::string>().starts_with("C:/ProgramData/Your-Company/SecurityData/"), "Generated fallback file path is not JSON-safe");
+
+    domain::LogTemplate mapped_test_case{"mapped", "Mapped", R"({"path":"{{FILE_PATH}}","name":"{{PERSON}}"})", ""};
+    mapped_test_case.test_case.values["FILE_PATH"] = {"C:/Program Files/Your-Company/Agent/agent.exe"};
+    auto mapped_log = application::LogRenderer::prepare_one(mapped_test_case, "192.0.2.10", "192.0.2.20", seconds{0});
+    const auto mapped_json = nlohmann::json::parse(mapped_log.render(base_time));
+    expect(mapped_json.at("path") == "C:/Program Files/Your-Company/Agent/agent.exe", "Log test case value was not mapped exactly");
+    mapped_test_case.test_case.values["FILE_PATH"].push_back("unexpected.dat");
+    bool mismatched_test_case_rejected = false;
+    try {
+        static_cast<void>(application::LogRenderer::prepare_one(mapped_test_case, "192.0.2.10", "192.0.2.20", seconds{0}));
+    } catch (const std::invalid_argument&) {
+        mismatched_test_case_rejected = true;
+    }
+    expect(mismatched_test_case_rejected, "A mismatched log test case was not rejected");
 
     auto positioned_ips = application::LogRenderer::prepare_one("{{SRC_IP}}:1000 -> {{DST_IP}}:2000", "192.0.2.10", "192.0.2.20", seconds{0});
     expect(positioned_ips.render(base_time) == "192.0.2.10:1000 -> 192.0.2.20:2000", "Position-based source or destination IP marker failed");

@@ -118,6 +118,27 @@ std::size_t count_occurrences(const std::string_view input, const std::string_vi
     return result;
 }
 
+std::string expand_test_case(const domain::LogTemplate& item) {
+    std::string result = item.sample;
+    for (const auto& [token, values] : item.test_case.values) {
+        if (token.empty() || !std::ranges::all_of(token, [](const char value) { return (value >= 'A' && value <= 'Z') || value == '_'; })) {
+            throw std::invalid_argument("Log test case '" + item.id + "' contains an invalid token name");
+        }
+        const std::string marker = "{{" + token + "}}";
+        if (count_occurrences(result, marker) != values.size()) {
+            throw std::invalid_argument("Log test case '" + item.id + "' value count does not match " + marker + " occurrences");
+        }
+        std::size_t search_position = 0;
+        for (const auto& value : values) {
+            const auto marker_position = result.find(marker, search_position);
+            const auto sanitized_value = PrivacyAnonymizer::sanitize(value);
+            result.replace(marker_position, marker.size(), sanitized_value);
+            search_position = marker_position + sanitized_value.size();
+        }
+    }
+    return result;
+}
+
 int parse_zone_offset(const std::string_view suffix) {
     if (suffix.size() < 5 || (suffix.front() != '+' && suffix.front() != '-')) {
         return 0;
@@ -540,9 +561,27 @@ std::vector<PreparedLog> LogRenderer::prepare(const domain::GeneratorConfig& con
     result.reserve(config.templates.size());
     for (const auto& item : config.templates) {
         const auto offset = config.timestamp_generation.mode == domain::TimestampGenerationMode::Offset ? config.timestamp_generation.offset.value() : std::chrono::seconds{0};
-        result.push_back(prepare_one(item.sample, config.source_ip, config.destination_ip, offset));
+        result.push_back(prepare_one(item, config.source_ip, config.destination_ip, offset));
     }
     return result;
+}
+
+LogTemplateAnalysis LogRenderer::analyze(const domain::LogTemplate& item) {
+    auto materialized = item;
+    materialized.sample = PrivacyAnonymizer::sanitize(materialized.sample);
+    return analyze(expand_test_case(materialized));
+}
+
+PreparedLog LogRenderer::prepare_one(const domain::LogTemplate& item, const std::string& source_ip, const std::string& destination_ip, const std::chrono::seconds offset) {
+    auto sanitized = item;
+    replace_all(sanitized.sample, "{{SRC_IP}}", source_ip);
+    replace_all(sanitized.sample, "{{DST_IP}}", destination_ip);
+    sanitized.sample = replace_capture(sanitized.sample, source_field_pattern(), source_ip);
+    sanitized.sample = replace_capture(sanitized.sample, destination_field_pattern(), destination_ip);
+    sanitized.sample = replace_capture(sanitized.sample, arrow_source_pattern(), source_ip);
+    sanitized.sample = replace_capture(sanitized.sample, arrow_destination_pattern(), destination_ip);
+    sanitized.sample = PrivacyAnonymizer::sanitize(sanitized.sample);
+    return PreparedLog{compile_segments(expand_test_case(sanitized)), offset};
 }
 
 PreparedLog LogRenderer::prepare_one(std::string sample, const std::string& source_ip, const std::string& destination_ip, const std::chrono::seconds offset) {

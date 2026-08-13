@@ -60,6 +60,10 @@ void run_json_log_catalog_tests() {
         for (const auto literal : forbidden_literals) {
             expect(item.sample.find(literal) == std::string::npos, "A forbidden personal or corrupted literal remains in " + item.id);
         }
+        if (item.sample.find("{{FILE_PATH}}") != std::string::npos) {
+            expect(item.test_case.values.contains("FILE_PATH"), "A FILE_PATH marker is not mapped by its log test case in " + item.id);
+            expect(!item.test_case.values.at("FILE_PATH").empty(), "A FILE_PATH test case has no values in " + item.id);
+        }
         const auto sanitized_sample = application::PrivacyAnonymizer::sanitize(item.sample);
         expect(!std::regex_search(sanitized_sample, legacy_store_code_pattern), "A legacy display-name marker remains in a store code field in " + item.id);
         std::smatch ipv4_match;
@@ -68,7 +72,7 @@ void run_json_log_catalog_tests() {
         person_tokens += item.sample.find("{{PERSON}}") != std::string::npos ? 1 : 0;
         store_tokens += item.sample.find("{{STORE}}") != std::string::npos ? 1 : 0;
         store_code_tokens += sanitized_sample.find("{{STORE_CODE}}") != std::string::npos ? 1 : 0;
-        const auto analysis = application::LogRenderer::analyze(item.sample);
+        const auto analysis = application::LogRenderer::analyze(item);
         timestamp_templates += analysis.timestamp_count > 0 ? 1 : 0;
         source_ip_templates += analysis.source_ip_count > 0 ? 1 : 0;
         destination_ip_templates += analysis.destination_ip_count > 0 ? 1 : 0;
@@ -98,17 +102,29 @@ void run_json_log_catalog_tests() {
     const std::regex stale_compact_month{R"((^|[^0-9])(?:201[89]|202[1-6])(?:0[1-9]|1[0-2])(?=_))", std::regex::ECMAScript};
     const std::regex invalid_store_code{R"(str_cd\s*=\s*([1-4][0-9]|50|[1-9])호점)", std::regex::ECMAScript | std::regex::icase};
     for (const auto& item : items) {
-        auto prepared = application::LogRenderer::prepare_one(item.sample, "192.0.2.10", "192.0.2.20", std::chrono::seconds{0});
+        auto prepared = application::LogRenderer::prepare_one(item, "192.0.2.10", "192.0.2.20", std::chrono::seconds{0});
         const std::string rendered{prepared.render(validation_time, true)};
         expect(!std::regex_search(rendered, stale_separated_date), "A separated source date was not regenerated in " + item.id);
         expect(!std::regex_search(rendered, stale_compact_date), "A compact source date was not regenerated in " + item.id);
         expect(!std::regex_search(rendered, stale_compact_month), "A compact source month was not regenerated in " + item.id);
-        expect(rendered.find("C:\\Test\\") == std::string::npos, "A JSON-unsafe synthetic path was generated in " + item.id);
+        expect(rendered.find("C:/Test/") == std::string::npos && rendered.find("C:\\Test\\") == std::string::npos, "A generic test path was generated in " + item.id);
+        expect(rendered.find("C:/ProgramData/Your-Company/SecurityData/event-") == std::string::npos, "A test-case path fell back to the generic generator in " + item.id);
         expect(rendered.find("{{") == std::string::npos, "An anonymization marker leaked into generated output in " + item.id);
         expect(!std::regex_search(rendered, invalid_store_code), "A display-name value was inserted into a store code field in " + item.id);
     }
-    for (const auto id : {std::string_view{"csv-0051"}, std::string_view{"csv-0070"}, std::string_view{"csv-0071"}, std::string_view{"csv-0084"}}) {
-        auto prepared = application::LogRenderer::prepare_one(find_item(id).sample, "192.0.2.10", "192.0.2.20", std::chrono::seconds{0});
+    const auto render_item = [&find_item, validation_time](const std::string_view id) {
+        auto prepared = application::LogRenderer::prepare_one(find_item(id), "192.0.2.10", "192.0.2.20", std::chrono::seconds{0});
+        return std::string{prepared.render(validation_time, true)};
+    };
+    expect(render_item("csv-0002").find("D:/SecurityLab/") != std::string::npos, "Media-control test case path was not mapped");
+    expect(render_item("csv-0005").find("POST /catalog-portal/ui/oauth/verify HTTP/1.1") != std::string::npos, "WAF request path was not restored");
+    expect(render_item("csv-0012").find(",SIEM,203001_aws_cloudtrail_log.csv,") != std::string::npos, "CloudTrail test case fields are not structurally accurate");
+    expect(render_item("csv-0024").find("Your-Companygo-dev-s3-siem,Your-Companygo-dev-log-bucket,SIEM,203001_go_bo_log.csv,") == 0, "GO access test case columns were not restored");
+    expect(render_item("csv-0072").starts_with("/CloudESM/data/dbilog/20300102__statement_0.json,{"), "DB-I statement test case was not reconstructed");
+    expect(render_item("csv-0077").starts_with("20300102__statement_0.json,{"), "DB-i statement filename was not reconstructed");
+    expect(render_item("csv-0078").starts_with("db_sess_info_sf_20300102.csv,"), "CHAKRAMAX test case filename was not restored");
+    for (const auto id : {std::string_view{"csv-0051"}, std::string_view{"csv-0070"}, std::string_view{"csv-0071"}, std::string_view{"csv-0072"}, std::string_view{"csv-0077"}, std::string_view{"csv-0084"}}) {
+        auto prepared = application::LogRenderer::prepare_one(find_item(id), "192.0.2.10", "192.0.2.20", std::chrono::seconds{0});
         const std::string rendered{prepared.render(validation_time, true)};
         const auto json_start = rendered.find('{');
         expect(json_start != std::string::npos, "Expected JSON payload is missing in " + std::string{id});
@@ -128,10 +144,11 @@ void run_json_log_catalog_tests() {
     const auto file = directory / "sample_logs.json";
     std::error_code cleanup_error;
     std::filesystem::remove_all(directory, cleanup_error);
-    const std::vector<domain::LogTemplate> expected{
+    std::vector<domain::LogTemplate> expected{
         {"custom-1", "사용자 로그", "timestamp=2030-01-02T03:04:05Z src_ip=10.0.0.1 dst_ip=10.0.0.2", "사용자 정의"},
         {"custom-2", "Multiline", "line one\nline two", "사용자 정의"},
     };
+    expected[0].test_case.values["FILE_PATH"] = {"C:/ProgramData/Your-Company/example.dat"};
     catalog.save(file, expected);
     const auto actual = catalog.load(file);
     expect(actual.size() == expected.size(), "JSON catalog round trip changed item count");
@@ -139,6 +156,7 @@ void run_json_log_catalog_tests() {
     expect(actual[0].name == expected[0].name, "JSON catalog round trip changed UTF-8 name");
     expect(actual[0].sample == expected[0].sample, "JSON catalog round trip changed sample");
     expect(actual[1].sample == expected[1].sample, "JSON catalog round trip changed multiline sample");
+    expect(actual[0].test_case.values == expected[0].test_case.values, "JSON catalog round trip changed test case values");
     const std::vector<domain::LogTemplate> empty;
     for (int iteration = 0; iteration < 32; ++iteration) {
         catalog.save(file, expected);

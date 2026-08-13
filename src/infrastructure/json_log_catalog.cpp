@@ -27,6 +27,31 @@ std::string required_text(const Json& value, const char* key, const std::filesys
     return value[key].get<std::string>();
 }
 
+domain::LogTestCase read_test_case(const Json& value, const std::filesystem::path& file) {
+    domain::LogTestCase result;
+    if (!value.contains("test_case")) {
+        return result;
+    }
+    const auto& test_case = value["test_case"];
+    if (!test_case.is_object()) {
+        throw catalog_error(file, "test_case must be an object");
+    }
+    for (const auto& [token, values] : test_case.items()) {
+        if (token.empty() || !values.is_array()) {
+            throw catalog_error(file, "test_case values must be arrays keyed by token name");
+        }
+        auto& destination = result.values[token];
+        destination.reserve(values.size());
+        for (const auto& item : values) {
+            if (!item.is_string()) {
+                throw catalog_error(file, "every test_case value must be a string");
+            }
+            destination.push_back(item.get<std::string>());
+        }
+    }
+    return result;
+}
+
 std::filesystem::path temporary_path_for(const std::filesystem::path& file) {
     static std::atomic_uint64_t sequence{0};
     auto temporary = file;
@@ -84,6 +109,7 @@ std::vector<domain::LogTemplate> JsonLogCatalog::load(const std::filesystem::pat
         item.name = required_text(value, "name", file);
         item.sample = required_text(value, "sample", file);
         item.source = value.value("source", std::string{});
+        item.test_case = read_test_case(value, file);
         if (item.id.empty() || item.name.empty() || item.sample.empty()) {
             throw catalog_error(file, "id, name and sample must not be empty");
         }
@@ -109,6 +135,13 @@ void JsonLogCatalog::save(const std::filesystem::path& file, const std::span<con
         Json value{{"id", item.id}, {"name", item.name}, {"sample", item.sample}};
         if (!item.source.empty()) {
             value["source"] = item.source;
+        }
+        if (!item.test_case.values.empty()) {
+            Json test_case = Json::object();
+            for (const auto& [token, values] : item.test_case.values) {
+                test_case[token] = values;
+            }
+            value["test_case"] = std::move(test_case);
         }
         logs.push_back(std::move(value));
     }

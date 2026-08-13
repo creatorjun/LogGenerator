@@ -154,6 +154,14 @@ std::string catalog_search_text(const domain::LogTemplate& item, const applicati
     result.append(item.source);
     result.push_back(' ');
     result.append(item.sample);
+    for (const auto& [token, values] : item.test_case.values) {
+        result.push_back(' ');
+        result.append(token);
+        for (const auto& value : values) {
+            result.push_back(' ');
+            result.append(value);
+        }
+    }
     for (const auto kind : application::privacy_token_kinds) {
         if ((analysis.privacy_token_mask & application::privacy_token_bit(kind)) == 0) {
             continue;
@@ -390,7 +398,7 @@ void App::request_catalog_load() {
             result.analyses.reserve(result.items.size());
             for (auto& item : result.items) {
                 item.sample = application::PrivacyAnonymizer::sanitize(item.sample);
-                auto analysis = application::LogRenderer::analyze(item.sample);
+                auto analysis = application::LogRenderer::analyze(item);
                 result.search_names.push_back(catalog_search_text(item, analysis));
                 result.previews.push_back(sample_preview(item.sample));
                 result.analyses.push_back(std::move(analysis));

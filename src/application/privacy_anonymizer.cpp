@@ -65,7 +65,7 @@ std::array<SyntheticProfile, PrivacyAnonymizer::synthetic_profile_count> make_pr
         profile.identifier = buffer;
         std::snprintf(buffer, sizeof(buffer), "secret-%04u", number);
         profile.secret = buffer;
-        std::snprintf(buffer, sizeof(buffer), "C:/Test/file-%u.log", number);
+        std::snprintf(buffer, sizeof(buffer), "C:/ProgramData/Your-Company/SecurityData/event-%u.dat", number);
         profile.file_path = buffer;
     }
     return result;

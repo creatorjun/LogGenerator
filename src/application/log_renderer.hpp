@@ -131,8 +131,10 @@ private:
 
 class LogRenderer {
 public:
+    [[nodiscard]] static LogTemplateAnalysis analyze(const domain::LogTemplate& item);
     [[nodiscard]] static LogTemplateAnalysis analyze(std::string_view sample);
     [[nodiscard]] static std::vector<PreparedLog> prepare(const domain::GeneratorConfig& config);
+    [[nodiscard]] static PreparedLog prepare_one(const domain::LogTemplate& item, const std::string& source_ip, const std::string& destination_ip, std::chrono::seconds offset);
     [[nodiscard]] static PreparedLog prepare_one(std::string sample, const std::string& source_ip, const std::string& destination_ip, std::chrono::seconds offset);
 };
 
