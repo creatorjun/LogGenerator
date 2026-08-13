@@ -630,7 +630,7 @@ void App::render_configuration(const domain::TransmissionStats& stats, const Res
     } else if (!stats.status_message.empty()) {
         ImGui::TextColored(ImVec4(0.03F, 0.52F, 0.28F, 1.0F), "%s", stats.status_message.c_str());
     } else if (protocol_index_ == static_cast<int>(domain::TransportProtocol::File)) {
-        disabled_wrapped_text("FILE은 generated 폴더에 약 1 MiB 단위로 분할 저장하며 설정한 안전 제한에 도달하면 정상 종료합니다.");
+        disabled_wrapped_text("FILE은 generated 폴더에 로그 1개당 파일 1개로 저장하며 설정한 안전 제한에 도달하면 정상 종료합니다.");
     } else {
         disabled_wrapped_text("UDP 통계는 로컬 소켓 전송 완료를 기준으로 집계합니다.");
     }
@@ -652,7 +652,7 @@ void App::render_destination_panel(const float height) {
     if (file_protocol) {
         ImGui::TextDisabled("저장 폴더");
         disabled_wrapped_text(path_to_utf8(generated_directory_).c_str());
-        disabled_wrapped_text("파일명: yyyyMMdd_HHmmss_SSS.log");
+        disabled_wrapped_text("파일명: yyyyMMdd_HHmmss_SSS.log, 이후 _0002 순번 추가");
         ImGui::TextDisabled("최대 총 생성량 (MiB)");
         ImGui::SetNextItemWidth(-1.0F);
         ImGui::InputScalar("##file_max_total_mib", ImGuiDataType_U64, &file_max_total_mib_);

@@ -10,11 +10,32 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <regex>
 #include <string>
 #include <vector>
 
 namespace loggen::tests {
+namespace {
+
+std::vector<std::filesystem::path> generated_files(const std::filesystem::path& directory) {
+    std::vector<std::filesystem::path> files;
+    for (const auto& entry : std::filesystem::directory_iterator(directory)) {
+        if (entry.is_regular_file()) {
+            files.push_back(entry.path());
+        }
+    }
+    std::ranges::sort(files);
+    return files;
+}
+
+std::string read_file(const std::filesystem::path& file) {
+    std::ifstream input(file, std::ios::binary);
+    return {std::istreambuf_iterator<char>{input}, std::istreambuf_iterator<char>{}};
+}
+
+}
 
 void run_file_transport_tests() {
     const domain::EndpointConfig default_endpoint;
@@ -25,9 +46,8 @@ void run_file_transport_tests() {
     const auto directory = std::filesystem::current_path() / (".test_generated_" + std::to_string(GetCurrentProcessId()));
     std::error_code cleanup_error;
     std::filesystem::remove_all(directory, cleanup_error);
-    constexpr std::size_t payload_size = 60 * 1024;
-    constexpr std::size_t payload_count = 35;
-    const std::string payload(payload_size, 'L');
+    const std::string batch{"first log\nsecond log\n"};
+    const std::string large_log(2 * 1024 * 1024, 'L');
     {
         const infrastructure::TransportFactory factory{directory};
         auto created = factory.create(domain::TransportProtocol::File);
@@ -36,32 +56,21 @@ void run_file_transport_tests() {
         domain::EndpointConfig endpoint;
         endpoint.protocol = domain::TransportProtocol::File;
         transport->connect(endpoint);
-        expect(!transport->is_datagram(), "FILE transport must use batched stream writes");
-        for (std::size_t index = 0; index < payload_count; ++index) {
-            expect(transport->send(payload) == application::SendResult::Sent, "FILE transport stopped before its configured limits");
-        }
+        expect(generated_files(directory).empty(), "FILE transport created an empty file before receiving a log");
+        expect(!transport->is_datagram(), "FILE transport must use ordered stream writes");
+        expect(transport->send(batch) == application::SendResult::Sent, "FILE transport rejected a valid log batch");
+        expect(transport->send(large_log) == application::SendResult::Sent, "FILE transport rejected a large log event");
     }
 
-    std::vector<std::filesystem::path> files;
-    for (const auto& entry : std::filesystem::directory_iterator(directory)) {
-        if (entry.is_regular_file()) {
-            files.push_back(entry.path());
-        }
+    const auto files = generated_files(directory);
+    expect(files.size() == 3, "FILE transport did not create exactly one file per log event");
+    const std::regex filename_pattern{R"(^\d{8}_\d{6}_\d{3}(?:_\d{4,})?\.log$)", std::regex::ECMAScript};
+    for (const auto& file : files) {
+        expect(std::regex_match(file.filename().string(), filename_pattern), "Generated log filename is not timestamp based");
     }
-    std::ranges::sort(files);
-    expect(files.size() == 3, "FILE transport did not rotate at approximately 1 MiB");
-    const std::regex filename_pattern{R"(^\d{8}_\d{6}_\d{3}(?:_\d{4})?\.log$)", std::regex::ECMAScript};
-    std::uint64_t total_size = 0;
-    for (std::size_t index = 0; index < files.size(); ++index) {
-        const auto size = std::filesystem::file_size(files[index]);
-        total_size += size;
-        expect(size <= infrastructure::FileTransport::slice_size_bytes, "Generated log slice exceeded 1 MiB");
-        if (index + 1 < files.size()) {
-            expect(size >= 900 * 1024, "Generated log slice rotated too early");
-        }
-        expect(std::regex_match(files[index].filename().string(), filename_pattern), "Generated log filename is not timestamp based");
-    }
-    expect(total_size == payload_size * payload_count, "FILE transport lost generated log bytes");
+    expect(read_file(files[0]) == "first log\n", "First generated file does not contain exactly one log");
+    expect(read_file(files[1]) == "second log\n", "Second generated file does not contain exactly one log");
+    expect(read_file(files[2]) == large_log, "A log larger than 1 MiB was split or changed");
     expect(domain::protocol_name(domain::TransportProtocol::File) == "FILE", "FILE protocol name is incorrect");
 
     const auto limit_directory = directory / "limits";
@@ -69,12 +78,12 @@ void run_file_transport_tests() {
         infrastructure::FileTransport transport{limit_directory / "bytes"};
         domain::EndpointConfig endpoint;
         endpoint.protocol = domain::TransportProtocol::File;
-        endpoint.file_max_total_bytes = 100 * 1024;
+        endpoint.file_max_total_bytes = 10;
         endpoint.file_max_count = 0;
         endpoint.file_max_duration = std::chrono::milliseconds{0};
         transport.connect(endpoint);
-        expect(transport.send(payload) == application::SendResult::Sent, "FILE total byte limit rejected a fitting payload");
-        expect(transport.send(payload) == application::SendResult::TotalBytesLimitReached, "FILE total byte limit was not enforced");
+        expect(transport.send("12345\n") == application::SendResult::Sent, "FILE total byte limit rejected a fitting log");
+        expect(transport.send("67890\n") == application::SendResult::TotalBytesLimitReached, "FILE total byte limit was not enforced");
     }
     {
         infrastructure::FileTransport transport{limit_directory / "files"};
@@ -84,14 +93,11 @@ void run_file_transport_tests() {
         endpoint.file_max_count = 1;
         endpoint.file_max_duration = std::chrono::milliseconds{0};
         transport.connect(endpoint);
-        for (std::size_t index = 0; index < 18; ++index) {
-            const auto result = transport.send(payload);
-            if (index < 18 - 1) {
-                expect(result == application::SendResult::Sent, "FILE count limit stopped before the first slice was full");
-            } else {
-                expect(result == application::SendResult::FileCountLimitReached, "FILE count limit was not enforced");
-            }
-        }
+        expect(transport.send("one\ntwo\n") == application::SendResult::FileCountLimitReached, "FILE count limit accepted too many log files");
+        expect(generated_files(limit_directory / "files").empty(), "FILE count limit partially wrote a rejected batch");
+        expect(transport.send("one\n") == application::SendResult::Sent, "FILE count limit rejected the allowed log file");
+        expect(transport.send("two\n") == application::SendResult::FileCountLimitReached, "FILE count limit was not enforced per log file");
+        expect(generated_files(limit_directory / "files").size() == 1, "FILE count limit created an unexpected number of files");
     }
     {
         infrastructure::FileTransport transport{limit_directory / "duration"};
@@ -102,7 +108,7 @@ void run_file_transport_tests() {
         endpoint.file_max_duration = std::chrono::milliseconds{1};
         transport.connect(endpoint);
         Sleep(5);
-        expect(transport.send(payload) == application::SendResult::DurationLimitReached, "FILE duration limit was not enforced");
+        expect(transport.send("delayed\n") == application::SendResult::DurationLimitReached, "FILE duration limit was not enforced");
     }
     std::filesystem::remove_all(directory, cleanup_error);
 }

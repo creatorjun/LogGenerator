@@ -5,18 +5,16 @@
 
 #include <Windows.h>
 
-#include <cstddef>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <string_view>
 
 namespace loggen::infrastructure {
 
 class FileTransport final : public application::ILogTransport {
 public:
-    static constexpr std::uint64_t slice_size_bytes = 1024ULL * 1024ULL;
-
     explicit FileTransport(std::filesystem::path output_directory);
     ~FileTransport() override;
 
@@ -29,14 +27,15 @@ public:
 
 private:
     void close() noexcept;
-    void open_next_slice();
-    [[nodiscard]] std::filesystem::path slice_path(std::uint32_t index) const;
+    void write_log(std::string_view log);
+    [[nodiscard]] std::filesystem::path open_next_file();
+    [[nodiscard]] std::filesystem::path file_path(std::uint64_t index) const;
 
     std::filesystem::path output_directory_;
     HANDLE file_{INVALID_HANDLE_VALUE};
     std::wstring timestamp_;
-    std::uint32_t slice_index_{0};
-    std::uint64_t current_size_{0};
+    std::uint64_t next_file_index_{0};
+    std::uint64_t file_count_{0};
     std::uint64_t total_size_{0};
     std::uint64_t max_total_bytes_{0};
     std::uint32_t max_file_count_{0};

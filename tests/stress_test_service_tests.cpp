@@ -183,7 +183,7 @@ void run_stress_test_service_tests() {
     {
         std::scoped_lock lock(stream_state->mutex);
         expect(!stream_state->payloads.empty(), "Stream worker did not capture a payload");
-        expect(stream_state->payloads.front().find("alpha\\r\\nbeta\n") != std::string::npos, "Embedded line breaks were not escaped for newline framing");
+        expect(stream_state->payloads.front() == "alpha\\r\\nbeta\n", "FILE mode did not send exactly one framed log per write");
         expect(stream_state->payloads.front().find("alpha\r\nbeta") == std::string::npos, "An embedded physical line break remains in newline framing");
         stream_state->release_send = true;
     }
