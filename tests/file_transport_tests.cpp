@@ -17,6 +17,11 @@
 namespace loggen::tests {
 
 void run_file_transport_tests() {
+    const domain::EndpointConfig default_endpoint;
+    expect(default_endpoint.file_max_total_bytes == 0, "Default FILE total byte limit must be unlimited");
+    expect(default_endpoint.file_max_count == 0, "Default FILE count limit must be unlimited");
+    expect(default_endpoint.file_max_duration.count() == 0, "Default FILE duration limit must be unlimited");
+
     const auto directory = std::filesystem::current_path() / (".test_generated_" + std::to_string(GetCurrentProcessId()));
     std::error_code cleanup_error;
     std::filesystem::remove_all(directory, cleanup_error);

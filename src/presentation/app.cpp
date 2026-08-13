@@ -49,16 +49,16 @@ std::string_view state_text(const domain::GeneratorState state) {
 ImVec4 state_color(const domain::GeneratorState state) {
     switch (state) {
     case domain::GeneratorState::Running:
-        return {0.24F, 0.84F, 0.53F, 1.0F};
+        return {0.04F, 0.56F, 0.30F, 1.0F};
     case domain::GeneratorState::Connecting:
     case domain::GeneratorState::Stopping:
-        return {1.0F, 0.72F, 0.25F, 1.0F};
+        return {0.82F, 0.49F, 0.03F, 1.0F};
     case domain::GeneratorState::Failed:
-        return {1.0F, 0.35F, 0.38F, 1.0F};
+        return {0.82F, 0.16F, 0.19F, 1.0F};
     case domain::GeneratorState::Stopped:
-        return {0.55F, 0.61F, 0.70F, 1.0F};
+        return {0.39F, 0.44F, 0.52F, 1.0F};
     }
-    return {0.55F, 0.61F, 0.70F, 1.0F};
+    return {0.39F, 0.44F, 0.52F, 1.0F};
 }
 
 std::string format_number(const double value) {
@@ -88,15 +88,14 @@ std::string format_bytes(const std::uint64_t bytes) {
     return buffer;
 }
 
-void metric_card(const char* id, const char* label, const std::string& value, const ImVec4 accent) {
+void metric_card(const char* id, const char* label, const std::string& value, const ImVec4 accent, ImFont* value_font, const float value_scale) {
     const float height = ImGui::GetTextLineHeightWithSpacing() * 3.4F;
-    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.075F, 0.092F, 0.125F, 1.0F));
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(1.0F, 1.0F, 1.0F, 1.0F));
     ImGui::BeginChild(id, ImVec2(0.0F, height), ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding);
     ImGui::TextColored(accent, "%s", label);
-    const float value_scale = ImGui::GetContentRegionAvail().x < ImGui::GetFontSize() * 10.0F ? 1.15F : 1.35F;
-    ImGui::SetWindowFontScale(value_scale);
+    ImGui::PushFont(value_font, ImGui::GetStyle().FontSizeBase * value_scale);
     ImGui::TextUnformatted(value.c_str());
-    ImGui::SetWindowFontScale(1.0F);
+    ImGui::PopFont();
     ImGui::EndChild();
     ImGui::PopStyleColor();
 }
@@ -239,7 +238,7 @@ int App::run(const HINSTANCE instance, const int show_command) {
         UnregisterClassW(window_class.lpszClassName, instance);
         throw std::runtime_error("Window creation failed");
     }
-    const BOOL dark_mode = TRUE;
+    const BOOL dark_mode = FALSE;
     DwmSetWindowAttribute(window_, 20, &dark_mode, sizeof(dark_mode));
     d3d_.create(window_);
     initialize_imgui();
@@ -270,7 +269,7 @@ int App::run(const HINSTANCE instance, const int show_command) {
         ImGui::NewFrame();
         render();
         ImGui::Render();
-        d3d_.clear(0.055F, 0.067F, 0.09F, 1.0F);
+        d3d_.clear(0.955F, 0.966F, 0.982F, 1.0F);
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
         d3d_.present();
     }
@@ -309,6 +308,7 @@ LRESULT App::handle_message(const HWND window, const UINT message, const WPARAM 
             } catch (const std::exception& error) {
                 ui_error_ = error.what();
             }
+            update_ui_scale();
         }
         return 0;
     case WM_GETMINMAXINFO: {
@@ -317,12 +317,22 @@ LRESULT App::handle_message(const HWND window, const UINT message, const WPARAM 
         const UINT dpi = detected_dpi == 0 ? 96U : detected_dpi;
         information->ptMinTrackSize.x = MulDiv(520, static_cast<int>(dpi), 96);
         information->ptMinTrackSize.y = MulDiv(480, static_cast<int>(dpi), 96);
+        const HMONITOR monitor = MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO monitor_info{};
+        monitor_info.cbSize = sizeof(monitor_info);
+        if (GetMonitorInfoW(monitor, &monitor_info)) {
+            information->ptMaxPosition.x = monitor_info.rcWork.left - monitor_info.rcMonitor.left;
+            information->ptMaxPosition.y = monitor_info.rcWork.top - monitor_info.rcMonitor.top;
+            information->ptMaxSize.x = monitor_info.rcWork.right - monitor_info.rcWork.left;
+            information->ptMaxSize.y = monitor_info.rcWork.bottom - monitor_info.rcWork.top;
+            information->ptMaxTrackSize = information->ptMaxSize;
+        }
         return 0;
     }
     case WM_DPICHANGED: {
         const auto* suggested_bounds = reinterpret_cast<const RECT*>(long_parameter);
         SetWindowPos(window, nullptr, suggested_bounds->left, suggested_bounds->top, suggested_bounds->right - suggested_bounds->left, suggested_bounds->bottom - suggested_bounds->top, SWP_NOACTIVATE | SWP_NOZORDER);
-        update_ui_scale(static_cast<float>(HIWORD(word_parameter)) / 96.0F);
+        update_ui_scale();
         return 0;
     }
     case WM_SYSCOMMAND:
@@ -344,13 +354,23 @@ void App::initialize_imgui() {
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-    ui_scale_ = static_cast<float>(GetDpiForWindow(window_)) / 96.0F;
+    const UINT detected_dpi = GetDpiForWindow(window_);
+    dpi_scale_ = static_cast<float>(detected_dpi == 0 ? 96U : detected_dpi) / 96.0F;
+    RECT client_bounds{};
+    GetClientRect(window_, &client_bounds);
+    visual_scale_ = responsive_visual_scale(static_cast<float>(client_bounds.right), static_cast<float>(client_bounds.bottom), dpi_scale_);
+    ui_scale_ = dpi_scale_ * visual_scale_;
     const std::filesystem::path korean_font = L"C:\\Windows\\Fonts\\malgun.ttf";
+    const std::filesystem::path korean_bold_font = L"C:\\Windows\\Fonts\\malgunbd.ttf";
     if (std::filesystem::exists(korean_font)) {
-        io.Fonts->AddFontFromFileTTF(path_to_utf8(korean_font).c_str(), 17.0F, nullptr, io.Fonts->GetGlyphRangesKorean());
+        regular_font_ = io.Fonts->AddFontFromFileTTF(path_to_utf8(korean_font).c_str(), 17.0F, nullptr, io.Fonts->GetGlyphRangesKorean());
+        if (std::filesystem::exists(korean_bold_font)) {
+            bold_font_ = io.Fonts->AddFontFromFileTTF(path_to_utf8(korean_bold_font).c_str(), 17.0F, nullptr, io.Fonts->GetGlyphRangesKorean());
+        }
     } else {
-        io.Fonts->AddFontDefault();
+        regular_font_ = io.Fonts->AddFontDefault();
     }
+    bold_font_ = bold_font_ == nullptr ? regular_font_ : bold_font_;
     apply_ui_theme(ui_scale_);
     if (!ImGui_ImplWin32_Init(window_) || !ImGui_ImplDX11_Init(d3d_.device(), d3d_.context())) {
         ImGui::DestroyContext();
@@ -359,15 +379,24 @@ void App::initialize_imgui() {
     imgui_ready_ = true;
 }
 
-void App::update_ui_scale(const float scale) {
-    const float next_scale = std::clamp(scale, 1.0F, 4.0F);
+void App::update_ui_scale() {
+    const UINT detected_dpi = GetDpiForWindow(window_);
+    const float next_dpi_scale = std::clamp(static_cast<float>(detected_dpi == 0 ? 96U : detected_dpi) / 96.0F, 1.0F, 4.0F);
+    RECT client_bounds{};
+    if (!GetClientRect(window_, &client_bounds)) {
+        return;
+    }
+    const float next_visual_scale = responsive_visual_scale(static_cast<float>(client_bounds.right), static_cast<float>(client_bounds.bottom), next_dpi_scale);
+    const float next_scale = next_dpi_scale * next_visual_scale;
     if (std::abs(next_scale - ui_scale_) < 0.01F) {
         return;
     }
+    dpi_scale_ = next_dpi_scale;
+    visual_scale_ = next_visual_scale;
     ui_scale_ = next_scale;
     if (imgui_ready_) {
         apply_ui_theme(ui_scale_);
-        logger_.info(std::format("UI DPI scale changed: {:.2f}", ui_scale_));
+        logger_.info(std::format("UI scale changed: dpi={:.2f}, visual={:.2f}, effective={:.2f}", dpi_scale_, visual_scale_, ui_scale_));
     }
 }
 
@@ -511,7 +540,8 @@ void App::render() {
     ImGui::SetNextWindowPos(viewport->WorkPos);
     ImGui::SetNextWindowSize(viewport->WorkSize);
     ImGui::Begin("LogGeneratorRoot", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
-    const auto layout = responsive_layout(ImGui::GetContentRegionAvail().x, ui_scale_);
+    const auto available = ImGui::GetContentRegionAvail();
+    const auto layout = responsive_layout(available.x, available.y, ui_scale_);
     render_header(stats, layout);
     ImGui::Spacing();
     render_metrics(stats, layout);
@@ -523,9 +553,9 @@ void App::render() {
 }
 
 void App::render_header(const domain::TransmissionStats& stats, const ResponsiveLayout& layout) {
-    ImGui::SetWindowFontScale(layout.size == ResponsiveSize::Compact ? 1.25F : 1.45F);
+    ImGui::PushFont(bold_font_, ImGui::GetStyle().FontSizeBase * layout.title_scale);
     ImGui::TextUnformatted("LOG GENERATOR");
-    ImGui::SetWindowFontScale(1.0F);
+    ImGui::PopFont();
     if (layout.inline_header_subtitle) {
         ImGui::SameLine();
     }
@@ -543,13 +573,13 @@ void App::render_metrics(const domain::TransmissionStats& stats, const Responsiv
     static_cast<void>(stats);
     if (ImGui::BeginTable("metrics", layout.metric_columns, ImGuiTableFlags_SizingStretchSame | ImGuiTableFlags_PadOuterX)) {
         ImGui::TableNextColumn();
-        metric_card("eps_card", "현재 EPS", current_eps_text_, {0.30F, 0.69F, 1.0F, 1.0F});
+        metric_card("eps_card", "현재 EPS", current_eps_text_, {0.04F, 0.39F, 0.82F, 1.0F}, layout.strong_metric_weight ? bold_font_ : regular_font_, layout.metric_value_scale);
         ImGui::TableNextColumn();
-        metric_card("avg_card", "평균 EPS", average_eps_text_, {0.64F, 0.55F, 1.0F, 1.0F});
+        metric_card("avg_card", "평균 EPS", average_eps_text_, {0.42F, 0.25F, 0.75F, 1.0F}, layout.strong_metric_weight ? bold_font_ : regular_font_, layout.metric_value_scale);
         ImGui::TableNextColumn();
-        metric_card("count_card", "총 전송 로그", total_messages_text_, {0.24F, 0.84F, 0.53F, 1.0F});
+        metric_card("count_card", "총 전송 로그", total_messages_text_, {0.03F, 0.52F, 0.28F, 1.0F}, layout.strong_metric_weight ? bold_font_ : regular_font_, layout.metric_value_scale);
         ImGui::TableNextColumn();
-        metric_card("bytes_card", "총 전송량", total_bytes_text_, {1.0F, 0.68F, 0.25F, 1.0F});
+        metric_card("bytes_card", "총 전송량", total_bytes_text_, {0.78F, 0.40F, 0.02F, 1.0F}, layout.strong_metric_weight ? bold_font_ : regular_font_, layout.metric_value_scale);
         ImGui::EndTable();
     }
 }
@@ -558,15 +588,19 @@ void App::render_configuration(const domain::TransmissionStats& stats, const Res
     const bool active = is_active(stats.state);
     ImGui::BeginDisabled(active);
     if (layout.configuration_columns == 2) {
+        const float reserved_height = ImGui::GetFrameHeight() * 1.5F + ImGui::GetStyle().ItemSpacing.y * 4.0F + ImGui::GetTextLineHeightWithSpacing() * 1.7F;
+        const float panel_height = layout.fill_configuration_height ? std::max(280.0F * ui_scale_, ImGui::GetContentRegionAvail().y - reserved_height) : 0.0F;
         if (ImGui::BeginTable("configuration", 2, ImGuiTableFlags_SizingStretchSame | ImGuiTableFlags_PadOuterX)) {
             ImGui::TableNextColumn();
-            render_destination_panel();
+            render_destination_panel(panel_height);
             ImGui::TableNextColumn();
+            ImGui::BeginChild("template_column", ImVec2(0.0F, panel_height), ImGuiChildFlags_None, ImGuiWindowFlags_AlwaysVerticalScrollbar);
             render_template_panel(layout);
+            ImGui::EndChild();
             ImGui::EndTable();
         }
     } else {
-        render_destination_panel();
+        render_destination_panel(0.0F);
         ImGui::Spacing();
         render_template_panel(layout);
     }
@@ -575,8 +609,8 @@ void App::render_configuration(const domain::TransmissionStats& stats, const Res
     ImGui::Spacing();
     const float button_height = ImGui::GetFrameHeight() * 1.5F;
     if (active) {
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.78F, 0.19F, 0.23F, 1.0F));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.92F, 0.25F, 0.29F, 1.0F));
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.76F, 0.12F, 0.16F, 1.0F));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.66F, 0.08F, 0.12F, 1.0F));
         if (ImGui::Button("전송 중지", ImVec2(-1.0F, button_height))) {
             stress_service_.request_stop();
             next_stats_refresh_ = {};
@@ -586,15 +620,15 @@ void App::render_configuration(const domain::TransmissionStats& stats, const Res
         start_test();
     }
     if (!stats.last_error.empty()) {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0F, 0.38F, 0.40F, 1.0F));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.82F, 0.16F, 0.19F, 1.0F));
         ImGui::TextWrapped("%s", stats.last_error.c_str());
         ImGui::PopStyleColor();
     } else if (!ui_error_.empty()) {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0F, 0.38F, 0.40F, 1.0F));
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.82F, 0.16F, 0.19F, 1.0F));
         ImGui::TextWrapped("%s", ui_error_.c_str());
         ImGui::PopStyleColor();
     } else if (!stats.status_message.empty()) {
-        ImGui::TextColored(ImVec4(0.24F, 0.84F, 0.53F, 1.0F), "%s", stats.status_message.c_str());
+        ImGui::TextColored(ImVec4(0.03F, 0.52F, 0.28F, 1.0F), "%s", stats.status_message.c_str());
     } else if (protocol_index_ == static_cast<int>(domain::TransportProtocol::File)) {
         disabled_wrapped_text("FILE은 generated 폴더에 약 1 MiB 단위로 분할 저장하며 설정한 안전 제한에 도달하면 정상 종료합니다.");
     } else {
@@ -602,8 +636,10 @@ void App::render_configuration(const domain::TransmissionStats& stats, const Res
     }
 }
 
-void App::render_destination_panel() {
-    ImGui::BeginChild("destination", ImVec2(0.0F, 0.0F), ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_AutoResizeY);
+void App::render_destination_panel(const float height) {
+    const auto child_flags = ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding | (height > 0.0F ? ImGuiChildFlags_None : ImGuiChildFlags_AutoResizeY);
+    const auto window_flags = height > 0.0F ? ImGuiWindowFlags_AlwaysVerticalScrollbar : ImGuiWindowFlags_None;
+    ImGui::BeginChild("destination", ImVec2(0.0F, height), child_flags, window_flags);
     ImGui::TextUnformatted("전송 설정");
     ImGui::Separator();
     const char* protocols[]{"UDP", "TCP", "TLS", "FILE"};
@@ -626,7 +662,7 @@ void App::render_destination_panel() {
         ImGui::TextDisabled("최대 실행 시간 (초)");
         ImGui::SetNextItemWidth(-1.0F);
         ImGui::InputInt("##file_max_duration", &file_max_duration_seconds_, 0, 0);
-        disabled_wrapped_text("각 제한에서 0은 무제한입니다. 기본값은 512 MiB / 512개 / 60초입니다.");
+        disabled_wrapped_text("각 제한에서 0은 무제한이며 모든 제한의 기본값은 0입니다.");
     } else {
         ImGui::TextDisabled("대상 IP / Host");
         ImGui::SetNextItemWidth(-1.0F);
@@ -747,7 +783,7 @@ void App::render_catalog_selector() {
         ImGui::EndTable();
     }
     if (catalog_loading_.load(std::memory_order_acquire)) {
-        ImGui::TextColored(ImVec4(0.30F, 0.69F, 1.0F, 1.0F), "JSON 카탈로그 처리 중...");
+        ImGui::TextColored(ImVec4(0.04F, 0.39F, 0.82F, 1.0F), "JSON 카탈로그 처리 중...");
     }
     ImGui::BeginDisabled(catalog_loading_.load(std::memory_order_acquire));
     if (ImGui::BeginTable("catalog_actions", 3, ImGuiTableFlags_SizingStretchSame)) {
@@ -817,7 +853,7 @@ void App::render_catalog_selector() {
                     ImGui::SameLine(0.0F, 4.0F);
                 }
                 const auto name = application::timestamp_style_name(analysis.timestamp_styles[index]);
-                ImGui::TextColored(ImVec4(0.30F, 0.69F, 1.0F, 1.0F), "%.*s", static_cast<int>(name.size()), name.data());
+                ImGui::TextColored(ImVec4(0.04F, 0.39F, 0.82F, 1.0F), "%.*s", static_cast<int>(name.size()), name.data());
             }
         }
     }
@@ -837,9 +873,12 @@ void App::render_catalog_editor() {
     }
 
     const auto* viewport = ImGui::GetMainViewport();
+    const float popup_max_width = std::max(320.0F * ui_scale_, viewport->WorkSize.x - 32.0F * ui_scale_);
+    const float popup_max_height = std::max(360.0F * ui_scale_, viewport->WorkSize.y - 32.0F * ui_scale_);
     const ImVec2 editor_size{
-        std::min(viewport->WorkSize.x * 0.88F, 900.0F * ui_scale_),
-        std::min(viewport->WorkSize.y * 0.88F, 720.0F * ui_scale_)};
+        std::min(viewport->WorkSize.x * 0.90F, popup_max_width),
+        std::min(viewport->WorkSize.y * 0.90F, popup_max_height)};
+    ImGui::SetNextWindowSizeConstraints(ImVec2(std::min(520.0F * ui_scale_, popup_max_width), std::min(480.0F * ui_scale_, popup_max_height)), ImVec2(popup_max_width, popup_max_height));
     ImGui::SetNextWindowSize(editor_size, ImGuiCond_Appearing);
     if (ImGui::BeginPopupModal("샘플 로그 편집", nullptr, ImGuiWindowFlags_NoSavedSettings)) {
         ImGui::TextUnformatted(editor_is_new_ ? "새 샘플 로그" : "샘플 로그 수정");
@@ -862,7 +901,7 @@ void App::render_catalog_editor() {
             ImGui::TextDisabled("분석 대기...");
         }
         if (editor_analysis_.timestamp_styles.empty()) {
-            ImGui::TextColored(ImVec4(1.0F, 0.72F, 0.25F, 1.0F), "인식된 날짜 포맷이 없습니다.");
+            ImGui::TextColored(ImVec4(0.78F, 0.43F, 0.02F, 1.0F), "인식된 날짜 포맷이 없습니다.");
         } else {
             for (const auto style : editor_analysis_.timestamp_styles) {
                 const auto name = application::timestamp_style_name(style);
@@ -887,7 +926,7 @@ void App::render_catalog_editor() {
         if (delete_index_ < catalog_items_.size()) {
             ImGui::TextWrapped("'%s' 샘플 로그를 삭제하시겠습니까?", catalog_items_[delete_index_].name.c_str());
         }
-        ImGui::TextColored(ImVec4(1.0F, 0.38F, 0.40F, 1.0F), "JSON 파일에서도 삭제됩니다.");
+        ImGui::TextColored(ImVec4(0.82F, 0.16F, 0.19F, 1.0F), "JSON 파일에서도 삭제됩니다.");
         if (ImGui::Button("삭제", ImVec2(120.0F * ui_scale_, 0.0F))) {
             delete_selected_catalog_item();
             ImGui::CloseCurrentPopup();

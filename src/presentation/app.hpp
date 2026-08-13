@@ -23,6 +23,8 @@
 #include <thread>
 #include <vector>
 
+struct ImFont;
+
 namespace loggen::presentation {
 
 class App {
@@ -45,7 +47,7 @@ private:
     static LRESULT CALLBACK window_procedure(HWND window, UINT message, WPARAM word_parameter, LPARAM long_parameter);
     LRESULT handle_message(HWND window, UINT message, WPARAM word_parameter, LPARAM long_parameter);
     void initialize_imgui();
-    void update_ui_scale(float scale);
+    void update_ui_scale();
     void shutdown_imgui() noexcept;
     void request_catalog_load();
     void request_catalog_save();
@@ -56,7 +58,7 @@ private:
     void render_header(const domain::TransmissionStats& stats, const ResponsiveLayout& layout);
     void render_metrics(const domain::TransmissionStats& stats, const ResponsiveLayout& layout);
     void render_configuration(const domain::TransmissionStats& stats, const ResponsiveLayout& layout);
-    void render_destination_panel();
+    void render_destination_panel(float height);
     void render_template_panel(const ResponsiveLayout& layout);
     void render_time_offset(int columns);
     void render_time_range();
@@ -79,13 +81,17 @@ private:
     HWND window_{nullptr};
     bool imgui_ready_{false};
     float ui_scale_{1.0F};
+    float dpi_scale_{1.0F};
+    float visual_scale_{1.0F};
+    ImFont* regular_font_{nullptr};
+    ImFont* bold_font_{nullptr};
     std::vector<domain::LogTemplate> catalog_items_;
     std::vector<std::string> catalog_search_names_;
     std::vector<std::string> catalog_previews_;
     std::vector<application::LogTemplateAnalysis> catalog_analyses_;
     std::vector<std::size_t> filtered_indices_;
     std::size_t selected_log_{0};
-    bool rotate_filtered_{false};
+    bool rotate_filtered_{true};
     int protocol_index_{0};
     int framing_index_{0};
     int timestamp_mode_index_{0};
@@ -96,9 +102,9 @@ private:
     int offset_hours_{0};
     int offset_minutes_{0};
     std::uint64_t target_eps_{0};
-    std::uint64_t file_max_total_mib_{512};
-    int file_max_count_{512};
-    int file_max_duration_seconds_{60};
+    std::uint64_t file_max_total_mib_{0};
+    int file_max_count_{0};
+    int file_max_duration_seconds_{0};
     bool verify_certificate_{true};
     std::array<char, 256> host_{"127.0.0.1"};
     std::array<char, 256> tls_server_name_{};

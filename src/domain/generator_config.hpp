@@ -18,9 +18,9 @@ struct EndpointConfig {
     std::string tls_server_name;
     bool verify_certificate{true};
     StreamFraming framing{StreamFraming::Newline};
-    std::uint64_t file_max_total_bytes{512ULL * 1024ULL * 1024ULL};
-    std::uint32_t file_max_count{512};
-    std::chrono::milliseconds file_max_duration{std::chrono::seconds{60}};
+    std::uint64_t file_max_total_bytes{0};
+    std::uint32_t file_max_count{0};
+    std::chrono::milliseconds file_max_duration{0};
 };
 
 struct TimeOffset {
