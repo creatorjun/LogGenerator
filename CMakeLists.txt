@@ -3,6 +3,10 @@ cmake_minimum_required(VERSION 3.28)
 
 project(LogGenerator VERSION 1.0.0 LANGUAGES CXX)
 
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)
 
 if(NOT WIN32)
