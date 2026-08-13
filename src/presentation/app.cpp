@@ -4,6 +4,7 @@
 #include "application/privacy_anonymizer.hpp"
 #include "domain/generator_config.hpp"
 #include "presentation/ui_theme.hpp"
+#include "presentation/windows_icon.hpp"
 
 #include <dwmapi.h>
 #include <imgui.h>
@@ -220,8 +221,13 @@ int App::run(const HINSTANCE instance, const int show_command) {
     window_class.style = CS_CLASSDC;
     window_class.lpfnWndProc = &App::window_procedure;
     window_class.hInstance = instance;
+    window_class.hIcon = load_application_icon(instance, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON));
+    window_class.hIconSm = load_application_icon(instance, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON));
     window_class.hCursor = LoadCursor(nullptr, IDC_ARROW);
     window_class.lpszClassName = L"LogGeneratorWindow";
+    if (window_class.hIcon == nullptr || window_class.hIconSm == nullptr) {
+        throw std::runtime_error("Application icon resource loading failed");
+    }
     if (RegisterClassExW(&window_class) == 0) {
         throw std::runtime_error("Window class registration failed");
     }
@@ -238,6 +244,7 @@ int App::run(const HINSTANCE instance, const int show_command) {
         UnregisterClassW(window_class.lpszClassName, instance);
         throw std::runtime_error("Window creation failed");
     }
+    set_application_window_icons(window_, instance);
     const BOOL dark_mode = FALSE;
     DwmSetWindowAttribute(window_, 20, &dark_mode, sizeof(dark_mode));
     d3d_.create(window_);

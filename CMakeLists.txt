@@ -74,14 +74,16 @@ target_compile_definitions(loggen_core PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNIC
 target_link_libraries(loggen_core PUBLIC nlohmann_json::nlohmann_json PRIVATE ws2_32 secur32 crypt32 winmm)
 
 add_executable(LogGenerator WIN32
+    resources/windows/log_generator.rc
     src/main.cpp
     src/presentation/app.cpp
     src/presentation/d3d11_context.cpp
     src/presentation/ui_theme.cpp
+    src/presentation/windows_icon.cpp
 )
 target_include_directories(LogGenerator PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_compile_definitions(LogGenerator PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _WIN32_WINNT=0x0A00)
-target_link_libraries(LogGenerator PRIVATE loggen_core imgui d3d11 dxgi dwmapi)
+target_link_libraries(LogGenerator PRIVATE loggen_core imgui d3d11 dxgi dwmapi shell32)
 add_custom_command(
     TARGET LogGenerator
     POST_BUILD
@@ -98,10 +100,12 @@ add_executable(LogGeneratorTests
     tests/json_log_catalog_tests.cpp
     tests/stress_test_service_tests.cpp
     tests/responsive_layout_tests.cpp
+    tests/windows_icon_tests.cpp
 )
 target_include_directories(LogGeneratorTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_SOURCE_DIR}/tests")
 target_compile_definitions(LogGeneratorTests PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _WIN32_WINNT=0x0A00 LOGGEN_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
-target_link_libraries(LogGeneratorTests PRIVATE loggen_core)
+target_link_libraries(LogGeneratorTests PRIVATE loggen_core user32)
+add_dependencies(LogGeneratorTests LogGenerator)
 add_test(NAME LogGeneratorTests COMMAND LogGeneratorTests)
 
 function(loggen_configure_target target_name)

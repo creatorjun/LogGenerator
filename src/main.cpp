@@ -4,6 +4,7 @@
 #include "infrastructure/json_log_catalog.hpp"
 #include "infrastructure/transport_factory.hpp"
 #include "presentation/app.hpp"
+#include "presentation/windows_icon.hpp"
 
 #include <Windows.h>
 
@@ -26,6 +27,7 @@ std::filesystem::path executable_directory() {
 }
 
 int WINAPI wWinMain(const HINSTANCE instance, HINSTANCE, PWSTR, const int show_command) {
+    loggen::presentation::configure_application_identity();
     try {
         const auto application_directory = executable_directory();
         loggen::infrastructure::AsyncFileLogger logger{application_directory / L"logs"};
@@ -45,12 +47,12 @@ int WINAPI wWinMain(const HINSTANCE instance, HINSTANCE, PWSTR, const int show_c
             return result;
         } catch (const std::exception& error) {
             logger.critical(error.what());
-            MessageBoxA(nullptr, error.what(), "LogGenerator", MB_OK | MB_ICONERROR);
+            loggen::presentation::show_application_error(instance, error.what());
             return 1;
         }
     } catch (const std::exception& error) {
         const auto message = std::string("File logger initialization failed: ") + error.what();
-        MessageBoxA(nullptr, message.c_str(), "LogGenerator", MB_OK | MB_ICONERROR);
+        loggen::presentation::show_application_error(instance, message);
         return 1;
     }
 }

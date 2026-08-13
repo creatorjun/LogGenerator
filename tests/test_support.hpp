@@ -18,6 +18,7 @@ void run_json_log_catalog_tests();
 void run_file_transport_tests();
 void run_stress_test_service_tests();
 void run_async_file_logger_tests();
+void run_windows_icon_tests();
 void run_responsive_layout_tests();
 
 }

@@ -10,6 +10,10 @@ LogGenerator/
 ├─ CMakeLists.txt
 ├─ README.md
 ├─ requirements.txt
+├─ resources/
+│  └─ windows/
+│     ├─ log.ico
+│     └─ log_generator.rc
 ├─ Sample Logs/
 │  └─ sample_logs.json
 ├─ scripts/
@@ -57,7 +61,10 @@ LogGenerator/
 │  │  ├─ d3d11_context.hpp
 │  │  ├─ responsive_layout.hpp
 │  │  ├─ ui_theme.cpp
-│  │  └─ ui_theme.hpp
+│  │  ├─ ui_theme.hpp
+│  │  ├─ windows_icon.cpp
+│  │  ├─ windows_icon.hpp
+│  │  └─ windows_resource.hpp
 │  └─ main.cpp
 └─ tests/
    ├─ async_file_logger_tests.cpp
@@ -67,7 +74,8 @@ LogGenerator/
    ├─ responsive_layout_tests.cpp
    ├─ stress_test_service_tests.cpp
    ├─ test_main.cpp
-   └─ test_support.hpp
+   ├─ test_support.hpp
+   └─ windows_icon_tests.cpp
 ```
 
 ## 요구 환경

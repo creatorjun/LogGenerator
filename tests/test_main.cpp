@@ -11,6 +11,7 @@ int main() {
         loggen::tests::run_file_transport_tests();
         loggen::tests::run_stress_test_service_tests();
         loggen::tests::run_async_file_logger_tests();
+        loggen::tests::run_windows_icon_tests();
         loggen::tests::run_responsive_layout_tests();
         std::cout << "All LogGenerator tests passed\n";
         return 0;

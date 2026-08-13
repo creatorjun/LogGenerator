@@ -1,0 +1,4 @@
+// resources/windows/log_generator.rc
+#include "presentation/windows_resource.hpp"
+
+IDI_LOGGENERATOR ICON "log.ico"
