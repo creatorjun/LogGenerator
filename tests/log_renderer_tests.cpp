@@ -127,7 +127,7 @@ void run_log_renderer_tests() {
     expect(calendar_log.render(calendar_start, true) == "timestamp=2026-01-01T00:00:00+09:00", "Calendar range rendering applied an unwanted timezone shift");
 
     const auto sanitized = application::PrivacyAnonymizer::sanitize(
-        "vendor=lottermart alternate=lottemart store_name=당진점 user_name=김테스트 user_id=real-user emp_no=991122 email=person@example.com phone=010-1234-5678 remote_ip=10.20.30.40 src_ip=10.0.0.10 dst_ip=10.0.0.20 hmac=abcdef");
+        "vendor=lottermart alternate=lottemart company=test123 store_name=당진점 user_name=김테스트 user_id=real-user emp_no=991122 email=person@example.com phone=010-1234-5678 remote_ip=10.20.30.40 src_ip=10.0.0.10 dst_ip=10.0.0.20 hmac=abcdef");
     expect(sanitized.find("lottermart") == std::string::npos, "Company token was not sanitized");
     expect(sanitized.find("Your-Company") != std::string::npos && sanitized.find("Yourcompany") == std::string::npos, "Company token replacement is incorrect");
     expect(sanitized.find("당진점") == std::string::npos && sanitized.find("김테스트") == std::string::npos, "Korean personal data was not removed");
@@ -136,8 +136,17 @@ void run_log_renderer_tests() {
     expect(sanitized.find("{{EMAIL}}") != std::string::npos && sanitized.find("{{PHONE}}") != std::string::npos, "Contact marker is missing");
     expect(sanitized.find("{{IP_ADDRESS}}") != std::string::npos, "Personal IP marker is missing");
     expect(sanitized.find("src_ip=10.0.0.10") != std::string::npos && sanitized.find("dst_ip=10.0.0.20") != std::string::npos, "Configurable source or destination IP was anonymized too early");
-    expect(sanitized.find("hmac=abcdef") != std::string::npos, "HMAC was misclassified as a MAC address");
+    expect(sanitized.find("test123") == std::string::npos, "The revised source company placeholder was not normalized");
+    expect(sanitized.find("hmac={{SECRET}}") != std::string::npos, "HMAC was not classified as a secret");
     expect(application::PrivacyAnonymizer::sanitize(sanitized) == sanitized, "Privacy sanitization is not idempotent");
+
+    const auto revised_fields = application::PrivacyAnonymizer::sanitize(
+        R"(ldap_name="정성태" ldap_sno="1120317" ldap_tel="단품관리팀" sess_uname="마트GO_조인기" sess_localid="joinki" sess_domain="db.internal" sess_safpath="/data/private/1" payload="encoded" principalid="AIDAEXAMPLE")");
+    expect(revised_fields.find("ldap_name=\"{{PERSON}}\"") != std::string::npos && revised_fields.find("sess_uname=\"{{PERSON}}\"") != std::string::npos, "Revised person fields were not classified");
+    expect(revised_fields.find("ldap_sno=\"{{USER_ID}}\"") != std::string::npos && revised_fields.find("sess_localid=\"{{USER_ID}}\"") != std::string::npos, "Revised account fields were not classified");
+    expect(revised_fields.find("ldap_tel=\"{{DEPARTMENT}}\"") != std::string::npos, "Revised department field was not classified");
+    expect(revised_fields.find("sess_domain=\"{{HOST}}\"") != std::string::npos && revised_fields.find("sess_safpath=\"{{FILE_PATH}}\"") != std::string::npos, "Revised host or path field was not classified");
+    expect(revised_fields.find("payload=\"{{SECRET}}\"") != std::string::npos && revised_fields.find("principalid=\"{{IDENTIFIER}}\"") != std::string::npos, "Revised secret or identifier field was not classified");
 
     const auto store_sanitized = application::PrivacyAnonymizer::sanitize("str_cd=2201 str_nm=당진점 pspsa.str_cd = {{STORE}}");
     expect(store_sanitized.find("str_cd={{STORE_CODE}}") != std::string::npos, "Store code field was not classified separately");

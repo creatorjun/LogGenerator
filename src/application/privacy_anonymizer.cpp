@@ -120,7 +120,7 @@ void replace_ascii_case_insensitive(std::string& value, const std::string_view n
 
 const std::regex& assigned_field_pattern() {
     static const std::regex pattern(
-        R"privacy(((?:^|[\s,;|{])["']?([A-Za-z_][A-Za-z0-9_.-]{0,63})["']?\s*[:=]\s*)(?:"([^"]*)"|'([^']*)'|([^\s,;|}\]]+)))privacy",
+        R"privacy(((?:^|[\s,;|{])["']?([A-Za-z_][A-Za-z0-9_.-]{0,63})["']?[ \t]*[:=][ ]*)(?:"([^"]*)"|'([^']*)'|([^\s,;|}\]]+)))privacy",
         std::regex::ECMAScript | std::regex::optimize);
     return pattern;
 }
@@ -149,7 +149,7 @@ std::string replace_sensitive_fields(const std::string& input) {
             value_group = 4;
         }
         const auto current_value = match[value_group].str();
-        if (current_value.find("{{") != std::string::npos || current_value.find("}}") != std::string::npos) {
+        if (current_value.empty() || current_value.find("{{") != std::string::npos || current_value.find("}}") != std::string::npos) {
             continue;
         }
         const auto begin = static_cast<std::size_t>(match[value_group].first - input.begin());
@@ -188,6 +188,7 @@ std::string replace_pattern(const std::string& input, const std::regex& pattern,
 
 std::string PrivacyAnonymizer::sanitize(const std::string_view sample) {
     std::string result{sample};
+    replace_ascii_case_insensitive(result, "test123", "Your-Company");
     replace_ascii_case_insensitive(result, "lottermart", "Your-Company");
     replace_ascii_case_insensitive(result, "lottemart", "Your-Company");
     replace_ascii_case_insensitive(result, "lotte", "Your");
@@ -232,13 +233,13 @@ PrivacyTokenKind PrivacyAnonymizer::classify_field(const std::string_view field_
     if (contains_any(field, {"store", "branch", "shop", "site_name", "site_nm", "str_nm", "bizpl"})) {
         return PrivacyTokenKind::Store;
     }
-    if (field == "name" || contains_any(field, {"user_name", "user_nm", "emp_name", "emp_nm", "employee_name", "person_name", "customer_name", "customer_nm", "cust_name", "cust_nm", "member_name", "member_nm", "client_name", "manager_name", "manager_nm", "mgr_name", "mgr_nm", "operator_name", "admin_name", "requester_name", "approver_name", "owner_name", "suser_name", "duser_name", "first_name", "firstname", "last_name", "lastname", "full_name", "fullname", "given_name", "family_name", "srcnm", "dstnm"})) {
+    if (field == "name" || contains_any(field, {"user_name", "user_nm", "emp_name", "emp_nm", "employee_name", "person_name", "customer_name", "customer_nm", "cust_name", "cust_nm", "member_name", "member_nm", "client_name", "manager_name", "manager_nm", "mgr_name", "mgr_nm", "operator_name", "admin_name", "requester_name", "approver_name", "owner_name", "suser_name", "duser_name", "first_name", "firstname", "last_name", "lastname", "full_name", "fullname", "given_name", "family_name", "srcnm", "src_nm", "dstnm", "dst_nm", "ldap_name", "sess_uname"}) || field == "ssun") {
         return PrivacyTokenKind::Person;
     }
     if (contains_any(field, {"email", "e_mail", "mail_addr", "mail_address"})) {
         return PrivacyTokenKind::Email;
     }
-    if (contains_any(field, {"phone", "mobile", "cellphone", "cell_phone", "telephone", "tel_no", "telnum", "fax"})) {
+    if (field != "ldap_tel" && contains_any(field, {"phone", "mobile", "cellphone", "cell_phone", "telephone", "tel_no", "telnum", "fax"})) {
         return PrivacyTokenKind::Phone;
     }
     if (contains_any(field, {"address", "postal", "postcode", "zip_code", "zipcode"}) || (field.find("addr") != std::string::npos && field.find("ip") == std::string::npos)) {
@@ -250,28 +251,28 @@ PrivacyTokenKind PrivacyAnonymizer::classify_field(const std::string_view field_
     if (field == "ip" || field.ends_with("_ip") || field.starts_with("ip_") || contains_any(field, {"clientip", "agentip", "web_ip", "access_ip", "remote_ip", "local_ip"})) {
         return PrivacyTokenKind::IpAddress;
     }
-    if (contains_any(field, {"password", "passwd", "pwd", "secret", "token", "api_key", "access_key", "private_key", "credential"})) {
+    if (contains_any(field, {"password", "passwd", "pwd", "secret", "token", "api_key", "access_key", "private_key", "credential", "hmac"}) || field == "payload" || field == "reassembled") {
         return PrivacyTokenKind::Secret;
     }
-    if (contains_any(field, {"dept", "team", "division", "department", "groupname", "group_name"})) {
+    if (contains_any(field, {"dept", "team", "division", "department", "groupname", "group_name"}) || field == "ldap_tel" || field == "ssdn") {
         return PrivacyTokenKind::Department;
     }
-    if (contains_any(field, {"company", "corporate", "organization", "org_name", "org_nm", "com_name"})) {
+    if (contains_any(field, {"company", "corporate", "organization", "org_name", "org_nm", "com_name", "sess_dname", "sess_serverdname"}) || equals_any(field, {"sssdn", "ssdbn"})) {
         return PrivacyTokenKind::Organization;
     }
-    if (equals_any(field, {"suser", "duser", "srcid", "src_id"}) || contains_any(field, {"username", "user_id", "userid", "login_id", "loginid", "account", "suser_id", "duser_id", "chakra_user_id", "manager_id", "mgr_id", "decide_mgr_id"})) {
+    if (equals_any(field, {"suser", "duser", "srcid", "src_id", "ldap_sno", "ssui", "ssda", "ssli", "tda"}) || contains_any(field, {"username", "user_id", "userid", "login_id", "loginid", "account", "suser_id", "duser_id", "chakra_user_id", "manager_id", "mgr_id", "decide_mgr_id", "sess_localid", "sess_userid", "sess_dbaccount"})) {
         return PrivacyTokenKind::UserId;
     }
     if (contains_any(field, {"emp_id", "employee_id", "empno", "emp_no", "employee_no"})) {
         return PrivacyTokenKind::EmployeeId;
     }
-    if (equals_any(field, {"host", "server_nm", "eqp_nm", "sensor_nm", "instance_nm", "dstn_host_nm", "src_host_nm"}) || contains_any(field, {"host_name", "hostname", "host_alias", "device_id", "deviceid", "terminal_id", "terminal_name", "term_name", "serial"})) {
+    if (equals_any(field, {"host", "server_nm", "eqp_nm", "sensor_nm", "instance_nm", "dstn_host_nm", "src_host_nm", "sess_domain", "sess_serveruname", "ssd", "sssun"}) || contains_any(field, {"host_name", "hostname", "host_alias", "device_id", "deviceid", "terminal_id", "terminal_name", "term_name", "serial"})) {
         return PrivacyTokenKind::Host;
     }
-    if (field == "path" || contains_any(field, {"file_path", "filepath", "filename", "file_name", "origin_filename", "install_location", "application_path", "directory", "folder"})) {
+    if (field == "path" || contains_any(field, {"file_path", "filepath", "filename", "file_name", "origin_filename", "install_location", "application_path", "directory", "folder", "safpath"})) {
         return PrivacyTokenKind::FilePath;
     }
-    if (contains_any(field, {"resident", "rrn", "ssn", "passport", "card_no", "card_number", "customer_id", "customer_no", "cust_id", "cust_no", "member_id", "member_no", "birth", "birthday", "date_of_birth", "dob", "vehicle_no", "car_no", "license_no", "uuid", "guid", "session_id", "sessionid", "user_num", "client_num", "dept_num", "personal_id", "user_info", "user_key_id", "dstid", "dst_id", "srcgrpid", "src_grp_id", "dstgrpid", "dst_grp_id"}) || field == "_uid" || field == "uid") {
+    if (contains_any(field, {"resident", "rrn", "ssn", "passport", "card_no", "card_number", "customer_id", "customer_no", "cust_id", "cust_no", "member_id", "member_no", "birth", "birthday", "date_of_birth", "dob", "vehicle_no", "car_no", "license_no", "uuid", "guid", "session_id", "sessionid", "dbi_session", "dbi_statement", "dbi_transaction", "user_num", "client_num", "dept_num", "personal_id", "user_info", "user_key_id", "principalid", "identifier", "rcvid", "ec2_id", "dstid", "dst_id", "srcgrpid", "src_grp_id", "dstgrpid", "dst_grp_id", "sess_did", "sess_serverdid", "sess_uid", "sess_serveruid", "txn_stmguid", "txn_sessguid"}) || equals_any(field, {"_uid", "uid", "sssd", "sssu", "ssuid", "ssdid"})) {
         return PrivacyTokenKind::Identifier;
     }
     return PrivacyTokenKind::None;

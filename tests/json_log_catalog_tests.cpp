@@ -12,6 +12,7 @@
 #include <array>
 #include <cctype>
 #include <chrono>
+#include <cstdio>
 #include <filesystem>
 #include <regex>
 #include <string>
@@ -19,88 +20,136 @@
 #include <vector>
 
 namespace loggen::tests {
+namespace {
+
+std::size_t count_occurrences(const std::string_view input, const std::string_view marker) {
+    std::size_t count = 0;
+    std::size_t position = 0;
+    while ((position = input.find(marker, position)) != std::string_view::npos) {
+        ++count;
+        position += marker.size();
+    }
+    return count;
+}
+
+}
 
 void run_json_log_catalog_tests() {
     const infrastructure::JsonLogCatalog catalog;
     const auto source = std::filesystem::path{LOGGEN_SOURCE_DIR} / "Sample Logs" / "sample_logs.json";
     const auto items = catalog.load(source);
-    expect(items.size() == 84, "Expected 84 CSV replacement sample logs");
-    expect(!items.front().id.empty(), "First sample log id is empty");
-    expect(!items.front().name.empty(), "First sample log name is empty");
-    expect(!items.front().sample.empty(), "First sample log body is empty");
-    expect(items.front().id == "csv-0001", "CSV sample ids were not normalized");
-    expect(items.front().source.empty(), "CSV sample source should be omitted");
+    expect(items.size() == 60, "Expected 60 revised Woori POC sample logs");
+    expect(items.front().id == "woori-0001", "First revised sample id is incorrect");
+    expect(items.back().id == "woori-0060", "Last revised sample id is incorrect");
+    expect(items.front().name == "[MONITORAPP]_AIWAF_Traffic_v1_cef_01", "First revised parser name is incorrect");
+    expect(items.back().name == "[Somansa]_DB-i_Security_v1_json_09", "Last revised parser name is incorrect");
 
     std::size_t timestamp_templates = 0;
     std::size_t source_ip_templates = 0;
     std::size_t destination_ip_templates = 0;
     std::size_t privacy_templates = 0;
-    std::size_t person_tokens = 0;
-    std::size_t store_tokens = 0;
-    std::size_t store_code_tokens = 0;
-    const std::array<std::string_view, 9> forbidden_literals{
-        "김다혜",
-        "차재영",
-        "박효민",
+    std::size_t person_templates = 0;
+    std::size_t store_code_templates = 0;
+    std::size_t mapped_file_paths = 0;
+    const std::array<std::string_view, 31> forbidden_literals{
+        "HANBYOUL.K",
+        "JH-SON1",
+        "LDASOM89",
+        "jungtaeyoon",
         "leeeunmi",
         "innjie",
+        "joinki",
+        "test567",
         "SPls8240505",
         "mfa/galaxy",
+        "DESKTOP-VVM4IR1",
+        "김한별",
+        "손지훈",
+        "김다혜",
+        "유예원",
+        "박세연",
+        "최현민",
+        "이인지",
+        "정성태",
+        "이대희",
+        "최희재",
+        "이다솜",
+        "차재영",
+        "정태윤",
+        "강대묵",
+        "조인기",
+        "당진점",
+        "여천점",
+        "원주구곡점",
         "????",
         "�",
     };
+    const std::regex ipv4_pattern{R"((^|[^0-9])((?:(?:25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9]))([^0-9]|$))", std::regex::ECMAScript};
     const std::regex legacy_store_code_pattern{R"((?:str_cd|site_num|bizpl_cd)\s*[:=]\s*["']?\{\{STORE\}\})", std::regex::ECMAScript | std::regex::icase};
-    const std::regex ipv4_pattern{R"(\b(?:(?:25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1?[0-9]?[0-9])\b)", std::regex::ECMAScript};
-    for (const auto& item : items) {
-        expect(item.id.starts_with("csv-"), "An old sample catalog entry remains");
+    for (std::size_t index = 0; index < items.size(); ++index) {
+        const auto& item = items[index];
+        char expected_id[16]{};
+        std::snprintf(expected_id, sizeof(expected_id), "woori-%04zu", index + 1);
+        expect(item.id == expected_id, "Revised sample ids are not sequential");
+        expect(!item.name.empty() && !item.sample.empty(), "A revised sample is empty");
+        expect(item.source.empty(), "Imported sample source metadata should be omitted");
+
         std::string lowercase_text = item.name + item.sample;
         std::ranges::transform(lowercase_text, lowercase_text.begin(), [](const unsigned char value) { return static_cast<char>(std::tolower(value)); });
-        expect(lowercase_text.find("lotte") == std::string::npos && lowercase_text.find("mart") == std::string::npos && lowercase_text.find("yourcompany") == std::string::npos, "A requested company token remains");
-        expect(item.sample.find("당진점") == std::string::npos, "A real store name remains");
+        expect(lowercase_text.find("test123") == std::string::npos, "The source company placeholder remains in " + item.id);
+        expect(lowercase_text.find("lotte") == std::string::npos, "A requested company literal remains in " + item.id);
         for (const auto literal : forbidden_literals) {
             expect(item.sample.find(literal) == std::string::npos, "A forbidden personal or corrupted literal remains in " + item.id);
         }
-        if (item.sample.find("{{FILE_PATH}}") != std::string::npos) {
-            expect(item.test_case.values.contains("FILE_PATH"), "A FILE_PATH marker is not mapped by its log test case in " + item.id);
-            expect(!item.test_case.values.at("FILE_PATH").empty(), "A FILE_PATH test case has no values in " + item.id);
+
+        for (std::sregex_iterator iterator(item.sample.begin(), item.sample.end(), ipv4_pattern), end; iterator != end; ++iterator) {
+            const auto& match = *iterator;
+            const auto address_position = static_cast<std::size_t>(match.position(2));
+            const auto prefix_start = address_position > 16 ? address_position - 16 : 0;
+            const auto prefix = std::string_view{item.sample}.substr(prefix_start, address_position - prefix_start);
+            expect(prefix.ends_with("Chrome/"), "An original IPv4 address remains in " + item.id);
         }
+
+        const auto file_path_count = count_occurrences(item.sample, "{{FILE_PATH}}");
+        if (file_path_count > 0) {
+            expect(item.test_case.values.contains("FILE_PATH"), "A FILE_PATH marker is not mapped in " + item.id);
+            const auto& values = item.test_case.values.at("FILE_PATH");
+            expect(values.size() == file_path_count, "FILE_PATH test case count is incorrect in " + item.id);
+            expect(std::ranges::none_of(values, [](const std::string& value) { return value.empty(); }), "An empty FILE_PATH test case remains in " + item.id);
+            mapped_file_paths += values.size();
+        }
+
         const auto sanitized_sample = application::PrivacyAnonymizer::sanitize(item.sample);
-        expect(!std::regex_search(sanitized_sample, legacy_store_code_pattern), "A legacy display-name marker remains in a store code field in " + item.id);
-        std::smatch ipv4_match;
-        const auto has_ipv4 = std::regex_search(item.sample, ipv4_match, ipv4_pattern);
-        expect(!has_ipv4, "An original IPv4 address remains in CSV catalog item " + item.id + " length " + std::to_string(ipv4_match.empty() ? 0 : ipv4_match[0].length()));
-        person_tokens += item.sample.find("{{PERSON}}") != std::string::npos ? 1 : 0;
-        store_tokens += item.sample.find("{{STORE}}") != std::string::npos ? 1 : 0;
-        store_code_tokens += sanitized_sample.find("{{STORE_CODE}}") != std::string::npos ? 1 : 0;
+        expect(!std::regex_search(sanitized_sample, legacy_store_code_pattern), "A display-name marker remains in a store code field in " + item.id);
         const auto analysis = application::LogRenderer::analyze(item);
         timestamp_templates += analysis.timestamp_count > 0 ? 1 : 0;
         source_ip_templates += analysis.source_ip_count > 0 ? 1 : 0;
         destination_ip_templates += analysis.destination_ip_count > 0 ? 1 : 0;
         privacy_templates += analysis.privacy_token_count > 0 ? 1 : 0;
+        person_templates += item.sample.find("{{PERSON}}") != std::string::npos ? 1 : 0;
+        store_code_templates += sanitized_sample.find("{{STORE_CODE}}") != std::string::npos ? 1 : 0;
     }
-    expect(timestamp_templates >= 40, "Too few CSV templates have recognized timestamps");
-    expect(source_ip_templates >= 10, "Too few CSV templates have recognized source IP fields");
-    expect(destination_ip_templates >= 10, "Too few CSV templates have recognized destination IP fields");
-    expect(privacy_templates >= 50, "Too few CSV templates have privacy tokens");
-    expect(person_tokens >= 10 && store_tokens >= 3, "Person or store anonymization coverage is too low");
-    expect(store_code_tokens >= 3, "Store code anonymization coverage is too low");
+    expect(timestamp_templates >= 50, "Too few revised templates have recognized timestamps");
+    expect(source_ip_templates >= 20, "Too few revised templates have source IP mappings");
+    expect(destination_ip_templates >= 10, "Too few revised templates have destination IP mappings");
+    expect(privacy_templates >= 50, "Too few revised templates have privacy mappings");
+    expect(person_templates >= 15, "Too few revised templates have person mappings");
+    expect(store_code_templates >= 1, "The store code mapping is missing");
+    expect(mapped_file_paths == 47, "The revised file-path test case mapping count is incorrect");
 
     const auto find_item = [&items](const std::string_view id) -> const domain::LogTemplate& {
         const auto iterator = std::ranges::find(items, id, &domain::LogTemplate::id);
-        expect(iterator != items.end(), "Required catalog item is missing");
+        expect(iterator != items.end(), "Required revised catalog item is missing");
         return *iterator;
     };
-    expect(application::LogRenderer::analyze(find_item("csv-0009").sample).timestamp_count > 0, "The SSLVPN syslog timestamp was replaced by a host marker");
-    expect(application::LogRenderer::analyze(find_item("csv-0012").sample).timestamp_count > 0, "Minute-resolution catalog timestamp is not recognized");
-    expect(application::LogRenderer::analyze(find_item("csv-0030").sample).timestamp_count >= 4, "Compact T catalog timestamps are not recognized");
-    expect(application::LogRenderer::analyze(find_item("csv-0055").sample).timestamp_count >= 3, "Compact date or time fields are not recognized");
-    expect(application::LogRenderer::analyze(find_item("csv-0084").sample).timestamp_count >= 2, "Filename date and transaction timestamp are not both recognized");
+    expect(application::LogRenderer::analyze(find_item("woori-0008").sample).timestamp_count >= 2, "Secuway timestamps are not recognized");
+    expect(application::LogRenderer::analyze(find_item("woori-0027").sample).timestamp_count >= 4, "AIPS compact timestamps are not recognized");
+    expect(application::LogRenderer::analyze(find_item("woori-0060")).timestamp_count >= 2, "DB-i filename and transaction timestamps are not recognized");
 
     const auto validation_time = std::chrono::sys_days{std::chrono::year{2030} / std::chrono::January / 2} + std::chrono::hours{3} + std::chrono::minutes{4} + std::chrono::seconds{5};
-    const std::regex stale_separated_date{R"(\b(?:201[89]|202[1-6])[-/](?:0[1-9]|1[0-2])[-/](?:0[1-9]|[12][0-9]|3[01])\b)", std::regex::ECMAScript};
-    const std::regex stale_compact_date{R"((^|[^0-9])(?:201[89]|202[1-6])(?:0[1-9]|1[0-2])(?:0[1-9]|[12][0-9]|3[01])(?![0-9]))", std::regex::ECMAScript};
-    const std::regex stale_compact_month{R"((^|[^0-9])(?:201[89]|202[1-6])(?:0[1-9]|1[0-2])(?=_))", std::regex::ECMAScript};
-    const std::regex invalid_store_code{R"(str_cd\s*=\s*([1-4][0-9]|50|[1-9])호점)", std::regex::ECMAScript | std::regex::icase};
+    const std::regex stale_separated_date{R"(\b(?:201[89]|202[0-6])[-/](?:0[1-9]|1[0-2])[-/](?:0[1-9]|[12][0-9]|3[01])\b)", std::regex::ECMAScript};
+    const std::regex stale_compact_date{R"((^|[^0-9])(?:201[89]|202[0-6])(?:0[1-9]|1[0-2])(?:0[1-9]|[12][0-9]|3[01])(?![0-9]))", std::regex::ECMAScript};
+    const std::regex stale_compact_month{R"((^|[^0-9])(?:201[89]|202[0-6])(?:0[1-9]|1[0-2])(?=_))", std::regex::ECMAScript};
     for (const auto& item : items) {
         auto prepared = application::LogRenderer::prepare_one(item, "192.0.2.10", "192.0.2.20", std::chrono::seconds{0});
         const std::string rendered{prepared.render(validation_time, true)};
@@ -108,36 +157,40 @@ void run_json_log_catalog_tests() {
         expect(!std::regex_search(rendered, stale_compact_date), "A compact source date was not regenerated in " + item.id);
         expect(!std::regex_search(rendered, stale_compact_month), "A compact source month was not regenerated in " + item.id);
         expect(rendered.find("C:/Test/") == std::string::npos && rendered.find("C:\\Test\\") == std::string::npos, "A generic test path was generated in " + item.id);
-        expect(rendered.find("C:/ProgramData/Your-Company/SecurityData/event-") == std::string::npos, "A test-case path fell back to the generic generator in " + item.id);
+        expect(rendered.find("C:/ProgramData/Your-Company/SecurityData/event-") == std::string::npos, "A FILE_PATH mapping fell back to the synthetic generator in " + item.id);
         expect(rendered.find("{{") == std::string::npos, "An anonymization marker leaked into generated output in " + item.id);
-        expect(!std::regex_search(rendered, invalid_store_code), "A display-name value was inserted into a store code field in " + item.id);
     }
+
     const auto render_item = [&find_item, validation_time](const std::string_view id) {
         auto prepared = application::LogRenderer::prepare_one(find_item(id), "192.0.2.10", "192.0.2.20", std::chrono::seconds{0});
         return std::string{prepared.render(validation_time, true)};
     };
-    expect(render_item("csv-0002").find("D:/SecurityLab/") != std::string::npos, "Media-control test case path was not mapped");
-    expect(render_item("csv-0005").find("POST /catalog-portal/ui/oauth/verify HTTP/1.1") != std::string::npos, "WAF request path was not restored");
-    expect(render_item("csv-0012").find(",SIEM,203001_aws_cloudtrail_log.csv,") != std::string::npos, "CloudTrail test case fields are not structurally accurate");
-    expect(render_item("csv-0024").find("Your-Companygo-dev-s3-siem,Your-Companygo-dev-log-bucket,SIEM,203001_go_bo_log.csv,") == 0, "GO access test case columns were not restored");
-    expect(render_item("csv-0072").starts_with("/CloudESM/data/dbilog/20300102__statement_0.json,{"), "DB-I statement test case was not reconstructed");
-    expect(render_item("csv-0077").starts_with("20300102__statement_0.json,{"), "DB-i statement filename was not reconstructed");
-    expect(render_item("csv-0078").starts_with("db_sess_info_sf_20300102.csv,"), "CHAKRAMAX test case filename was not restored");
-    for (const auto id : {std::string_view{"csv-0051"}, std::string_view{"csv-0070"}, std::string_view{"csv-0071"}, std::string_view{"csv-0072"}, std::string_view{"csv-0077"}, std::string_view{"csv-0084"}}) {
-        auto prepared = application::LogRenderer::prepare_one(find_item(id), "192.0.2.10", "192.0.2.20", std::chrono::seconds{0});
-        const std::string rendered{prepared.render(validation_time, true)};
+    const auto waf = render_item("woori-0003");
+    expect(waf.find("|||192.0.2.10|||54141|||192.0.2.20|||443|||") != std::string::npos, "WAF source or destination IP mapping is incorrect");
+    expect(waf.find("|||/commonAction.do|||") != std::string::npos && waf.find("POST /commonAction.do HTTP/1.1") != std::string::npos, "WAF path test case was not restored");
+    expect(render_item("woori-0010").find(",SIEM,203001_aws_cloudtrail_log.csv,") != std::string::npos, "CloudTrail file test cases are structurally inaccurate");
+    expect(render_item("woori-0046").starts_with("/CloudESM/data/dbilog/20300102__policyevaluated_0.json,{"), "DB-i event path was not restored");
+    expect(render_item("woori-0049").starts_with("20300102__transaction_0.json,{"), "DB-i transaction filename was not restored");
+    expect(render_item("woori-0053").starts_with("20300102__statement_0.json,{"), "DB-i statement filename was not restored");
+    expect(render_item("woori-0054").starts_with("db_sess_info_sf_20300102.csv,"), "ChakraMax filename was not restored");
+    expect(render_item("woori-0056").starts_with("db_sql_info_gw_20300102.csv,"), "ChakraMax query filename was not restored");
+    const auto dbi_session = render_item("woori-0047");
+    expect(dbi_session.starts_with("/CloudESM/data/dbilog/20300102__session_0.json,{"), "DB-i session source path was not restored");
+    expect(dbi_session.find("/somansa/data/gfs_data/dbi/20300102/default/id-") != std::string::npos, "DB-i nested test case path was not restored");
+
+    for (const auto id : {std::string_view{"woori-0026"}, std::string_view{"woori-0046"}, std::string_view{"woori-0047"}, std::string_view{"woori-0048"}, std::string_view{"woori-0049"}, std::string_view{"woori-0050"}, std::string_view{"woori-0051"}, std::string_view{"woori-0052"}, std::string_view{"woori-0053"}, std::string_view{"woori-0060"}}) {
+        const auto rendered = render_item(id);
         const auto json_start = rendered.find('{');
         expect(json_start != std::string::npos, "Expected JSON payload is missing in " + std::string{id});
         const auto parsed = nlohmann::json::parse(rendered.substr(json_start));
         expect(!parsed.is_discarded(), "Generated JSON payload is invalid in " + std::string{id});
     }
-    for (const auto index : {std::size_t{79}, std::size_t{82}}) {
-        const auto& item = items[index];
-        expect(item.sample.find("{{PERSON}}") != std::string::npos, "Position-based person anonymization is missing in " + item.id);
-        expect(item.sample.find("{{USER_ID}}") != std::string::npos, "Position-based account anonymization is missing in " + item.id);
-        expect(item.sample.find("{{DEPARTMENT}}") != std::string::npos, "Position-based department anonymization is missing in " + item.id);
-        expect(item.sample.find("{{HOST}}") != std::string::npos, "Position-based host anonymization is missing in " + item.id);
-        expect(item.sample.find("{{SRC_IP}}") != std::string::npos, "Position-based source IP anonymization is missing in " + item.id);
+    for (const auto id : {std::string_view{"woori-0055"}, std::string_view{"woori-0056"}, std::string_view{"woori-0057"}, std::string_view{"woori-0058"}, std::string_view{"woori-0059"}}) {
+        const auto& item = find_item(id);
+        expect(item.sample.find("{{PERSON}}") != std::string::npos, "Position-based person mapping is missing in " + std::string{id});
+        expect(item.sample.find("{{USER_ID}}") != std::string::npos, "Position-based account mapping is missing in " + std::string{id});
+        expect(item.sample.find("{{DEPARTMENT}}") != std::string::npos, "Position-based department mapping is missing in " + std::string{id});
+        expect(item.sample.find("{{SRC_IP}}") != std::string::npos, "Position-based source IP mapping is missing in " + std::string{id});
     }
 
     const auto directory = std::filesystem::current_path() / (".test_json_catalog_" + std::to_string(GetCurrentProcessId()));
