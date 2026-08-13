@@ -3,8 +3,6 @@
 
 #include "application/ports/log_transport.hpp"
 
-#include <Windows.h>
-
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
@@ -26,13 +24,10 @@ public:
     [[nodiscard]] bool is_datagram() const noexcept override;
 
 private:
-    void close() noexcept;
-    void write_log(std::string_view log);
-    [[nodiscard]] std::filesystem::path open_next_file();
+    void write_log(const std::filesystem::path& path, std::string_view log);
     [[nodiscard]] std::filesystem::path file_path(std::uint64_t index) const;
 
     std::filesystem::path output_directory_;
-    HANDLE file_{INVALID_HANDLE_VALUE};
     std::wstring timestamp_;
     std::uint64_t next_file_index_{0};
     std::uint64_t file_count_{0};

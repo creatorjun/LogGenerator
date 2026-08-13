@@ -157,6 +157,16 @@ std::size_t stream_batch_events(const std::uint64_t quota) {
     return static_cast<std::size_t>(std::clamp<std::uint64_t>(quota / 200, 1, 128));
 }
 
+std::size_t file_batch_events(const std::uint64_t quota, const domain::EndpointConfig& endpoint) {
+    if (endpoint.file_max_total_bytes > 0 || endpoint.file_max_count > 0 || endpoint.file_max_duration.count() > 0) {
+        return 1;
+    }
+    if (quota == 0) {
+        return 256;
+    }
+    return static_cast<std::size_t>(std::clamp<std::uint64_t>(quota / 20, 1, 256));
+}
+
 std::string_view completion_message(const SendResult result) {
     switch (result) {
     case SendResult::TotalBytesLimitReached:
@@ -423,7 +433,7 @@ void StressTestService::run_worker(domain::EndpointConfig endpoint, const domain
                 }
             }
         } else {
-            const auto event_limit = endpoint.protocol == domain::TransportProtocol::File ? std::size_t{1} : stream_batch_events(quota);
+            const auto event_limit = endpoint.protocol == domain::TransportProtocol::File ? file_batch_events(quota, endpoint) : stream_batch_events(quota);
             std::string batch;
             const std::size_t batch_limit = endpoint.protocol == domain::TransportProtocol::File ? 65'536 : 262'144;
             batch.reserve(batch_limit);

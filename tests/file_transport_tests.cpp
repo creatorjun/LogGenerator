@@ -73,6 +73,26 @@ void run_file_transport_tests() {
     expect(read_file(files[2]) == large_log, "A log larger than 1 MiB was split or changed");
     expect(domain::protocol_name(domain::TransportProtocol::File) == "FILE", "FILE protocol name is incorrect");
 
+    const auto batch_directory = directory / "batch";
+    std::vector<std::string> expected_logs;
+    std::string multi_log_batch;
+    for (std::size_t index = 0; index < 256; ++index) {
+        expected_logs.push_back("batch-log-" + std::to_string(index) + "\n");
+        multi_log_batch.append(expected_logs.back());
+    }
+    {
+        infrastructure::FileTransport transport{batch_directory};
+        domain::EndpointConfig endpoint;
+        endpoint.protocol = domain::TransportProtocol::File;
+        transport.connect(endpoint);
+        expect(transport.send(multi_log_batch) == application::SendResult::Sent, "FILE transport rejected a multi-log batch");
+    }
+    const auto batch_files = generated_files(batch_directory);
+    expect(batch_files.size() == expected_logs.size(), "FILE batch created an unexpected number of files");
+    for (std::size_t index = 0; index < batch_files.size(); ++index) {
+        expect(read_file(batch_files[index]) == expected_logs[index], "FILE batch changed log ordering or content");
+    }
+
     const auto limit_directory = directory / "limits";
     {
         infrastructure::FileTransport transport{limit_directory / "bytes"};

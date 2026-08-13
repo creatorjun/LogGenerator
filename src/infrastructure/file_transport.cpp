@@ -1,6 +1,8 @@
 // src/infrastructure/file_transport.cpp
 #include "infrastructure/file_transport.hpp"
 
+#include <Windows.h>
+
 #include <algorithm>
 #include <format>
 #include <limits>
@@ -9,17 +11,50 @@
 #include <utility>
 
 namespace loggen::infrastructure {
+namespace {
+
+class FileCollision final : public std::exception {
+};
+
+class FileHandle final {
+public:
+    explicit FileHandle(const HANDLE value) noexcept
+        : value_(value) {
+    }
+
+    ~FileHandle() {
+        static_cast<void>(close());
+    }
+
+    FileHandle(const FileHandle&) = delete;
+    FileHandle& operator=(const FileHandle&) = delete;
+
+    [[nodiscard]] HANDLE get() const noexcept {
+        return value_;
+    }
+
+    [[nodiscard]] bool close() noexcept {
+        if (value_ == INVALID_HANDLE_VALUE) {
+            return true;
+        }
+        const auto value = value_;
+        value_ = INVALID_HANDLE_VALUE;
+        return CloseHandle(value) != FALSE;
+    }
+
+private:
+    HANDLE value_{INVALID_HANDLE_VALUE};
+};
+
+}
 
 FileTransport::FileTransport(std::filesystem::path output_directory)
     : output_directory_(std::move(output_directory)) {
 }
 
-FileTransport::~FileTransport() {
-    close();
-}
+FileTransport::~FileTransport() = default;
 
 void FileTransport::connect(const domain::EndpointConfig& endpoint) {
-    close();
     timestamp_.clear();
     std::filesystem::create_directories(output_directory_);
     SYSTEMTIME value{};
@@ -57,11 +92,21 @@ application::SendResult FileTransport::send(const std::string_view payload) {
     std::size_t log_start = 0;
     while (log_start < payload.size()) {
         const auto newline = payload.find('\n', log_start);
+        const auto log = newline == std::string_view::npos ? payload.substr(log_start) : payload.substr(log_start, newline - log_start + 1);
+        for (;;) {
+            const auto path = file_path(next_file_index_);
+            ++next_file_index_;
+            try {
+                write_log(path, log);
+                break;
+            } catch (const FileCollision&) {
+            }
+        }
+        ++file_count_;
+        total_size_ += log.size();
         if (newline == std::string_view::npos) {
-            write_log(payload.substr(log_start));
             break;
         }
-        write_log(payload.substr(log_start, newline - log_start + 1));
         log_start = newline + 1;
     }
     return application::SendResult::Sent;
@@ -71,22 +116,24 @@ bool FileTransport::is_datagram() const noexcept {
     return false;
 }
 
-void FileTransport::close() noexcept {
-    if (file_ != INVALID_HANDLE_VALUE) {
-        CloseHandle(file_);
-        file_ = INVALID_HANDLE_VALUE;
+void FileTransport::write_log(const std::filesystem::path& path, const std::string_view log) {
+    const auto raw_file = CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
+    if (raw_file == INVALID_HANDLE_VALUE) {
+        const auto error = GetLastError();
+        if (error == ERROR_FILE_EXISTS || error == ERROR_ALREADY_EXISTS) {
+            throw FileCollision{};
+        }
+        throw std::system_error(static_cast<int>(error), std::system_category(), "Generated log file creation failed");
     }
-}
 
-void FileTransport::write_log(const std::string_view log) {
-    const auto path = open_next_file();
+    FileHandle file{raw_file};
     try {
         std::size_t offset = 0;
         while (offset < log.size()) {
             const auto remaining = log.size() - offset;
             const auto chunk = static_cast<DWORD>(std::min<std::size_t>(remaining, std::numeric_limits<DWORD>::max()));
             DWORD written = 0;
-            if (!WriteFile(file_, log.data() + offset, chunk, &written, nullptr)) {
+            if (!WriteFile(file.get(), log.data() + offset, chunk, &written, nullptr)) {
                 throw std::system_error(static_cast<int>(GetLastError()), std::system_category(), "Generated log write failed");
             }
             if (written != chunk) {
@@ -94,38 +141,31 @@ void FileTransport::write_log(const std::string_view log) {
             }
             offset += written;
         }
-        close();
+        if (!file.close()) {
+            throw std::system_error(static_cast<int>(GetLastError()), std::system_category(), "Generated log close failed");
+        }
     } catch (...) {
-        close();
+        static_cast<void>(file.close());
         std::error_code cleanup_error;
         std::filesystem::remove(path, cleanup_error);
         throw;
     }
-    ++file_count_;
-    total_size_ += log.size();
-}
-
-std::filesystem::path FileTransport::open_next_file() {
-    for (;;) {
-        const auto path = file_path(next_file_index_);
-        file_ = CreateFileW(path.c_str(), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
-        if (file_ != INVALID_HANDLE_VALUE) {
-            ++next_file_index_;
-            return path;
-        }
-        const auto error = GetLastError();
-        if (error != ERROR_FILE_EXISTS && error != ERROR_ALREADY_EXISTS) {
-            throw std::system_error(static_cast<int>(error), std::system_category(), "Generated log file creation failed");
-        }
-        ++next_file_index_;
-    }
 }
 
 std::filesystem::path FileTransport::file_path(const std::uint64_t index) const {
-    if (index == 0) {
-        return output_directory_ / std::format(L"{}.log", timestamp_);
+    std::wstring filename;
+    filename.reserve(timestamp_.size() + 24);
+    filename.append(timestamp_);
+    if (index > 0) {
+        filename.push_back(L'_');
+        const auto sequence = std::to_wstring(index + 1);
+        if (sequence.size() < 4) {
+            filename.append(4 - sequence.size(), L'0');
+        }
+        filename.append(sequence);
     }
-    return output_directory_ / std::format(L"{}_{:04}.log", timestamp_, index + 1);
+    filename.append(L".log");
+    return output_directory_ / filename;
 }
 
 }

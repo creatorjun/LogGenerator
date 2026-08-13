@@ -12,6 +12,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -183,7 +184,12 @@ void run_stress_test_service_tests() {
     {
         std::scoped_lock lock(stream_state->mutex);
         expect(!stream_state->payloads.empty(), "Stream worker did not capture a payload");
-        expect(stream_state->payloads.front() == "alpha\\r\\nbeta\n", "FILE mode did not send exactly one framed log per write");
+        constexpr std::string_view framed_log{"alpha\\r\\nbeta\n"};
+        expect(stream_state->payloads.front().size() > framed_log.size(), "Unlimited FILE mode did not batch multiple logs");
+        expect(stream_state->payloads.front().size() % framed_log.size() == 0, "FILE batch ended with a partial log frame");
+        for (std::size_t offset = 0; offset < stream_state->payloads.front().size(); offset += framed_log.size()) {
+            expect(std::string_view{stream_state->payloads.front()}.substr(offset, framed_log.size()) == framed_log, "FILE batch changed a framed log");
+        }
         expect(stream_state->payloads.front().find("alpha\r\nbeta") == std::string::npos, "An embedded physical line break remains in newline framing");
         stream_state->release_send = true;
     }

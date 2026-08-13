@@ -692,7 +692,7 @@ void App::render_destination_panel(const float height) {
     ImGui::SliderInt("##worker_count", &worker_count_, 1, 64);
     ImGui::EndDisabled();
     if (file_protocol) {
-        ImGui::TextDisabled("FILE은 순차 기록을 위해 단일 writer를 사용합니다.");
+        ImGui::TextDisabled("FILE은 여러 로그를 묶어 순차 기록합니다.");
     }
     ImGui::TextDisabled("목표 EPS");
     ImGui::SetNextItemWidth(-1.0F);
