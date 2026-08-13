@@ -208,12 +208,12 @@
     {
       "id": "woori-0024",
       "name": "[Genians]_Genian NAC_Security_v1_cef_08",
-      "sample": "20251218161008`|{{IP_ADDRESS}}`|NAC_인증로그`|table_nm=\"NAC_SIEM\" ip=\"{{IP_ADDRESS}}\" mac=\"B8:\"{{MAC_ADDRESS}}\" 노드타입=\"PC\" 동작상태=\"UP\" 인증사용자id=\"\" 인증사용자=\"\" 인증사용자부서=\"\" 인증사용자직급=\"\" 마지막동작시각=\"2025-12-18 16:09:57.0\" 관리센서=\"{{HOST}}\""
+      "sample": "20251218161008`|{{IP_ADDRESS}}`|NAC_인증로그`|table_nm=\"NAC_SIEM\" ip=\"{{IP_ADDRESS}}\" mac=\"{{MAC_ADDRESS}}\" 노드타입=\"PC\" 동작상태=\"UP\" 인증사용자id=\"\" 인증사용자=\"\" 인증사용자부서=\"\" 인증사용자직급=\"\" 마지막동작시각=\"2025-12-18 16:09:57.0\" 관리센서=\"{{HOST}}\""
     },
     {
       "id": "woori-0025",
       "name": "[Genians]_Genian NAC_Security_v1_cef_09",
-      "sample": "20251214100640`|{{IP_ADDRESS}}`|NAC_감사로그`|<30>2025-12-14 10:06:38 INFO 116 {{SRC_IP}} {{IP_ADDRESS}} {{MAC_ADDRESS}} 노드의 사용자가 인증됨. ID={{USER_ID}}, NAME={{PERSON}}, SOURCE=STEAD_API,\" BY='인증대체' NONE\n\""
+      "sample": "20251214100640`|{{IP_ADDRESS}}`|NAC_감사로그`|<30>2025-12-14 10:06:38 INFO 116 {{SRC_IP}} {{IP_ADDRESS}} {{MAC_ADDRESS}} 노드의 사용자가 인증됨. ID={{USER_ID}}, NAME={{PERSON}}, SOURCE=STEAD_API, BY='인증대체' NONE"
     },
     {
       "id": "woori-0026",
@@ -308,7 +308,7 @@
     {
       "id": "woori-0044",
       "name": "[PNPsecure]_DBSafer_Security_v1_keyvalue_04",
-      "sample": "table_nm=\"DBSafer_db_user\":index=\"1766448579861736458\":id=\"{{USER_ID}}\":clt_ip=\"{{SRC_IP}}\":clt_port=\"52910\":private_ip=\"\":application=\"ProSpace.exe\":com_name=\"\":net_id=\"\":os=\"\":com_id=\"\":sid=\"CKB\":in_time=\"2025-12-23 09:09:40\":out_time=\"2025-12-23 09:09:40\":service_no=\"237\":server_ip=\"{{DST_IP}}\":server_port=\"1433\":policy_no=\"1540367058485544017\":policy_name=\"POG 프로그램 단품운영팀 접속\":manual_auth_id=\"\":manual_auth_name=\"\":denied=\"0\":operating_mode=\"0\":conn_mode=\"0\":alert=\"\":decide_type=\"0\":decide_time=\"0000-00-00 00:00:00\":decide_mgr_id=\"\":loglevel=\"4\":ldap_sno=\"{{USER_ID}}\":ldap_name=\"{{PERSON}}\":ldap_tel=\"{{DEPARTMENT}}\":gateway=\"{{USER_ID}}\":svc_type=\"0\":group_index=\"0\":dbsafer_name=\"\":cmd_count=\"0\""
+      "sample": "table_nm=\"DBSafer_db_user\":index=\"1766448579861736458\":id=\"{{USER_ID}}\":clt_ip=\"{{SRC_IP}}\":clt_port=\"52910\":private_ip=\"\":application=\"ProSpace.exe\":com_name=\"\":net_id=\"\":os=\"\":com_id=\"\":sid=\"CKB\":in_time=\"2025-12-23 09:09:40\":out_time=\"2025-12-23 09:09:40\":service_no=\"237\":server_ip=\"{{DST_IP}}\":server_port=\"1433\":policy_no=\"1540367058485544017\":policy_name=\"POG 프로그램 단품운영팀 접속\":manual_auth_id=\"\":manual_auth_name=\"\":denied=\"0\":operating_mode=\"0\":conn_mode=\"0\":alert=\"\":decide_type=\"0\":decide_time=\"0000-00-00 00:00:00\":decide_mgr_id=\"\":loglevel=\"4\":ldap_sno=\"{{USER_ID}}\":ldap_name=\"{{PERSON}}\":ldap_tel=\"{{DEPARTMENT}}\":gateway=\"{{SRC_IP}}\":svc_type=\"0\":group_index=\"0\":dbsafer_name=\"\":cmd_count=\"0\""
     },
     {
       "id": "woori-0045",
@@ -416,7 +416,7 @@
     {
       "id": "woori-0056",
       "name": "[WareValley]_ChakraMax_Security_v1_cef_03",
-      "sample": "{{FILE_PATH}},{{IDENTIFIER}},{{IDENTIFIER}},1301,1011,1011,ETL 개발 AP/DB,393,{{USER_ID}},{{USER_ID}},{{USER_ID}},{{PERSON}},{{DEPARTMENT}},{{HOST}},{{SRC_IP}},AL_ENGINE.EXE,1,\"SELECT POSITION, ATTR_KEY, ATTR_NAME,ATTR_VALUE, OVERFLOW_FLAG, PARENT_ATTR_KEY FROM AL_ATTR , AL_COLUMN WHERE OBJECT_KEY = PARENT_OBJID AND PARENT_OBJ_TYPE = \b AND TABLEKEY = \b ORDER BY POSITION\",8\b2555\b,2026-02-19 11:12:40,2026-02-19 11:12:40,0,0,0,562,2720,,,1403,ORA-01403: 데이터를 찾을 수 없습니다.,,",
+      "sample": "{{FILE_PATH}},{{IDENTIFIER}},{{IDENTIFIER}},1301,1011,1011,ETL 개발 AP/DB,393,{{USER_ID}},{{USER_ID}},{{USER_ID}},{{PERSON}},{{DEPARTMENT}},{{HOST}},{{SRC_IP}},AL_ENGINE.EXE,1,\"SELECT POSITION, ATTR_KEY, ATTR_NAME,ATTR_VALUE, OVERFLOW_FLAG, PARENT_ATTR_KEY FROM AL_ATTR , AL_COLUMN WHERE OBJECT_KEY = PARENT_OBJID AND PARENT_OBJ_TYPE = \\b AND TABLEKEY = \\b ORDER BY POSITION\",8\\b2555\\b,2026-02-19 11:12:40,2026-02-19 11:12:40,0,0,0,562,2720,,,1403,ORA-01403: 데이터를 찾을 수 없습니다.,,",
       "test_case": {
         "FILE_PATH": [
           "db_sql_info_gw_20260219.csv"

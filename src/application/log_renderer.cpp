@@ -32,7 +32,7 @@ struct TimestampPattern {
 
 const std::regex& source_field_pattern() {
     static const std::regex pattern(
-        R"(((?:^|[\s,;|{])["']?(?:src|srcip|src_ip|src-ip|srp_ip|srcaddr|src_addr|srcaddress|src_address|sourceip|source_ip|sourceaddress|source_address|source-address|clientip|client_ip|clientipaddr|sip)["']?\s*[:=]\s*["']?)(\d{1,3}(?:\.\d{1,3}){3}))",
+        R"(((?:^|[\s,;|{])["']?(?:src|srcip|src_ip|src-ip|srp_ip|srcaddr|src_addr|srcaddress|src_address|sourceip|source_ip|sourceaddress|source_address|source-address|clientip|client_ip|clientipaddr|sip|gateway)["']?\s*[:=]\s*["']?)(\d{1,3}(?:\.\d{1,3}){3}))",
         std::regex::ECMAScript | std::regex::icase | std::regex::optimize);
     return pattern;
 }
@@ -60,20 +60,21 @@ const std::regex& arrow_destination_pattern() {
 
 const std::vector<TimestampPattern>& timestamp_patterns() {
     static const std::vector<TimestampPattern> patterns{
-        {std::regex(R"(\b\d{4}[-/]\d{2}[-/]\d{2}[T ]\d{1,2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:?\d{2})?)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::Iso8601, 0, 0},
+        {std::regex(R"(\b(?:19|20)\d{2}[-/](?:0[1-9]|1[0-2])[-/](?:0[1-9]|[12]\d|3[01])[T ](?:[01]?\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,9})?(?:Z|[+-]\d{2}:?\d{2})?)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::Iso8601, 0, 0},
         {std::regex(R"((^|[^0-9])((?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])T\d{6}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:?\d{2})?)(?![0-9]))", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::CompactWithT, 1, 2},
         {std::regex(R"(\b(?:[A-Z][a-z]{2}\s+)?[A-Z][a-z]{2}\s+\d{1,2}\s+\d{4}\s+\d{2}:\d{2}:\d{2}(?:\s+(?:GMT|UTC))?\b)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::MonthDayYear, 2, 0},
         {std::regex(R"(\b(?:[A-Z][a-z]{2}\s+)?[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\d{4}\b)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::SyslogWithYear, 3, 0},
         {std::regex(R"(\b\d{1,2}/[A-Z][a-z]{2}/\d{4}:\d{2}:\d{2}:\d{2}\s+[+-]\d{4}\b)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::Apache, 4, 0},
         {std::regex(R"(\b(?:[A-Z][a-z]{2}\s+)?[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\b)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::SyslogWithoutYear, 5, 0},
         {std::regex(R"((^|[^0-9])((?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{6})(?![0-9]))", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::Compact, 6, 2},
-        {std::regex(R"(\b\d{4}[-/]\d{2}[-/]\d{2}[ T]\d{1,2}:\d{2}(?!:))", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::YearFirstMinute, 7, 0},
+        {std::regex(R"(\b(?:19|20)\d{2}[-/](?:0[1-9]|1[0-2])[-/](?:0[1-9]|[12]\d|3[01])[ T](?:[01]?\d|2[0-3]):[0-5]\d(?!:))", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::YearFirstMinute, 7, 0},
         {std::regex(R"((^|[^0-9])((?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01]))(?![0-9]))", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::CompactDate, 8, 2},
         {std::regex(R"((^|[^0-9])((?:19|20)\d{2}(?:0[1-9]|1[0-2]))(?=_))", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::CompactYearMonth, 9, 2},
         {std::regex(R"((\b(?:time|[A-Za-z0-9_]*hms)["']?\s*[:=]\s*["']?)(\d{6})(?!\d))", std::regex::ECMAScript | std::regex::icase | std::regex::optimize), TimestampStyle::CompactTime, 10, 2},
-        {std::regex(R"(\b\d{4}[-/]\d{2}[-/]\d{2}\b)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::DateOnly, 11, 0},
-        {std::regex(R"(\b\d{4}[-/]\d{2}\b)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::YearMonth, 12, 0},
-        {std::regex(R"((\btime["']?\s*[:=]\s*["']?)(\d{1,2}:\d{2}:\d{2}(?:\.\d{1,9})?))", std::regex::ECMAScript | std::regex::icase | std::regex::optimize), TimestampStyle::TimeOnly, 13, 2},
+        {std::regex(R"(\b(?:19|20)\d{2}[-/](?:0[1-9]|1[0-2])[-/](?:0[1-9]|[12]\d|3[01])\b)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::DateOnly, 11, 0},
+        {std::regex(R"(\b(?:19|20)\d{2}[-/](?:0[1-9]|1[0-2])\b)", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::YearMonth, 12, 0},
+        {std::regex(R"((\btime["']?\s*[:=]\s*["']?)((?:[01]?\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,9})?))", std::regex::ECMAScript | std::regex::icase | std::regex::optimize), TimestampStyle::TimeOnly, 13, 2},
+        {std::regex(R"((?:^|`)((?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,9})?)(?=`))", std::regex::ECMAScript | std::regex::optimize), TimestampStyle::TimeOnly, 14, 1},
     };
     return patterns;
 }

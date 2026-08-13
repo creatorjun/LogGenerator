@@ -105,6 +105,15 @@ void run_log_renderer_tests() {
     expect(extended_date_result.find("compact=20300102T030405.000") != std::string::npos, "Compact T timestamp replacement failed");
     expect(extended_date_result.find("checkmonth=2030-01") != std::string::npos, "Year-month replacement failed");
 
+    auto delimited_date = application::LogRenderer::prepare_one(
+        "3`20260430`09:45:34`metrics`108136744`114468928` decide_time=\"0000-00-00 00:00:00\"",
+        "10.0.0.1",
+        "10.0.0.2",
+        seconds{0});
+    const std::string delimited_date_result{delimited_date.render(base_time, true)};
+    expect(delimited_date_result.find("`20300102`03:04:05`") != std::string::npos, "Delimited date and time replacement failed");
+    expect(delimited_date_result.find("decide_time=\"0000-00-00 00:00:00\"") != std::string::npos, "Zero-date sentinel was modified");
+
     const auto analysis = application::LogRenderer::analyze(
         "Jul 05 2025 13:53:53 UTC date=2025-07-05 time=13:53:53 srp_ip=1.1.1.1 src-ip=1.1.1.2 clientipaddr=1.1.1.3 dest_ip=2.2.2.1 destination-address=2.2.2.2 dstn_ip=2.2.2.3");
     expect(analysis.timestamp_count == 3, "Timestamp analysis count is incorrect");
@@ -139,6 +148,11 @@ void run_log_renderer_tests() {
     expect(sanitized.find("test123") == std::string::npos, "The revised source company placeholder was not normalized");
     expect(sanitized.find("hmac={{SECRET}}") != std::string::npos, "HMAC was not classified as a secret");
     expect(application::PrivacyAnonymizer::sanitize(sanitized) == sanitized, "Privacy sanitization is not idempotent");
+    const auto metric_sanitized = application::PrivacyAnonymizer::sanitize("metrics=108136744,114468928,1092710530,1633337448");
+    expect(metric_sanitized.find("{{PHONE}}") == std::string::npos, "System metrics were misclassified as phone numbers");
+    expect(application::PrivacyAnonymizer::sanitize("mobile=+82-10-1234-5678").find("{{PHONE}}") != std::string::npos, "International mobile number was not anonymized");
+    expect(application::PrivacyAnonymizer::sanitize("mac=\"B8:\"{{MAC_ADDRESS}}\"") == "mac=\"{{MAC_ADDRESS}}\"", "A partial MAC marker was not normalized");
+    expect(application::PrivacyAnonymizer::sanitize(std::string{"value="} + '\b') == "value=\\b", "A backspace control character was not escaped");
 
     const auto revised_fields = application::PrivacyAnonymizer::sanitize(
         R"(ldap_name="정성태" ldap_sno="1120317" ldap_tel="단품관리팀" sess_uname="마트GO_조인기" sess_localid="joinki" sess_domain="db.internal" sess_safpath="/data/private/1" payload="encoded" principalid="AIDAEXAMPLE")");
@@ -178,6 +192,8 @@ void run_log_renderer_tests() {
 
     auto positioned_ips = application::LogRenderer::prepare_one("{{SRC_IP}}:1000 -> {{DST_IP}}:2000", "192.0.2.10", "192.0.2.20", seconds{0});
     expect(positioned_ips.render(base_time) == "192.0.2.10:1000 -> 192.0.2.20:2000", "Position-based source or destination IP marker failed");
+    auto gateway_ip = application::LogRenderer::prepare_one("gateway=10.61.1.31", "192.0.2.10", "192.0.2.20", seconds{0});
+    expect(gateway_ip.render(base_time) == "gateway=192.0.2.10", "Raw gateway IP was not mapped to the configured source IP");
 
     auto privacy_log = application::LogRenderer::prepare_one(sanitized, "192.0.2.10", "192.0.2.20", seconds{0});
     const std::regex person_pattern{R"(user_name=홍길동 ([1-4][0-9]|50|[1-9]))", std::regex::ECMAScript};

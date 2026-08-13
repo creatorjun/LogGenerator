@@ -132,6 +132,33 @@ const std::regex& legacy_store_code_pattern() {
     return pattern;
 }
 
+const std::regex& partial_mac_marker_pattern() {
+    static const std::regex pattern(
+        R"((?:[0-9A-Fa-f]{2}:)+["']?\{\{MAC_ADDRESS\}\})",
+        std::regex::ECMAScript | std::regex::optimize);
+    return pattern;
+}
+
+std::string escape_unsupported_controls(const std::string_view input) {
+    static constexpr std::array<std::string_view, 32> escapes{
+        "\\x00", "\\x01", "\\x02", "\\x03", "\\x04", "\\x05", "\\x06", "\\a",
+        "\\b", "", "", "\\v", "\\f", "", "\\x0E", "\\x0F",
+        "\\x10", "\\x11", "\\x12", "\\x13", "\\x14", "\\x15", "\\x16", "\\x17",
+        "\\x18", "\\x19", "\\x1A", "\\x1B", "\\x1C", "\\x1D", "\\x1E", "\\x1F",
+    };
+    std::string result;
+    result.reserve(input.size());
+    for (const auto character : input) {
+        const auto value = static_cast<unsigned char>(character);
+        if (value >= 0x20U || value == '\t' || value == '\n' || value == '\r') {
+            result.push_back(character);
+        } else {
+            result.append(escapes[value]);
+        }
+    }
+    return result;
+}
+
 std::string replace_sensitive_fields(const std::string& input) {
     std::string output;
     output.reserve(input.size());
@@ -194,10 +221,11 @@ std::string PrivacyAnonymizer::sanitize(const std::string_view sample) {
     replace_ascii_case_insensitive(result, "lotte", "Your");
     replace_ascii_case_insensitive(result, "mart", "company");
     result = std::regex_replace(result, legacy_store_code_pattern(), "$1{{STORE_CODE}}");
+    result = std::regex_replace(result, partial_mac_marker_pattern(), "{{MAC_ADDRESS}}");
     result = replace_sensitive_fields(result);
 
     static const std::regex email_pattern(R"(\b[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+\b)", std::regex::ECMAScript | std::regex::optimize);
-    static const std::regex phone_pattern(R"(\b(?:\+?82[- ]?)?0?1[016789][- ]?\d{3,4}[- ]?\d{4}\b)", std::regex::ECMAScript | std::regex::optimize);
+    static const std::regex phone_pattern(R"((?:\+82[- ]?0?1[016789]|\b01[016789])[- ]?\d{3,4}[- ]?\d{4}\b)", std::regex::ECMAScript | std::regex::optimize);
     static const std::regex resident_pattern(R"(\b\d{6}[- ]?[1-8]\d{6}\b)", std::regex::ECMAScript | std::regex::optimize);
     static const std::regex mac_pattern(R"(\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b)", std::regex::ECMAScript | std::regex::optimize);
     static const std::regex user_path_pattern(R"((\b[A-Za-z]:\\Users\\)[^\\\s]+)", std::regex::ECMAScript | std::regex::icase | std::regex::optimize);
@@ -219,12 +247,12 @@ std::string PrivacyAnonymizer::sanitize(const std::string_view sample) {
         cursor = finish;
     }
     path_output.append(result, cursor, std::string::npos);
-    return path_output;
+    return escape_unsupported_controls(path_output);
 }
 
 PrivacyTokenKind PrivacyAnonymizer::classify_field(const std::string_view field_name) {
     const auto field = normalize_field(field_name);
-    if (equals_any(field, {"src", "srcip", "src_ip", "srp_ip", "srcaddr", "src_addr", "srcaddress", "src_address", "sourceip", "source_ip", "sourceaddress", "source_address", "clientip", "client_ip", "clientipaddr", "sip", "dst", "dstip", "dst_ip", "dest_ip", "dstnip", "dstn_ip", "dstaddr", "dst_addr", "dstaddress", "dst_address", "destinationip", "destination_ip", "destinationaddress", "destination_address", "serverip", "server_ip", "dip"})) {
+    if (equals_any(field, {"src", "srcip", "src_ip", "srp_ip", "srcaddr", "src_addr", "srcaddress", "src_address", "sourceip", "source_ip", "sourceaddress", "source_address", "clientip", "client_ip", "clientipaddr", "sip", "gateway", "dst", "dstip", "dst_ip", "dest_ip", "dstnip", "dstn_ip", "dstaddr", "dst_addr", "dstaddress", "dst_address", "destinationip", "destination_ip", "destinationaddress", "destination_address", "serverip", "server_ip", "dip"})) {
         return PrivacyTokenKind::None;
     }
     if (contains_any(field, {"store_code", "branch_code", "shop_code", "site_num", "site_code", "site_cd", "str_cd", "bizpl_cd"})) {

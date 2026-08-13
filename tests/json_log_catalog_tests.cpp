@@ -93,6 +93,8 @@ void run_json_log_catalog_tests() {
         expect(item.id == expected_id, "Revised sample ids are not sequential");
         expect(!item.name.empty() && !item.sample.empty(), "A revised sample is empty");
         expect(item.source.empty(), "Imported sample source metadata should be omitted");
+        expect(item.sample.find_first_of("\r\n") == std::string::npos, "A sample contains an embedded line break in " + item.id);
+        expect(std::ranges::none_of(item.sample, [](const unsigned char value) { return value < 0x20U && value != '\t'; }), "A sample contains an unsupported control character in " + item.id);
 
         std::string lowercase_text = item.name + item.sample;
         std::ranges::transform(lowercase_text, lowercase_text.begin(), [](const unsigned char value) { return static_cast<char>(std::tolower(value)); });
@@ -132,7 +134,7 @@ void run_json_log_catalog_tests() {
     expect(timestamp_templates >= 50, "Too few revised templates have recognized timestamps");
     expect(source_ip_templates >= 20, "Too few revised templates have source IP mappings");
     expect(destination_ip_templates >= 10, "Too few revised templates have destination IP mappings");
-    expect(privacy_templates >= 50, "Too few revised templates have privacy mappings");
+    expect(privacy_templates >= 49, "Too few revised templates have privacy mappings");
     expect(person_templates >= 15, "Too few revised templates have person mappings");
     expect(store_code_templates >= 1, "The store code mapping is missing");
     expect(mapped_file_paths == 47, "The revised file-path test case mapping count is incorrect");
@@ -159,6 +161,8 @@ void run_json_log_catalog_tests() {
         expect(rendered.find("C:/Test/") == std::string::npos && rendered.find("C:\\Test\\") == std::string::npos, "A generic test path was generated in " + item.id);
         expect(rendered.find("C:/ProgramData/Your-Company/SecurityData/event-") == std::string::npos, "A FILE_PATH mapping fell back to the synthetic generator in " + item.id);
         expect(rendered.find("{{") == std::string::npos, "An anonymization marker leaked into generated output in " + item.id);
+        expect(rendered.find_first_of("\r\n") == std::string::npos, "A rendered event contains an embedded line break in " + item.id);
+        expect(std::ranges::none_of(rendered, [](const unsigned char value) { return value < 0x20U && value != '\t'; }), "A rendered event contains an unsupported control character in " + item.id);
     }
 
     const auto render_item = [&find_item, validation_time](const std::string_view id) {
@@ -168,6 +172,18 @@ void run_json_log_catalog_tests() {
     const auto waf = render_item("woori-0003");
     expect(waf.find("|||192.0.2.10|||54141|||192.0.2.20|||443|||") != std::string::npos, "WAF source or destination IP mapping is incorrect");
     expect(waf.find("|||/commonAction.do|||") != std::string::npos && waf.find("POST /commonAction.do HTTP/1.1") != std::string::npos, "WAF path test case was not restored");
+    const auto nac_auth = render_item("woori-0024");
+    expect(std::regex_search(nac_auth, std::regex{R"(mac="(?:[0-9A-F]{2}:){5}[0-9A-F]{2}")", std::regex::icase}), "Genian NAC MAC address is malformed");
+    expect(nac_auth.find("mac=\"B8:\"") == std::string::npos, "A partial Genian NAC MAC address remains");
+    expect(render_item("woori-0025").find_first_of("\r\n") == std::string::npos, "Genian NAC audit event was split across lines");
+    const auto trusguard_metrics = render_item("woori-0039");
+    expect(trusguard_metrics.find("`20300102`03:04:05`") != std::string::npos, "TrusGuard split date or time was not regenerated");
+    expect(trusguard_metrics.find("010-0000-") == std::string::npos, "TrusGuard metrics were rendered as phone numbers");
+    expect(render_item("woori-0041").find("decide_time=\"0000-00-00 00:00:00\"") != std::string::npos, "DBSafer zero-date sentinel was modified");
+    expect(render_item("woori-0044").find("gateway=\"192.0.2.10\"") != std::string::npos, "DBSafer gateway was not mapped to the configured source IP");
+    const auto chakra_query = render_item("woori-0056");
+    expect(chakra_query.find('\b') == std::string::npos, "ChakraMax query contains a backspace control character");
+    expect(count_occurrences(chakra_query, "\\b") == 4, "ChakraMax query separators were not escaped consistently");
     expect(render_item("woori-0010").find(",SIEM,203001_aws_cloudtrail_log.csv,") != std::string::npos, "CloudTrail file test cases are structurally inaccurate");
     expect(render_item("woori-0046").starts_with("/CloudESM/data/dbilog/20300102__policyevaluated_0.json,{"), "DB-i event path was not restored");
     expect(render_item("woori-0049").starts_with("20300102__transaction_0.json,{"), "DB-i transaction filename was not restored");

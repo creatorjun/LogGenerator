@@ -130,10 +130,16 @@ void append_frame(std::string& batch, const std::string_view payload, const doma
         batch.append(payload);
         return;
     }
-    batch.append(payload);
-    if (payload.empty() || (payload.back() != '\n' && payload.back() != '\r')) {
-        batch.push_back('\n');
+    for (const auto value : payload) {
+        if (value == '\r') {
+            batch.append("\\r");
+        } else if (value == '\n') {
+            batch.append("\\n");
+        } else {
+            batch.push_back(value);
+        }
     }
+    batch.push_back('\n');
 }
 
 std::uint64_t quota_for_worker(const std::uint64_t target_eps, const std::uint32_t worker_index, const std::uint32_t worker_count) {

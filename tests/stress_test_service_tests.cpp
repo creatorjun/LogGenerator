@@ -26,6 +26,7 @@ struct TransportState {
     std::size_t block_after{1};
     std::vector<std::string> payloads;
     std::atomic<std::uint64_t> sends{0};
+    bool datagram{true};
 };
 
 class BlockingDatagramTransport final : public application::ILogTransport {
@@ -52,7 +53,7 @@ public:
     }
 
     [[nodiscard]] bool is_datagram() const noexcept override {
-        return true;
+        return state_->datagram;
     }
 
 private:
@@ -165,6 +166,30 @@ void run_stress_test_service_tests() {
     range_state->condition.notify_all();
     range_service.stop();
     expect(range_service.snapshot().send_errors == 0, "Timestamp range service reported an unexpected error");
+
+    auto stream_state = std::make_shared<TransportState>();
+    stream_state->datagram = false;
+    BlockingTransportFactory stream_factory{stream_state};
+    application::StressTestService stream_service{stream_factory, logger};
+    domain::GeneratorConfig stream_config;
+    stream_config.endpoint.protocol = domain::TransportProtocol::File;
+    stream_config.templates.push_back({"multiline", "multiline", "alpha\r\nbeta", "test"});
+    stream_service.start(std::move(stream_config));
+    {
+        std::unique_lock lock(stream_state->mutex);
+        expect(stream_state->condition.wait_for(lock, seconds{2}, [&stream_state] { return stream_state->send_entered; }), "Stream worker did not generate a batch");
+    }
+    stream_service.request_stop();
+    {
+        std::scoped_lock lock(stream_state->mutex);
+        expect(!stream_state->payloads.empty(), "Stream worker did not capture a payload");
+        expect(stream_state->payloads.front().find("alpha\\r\\nbeta\n") != std::string::npos, "Embedded line breaks were not escaped for newline framing");
+        expect(stream_state->payloads.front().find("alpha\r\nbeta") == std::string::npos, "An embedded physical line break remains in newline framing");
+        stream_state->release_send = true;
+    }
+    stream_state->condition.notify_all();
+    stream_service.stop();
+    expect(stream_service.snapshot().send_errors == 0, "Stream framing service reported an unexpected error");
 
     LimitingTransportFactory limiting_factory;
     application::StressTestService limiting_service{limiting_factory, logger};
