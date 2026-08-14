@@ -6,10 +6,14 @@
 #include "application/ports/logger.hpp"
 #include "application/stress_test_service.hpp"
 #include "domain/log_template.hpp"
-#include "presentation/d3d11_context.hpp"
 #include "presentation/responsive_layout.hpp"
 
+#ifdef _WIN32
+#include "presentation/d3d11_context.hpp"
 #include <Windows.h>
+#else
+struct GLFWwindow;
+#endif
 
 #include <array>
 #include <atomic>
@@ -32,7 +36,11 @@ public:
     App(application::LogCatalogService& catalog_service, application::ILogger& logger, application::StressTestService& stress_service, std::filesystem::path catalog_file, std::filesystem::path generated_directory);
     ~App();
 
+#ifdef _WIN32
     int run(HINSTANCE instance, int show_command);
+#else
+    int run();
+#endif
 
 private:
     struct CatalogLoadResult {
@@ -44,8 +52,10 @@ private:
         bool replace_items{true};
     };
 
+#ifdef _WIN32
     static LRESULT CALLBACK window_procedure(HWND window, UINT message, WPARAM word_parameter, LPARAM long_parameter);
     LRESULT handle_message(HWND window, UINT message, WPARAM word_parameter, LPARAM long_parameter);
+#endif
     void initialize_imgui();
     void update_ui_scale();
     void shutdown_imgui() noexcept;
@@ -78,10 +88,14 @@ private:
     application::StressTestService& stress_service_;
     std::filesystem::path catalog_file_;
     std::filesystem::path generated_directory_;
+#ifdef _WIN32
     D3d11Context d3d_;
     HINSTANCE instance_{nullptr};
     HWND window_{nullptr};
     bool window_class_registered_{false};
+#else
+    GLFWwindow* window_{nullptr};
+#endif
     bool imgui_ready_{false};
     float ui_scale_{1.0F};
     float dpi_scale_{1.0F};

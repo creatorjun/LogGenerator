@@ -28,7 +28,7 @@ private:
     [[nodiscard]] std::filesystem::path file_path(std::uint64_t index) const;
 
     std::filesystem::path output_directory_;
-    std::wstring timestamp_;
+    std::string timestamp_;
     std::uint64_t next_file_index_{0};
     std::uint64_t file_count_{0};
     std::uint64_t total_size_{0};

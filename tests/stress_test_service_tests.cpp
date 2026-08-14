@@ -132,7 +132,7 @@ void run_stress_test_service_tests() {
     domain::GeneratorConfig config;
     config.endpoint.host = "127.0.0.1";
     config.endpoint.port = 5514;
-    config.templates.push_back({"test", "test", "timestamp=2025-07-05T13:53:53Z src_ip=1.1.1.1 dst_ip=2.2.2.2", "test"});
+    config.templates.push_back({"test", "test", "timestamp=2025-07-05T13:53:53Z src_ip=1.1.1.1 dst_ip=2.2.2.2", "test", {}});
     config.worker_count = 1;
     config.target_eps = 0;
     service.start(std::move(config));
@@ -164,7 +164,7 @@ void run_stress_test_service_tests() {
     application::StressTestService meter_service{meter_factory, execution_runtime, logger};
     domain::GeneratorConfig meter_config;
     meter_config.endpoint.protocol = domain::TransportProtocol::File;
-    meter_config.templates.push_back({"meter", "meter", "meter-event", "test"});
+    meter_config.templates.push_back({"meter", "meter", "meter-event", "test", {}});
     meter_service.start(std::move(meter_config));
     {
         std::unique_lock lock(meter_state->mutex);
@@ -193,7 +193,7 @@ void run_stress_test_service_tests() {
     domain::GeneratorConfig range_config;
     range_config.endpoint.host = "127.0.0.1";
     range_config.endpoint.port = 5514;
-    range_config.templates.push_back({"range", "range", "timestamp=2025-07-05T13:53:53Z", "test"});
+    range_config.templates.push_back({"range", "range", "timestamp=2025-07-05T13:53:53Z", "test", {}});
     range_config.timestamp_generation.mode = domain::TimestampGenerationMode::Range;
     range_config.timestamp_generation.range.start = sys_days{year{2026} / January / 1};
     range_config.timestamp_generation.range.end = range_config.timestamp_generation.range.start + seconds{2};
@@ -222,7 +222,7 @@ void run_stress_test_service_tests() {
     application::StressTestService stream_service{stream_factory, execution_runtime, logger};
     domain::GeneratorConfig stream_config;
     stream_config.endpoint.protocol = domain::TransportProtocol::File;
-    stream_config.templates.push_back({"multiline", "multiline", "alpha\r\nbeta", "test"});
+    stream_config.templates.push_back({"multiline", "multiline", "alpha\r\nbeta", "test", {}});
     stream_service.start(std::move(stream_config));
     {
         std::unique_lock lock(stream_state->mutex);
@@ -249,7 +249,7 @@ void run_stress_test_service_tests() {
     application::StressTestService limiting_service{limiting_factory, execution_runtime, logger};
     domain::GeneratorConfig limiting_config;
     limiting_config.endpoint.protocol = domain::TransportProtocol::File;
-    limiting_config.templates.push_back({"limit", "limit", "timestamp=2025-07-05T13:53:53Z", "test"});
+    limiting_config.templates.push_back({"limit", "limit", "timestamp=2025-07-05T13:53:53Z", "test", {}});
     limiting_service.start(std::move(limiting_config));
     domain::TransmissionStats limiting_stats;
     const auto limit_deadline = steady_clock::now() + seconds{2};

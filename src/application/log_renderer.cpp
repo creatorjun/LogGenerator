@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstdio>
 #include <ctime>
+#include <mutex>
 #include <regex>
 #include <stdexcept>
 #include <string_view>
@@ -290,24 +291,24 @@ std::size_t count_captures(const std::string& input, const std::regex& pattern) 
     return count;
 }
 
+std::tm convert_time(const std::time_t value, const bool utc) {
+    static std::mutex conversion_mutex;
+    const std::scoped_lock lock(conversion_mutex);
+    const std::tm* converted = utc ? std::gmtime(&value) : std::localtime(&value);
+    return converted == nullptr ? std::tm{} : *converted;
+}
+
 std::tm make_time(std::chrono::system_clock::time_point point, const TimestampToken& token, const bool calendar_time) {
     const auto value = std::chrono::system_clock::to_time_t(point);
-    std::tm result{};
     if (calendar_time) {
-        gmtime_s(&result, &value);
-        return result;
+        return convert_time(value, true);
     }
     const bool utc = token.zone_suffix == "Z" || token.zone_suffix == "GMT" || !token.zone_suffix.empty();
     if (utc && token.zone_offset_minutes != 0) {
         point += std::chrono::minutes{token.zone_offset_minutes};
     }
     const auto adjusted_value = std::chrono::system_clock::to_time_t(point);
-    if (utc) {
-        gmtime_s(&result, &adjusted_value);
-    } else {
-        localtime_s(&result, &adjusted_value);
-    }
-    return result;
+    return convert_time(adjusted_value, utc);
 }
 
 void append_fraction(std::string& output, const std::chrono::system_clock::time_point point, const std::uint8_t digits) {

@@ -74,8 +74,7 @@ void run_log_renderer_tests() {
         "198.51.100.2",
         hours{2});
     const auto adjusted_time = system_clock::to_time_t(base_time + hours{2});
-    std::tm adjusted_local{};
-    localtime_s(&adjusted_local, &adjusted_time);
+    const std::tm adjusted_local = *std::localtime(&adjusted_time);
     char separated_expected[48]{};
     std::snprintf(
         separated_expected,
@@ -178,7 +177,7 @@ void run_log_renderer_tests() {
     const auto parsed_privacy_json = nlohmann::json::parse(json_privacy_result);
     expect(parsed_privacy_json.at("path").get<std::string>().starts_with("C:/ProgramData/Your-Company/SecurityData/"), "Generated fallback file path is not JSON-safe");
 
-    domain::LogTemplate mapped_test_case{"mapped", "Mapped", R"({"path":"{{FILE_PATH}}","name":"{{PERSON}}"})", ""};
+    domain::LogTemplate mapped_test_case{"mapped", "Mapped", R"({"path":"{{FILE_PATH}}","name":"{{PERSON}}"})", "", {}};
     mapped_test_case.test_case.values["FILE_PATH"] = {"C:/Program Files/Your-Company/Agent/agent.exe"};
     auto mapped_log = application::LogRenderer::prepare_one(mapped_test_case, "192.0.2.10", "192.0.2.20", seconds{0});
     const auto mapped_json = nlohmann::json::parse(mapped_log.render(base_time));

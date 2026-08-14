@@ -28,7 +28,7 @@ public:
 
 void run_log_catalog_service_tests() {
     MemoryLogCatalog catalog;
-    catalog.loaded.push_back({"sample", "Sample", "email=test@example.com", "test"});
+    catalog.loaded.push_back({"sample", "Sample", "email=test@example.com", "test", {}});
     application::LogCatalogService service{catalog};
 
     const auto loaded = service.load(std::filesystem::path{"catalog.json"});

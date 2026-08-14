@@ -18,6 +18,7 @@ struct EndpointConfig {
     std::string tls_server_name;
     bool verify_certificate{true};
     StreamFraming framing{StreamFraming::Newline};
+    std::string file_output_directory;
     std::uint64_t file_max_total_bytes{0};
     std::uint32_t file_max_count{0};
     std::chrono::milliseconds file_max_duration{0};

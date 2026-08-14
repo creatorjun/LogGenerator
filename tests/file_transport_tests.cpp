@@ -4,8 +4,6 @@
 #include "infrastructure/file_transport.hpp"
 #include "infrastructure/transport_factory.hpp"
 
-#include <Windows.h>
-
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
@@ -14,6 +12,7 @@
 #include <iterator>
 #include <regex>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace loggen::tests {
@@ -42,8 +41,9 @@ void run_file_transport_tests() {
     expect(default_endpoint.file_max_total_bytes == 0, "Default FILE total byte limit must be unlimited");
     expect(default_endpoint.file_max_count == 0, "Default FILE count limit must be unlimited");
     expect(default_endpoint.file_max_duration.count() == 0, "Default FILE duration limit must be unlimited");
+    expect(default_endpoint.file_output_directory.empty(), "Default FILE output directory must use the factory path");
 
-    const auto directory = std::filesystem::current_path() / (".test_generated_" + std::to_string(GetCurrentProcessId()));
+    const auto directory = unique_test_path("loggen_generated_");
     std::error_code cleanup_error;
     std::filesystem::remove_all(directory, cleanup_error);
     const std::string batch{"first log\nsecond log\n"};
@@ -95,6 +95,16 @@ void run_file_transport_tests() {
 
     const auto limit_directory = directory / "limits";
     {
+        infrastructure::FileTransport transport{limit_directory / "default-output"};
+        domain::EndpointConfig endpoint;
+        endpoint.protocol = domain::TransportProtocol::File;
+        endpoint.file_output_directory = (limit_directory / "custom-output").string();
+        transport.connect(endpoint);
+        expect(transport.send("custom\n") == application::SendResult::Sent, "FILE custom output directory rejected a log");
+        expect(generated_files(limit_directory / "custom-output").size() == 1, "FILE custom output directory was not applied");
+        expect(!std::filesystem::exists(limit_directory / "default-output"), "FILE factory output directory was used despite an override");
+    }
+    {
         infrastructure::FileTransport transport{limit_directory / "bytes"};
         domain::EndpointConfig endpoint;
         endpoint.protocol = domain::TransportProtocol::File;
@@ -127,7 +137,7 @@ void run_file_transport_tests() {
         endpoint.file_max_count = 0;
         endpoint.file_max_duration = std::chrono::milliseconds{1};
         transport.connect(endpoint);
-        Sleep(5);
+        std::this_thread::sleep_for(std::chrono::milliseconds{5});
         expect(transport.send("delayed\n") == application::SendResult::DurationLimitReached, "FILE duration limit was not enforced");
     }
     std::filesystem::remove_all(directory, cleanup_error);

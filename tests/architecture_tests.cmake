@@ -19,13 +19,13 @@ file(GLOB_RECURSE infrastructure_files "${SOURCE_ROOT}/src/infrastructure/*.cpp"
 file(GLOB_RECURSE presentation_files "${SOURCE_ROOT}/src/presentation/*.cpp" "${SOURCE_ROOT}/src/presentation/*.hpp")
 
 foreach(source_file IN LISTS domain_files)
-    foreach(fragment IN ITEMS "#include \"application/" "#include \"infrastructure/" "#include \"presentation/" "#include <Windows.h>" "#include <WinSock2.h>" "#include <imgui.h>" "#include <nlohmann/json.hpp>")
+    foreach(fragment IN ITEMS "#include \"application/" "#include \"infrastructure/" "#include \"presentation/" "#include <Windows.h>" "#include <WinSock2.h>" "#include <sys/" "#include <openssl/" "#include <GLFW/" "#include <imgui.h>" "#include <nlohmann/json.hpp>")
         assert_no_fragment("${source_file}" "${fragment}" "Domain boundary violation")
     endforeach()
 endforeach()
 
 foreach(source_file IN LISTS application_files)
-    foreach(fragment IN ITEMS "#include \"infrastructure/" "#include \"presentation/" "#include <Windows.h>" "#include <WinSock2.h>" "#include <WS2tcpip.h>" "#include <timeapi.h>" "#include <d3d11.h>" "#include <imgui.h>" "#include <nlohmann/json.hpp>" "SetThreadPriority(" "timeBeginPeriod(" "YieldProcessor(")
+    foreach(fragment IN ITEMS "#include \"infrastructure/" "#include \"presentation/" "#include <Windows.h>" "#include <WinSock2.h>" "#include <WS2tcpip.h>" "#include <timeapi.h>" "#include <d3d11.h>" "#include <sys/" "#include <netinet/" "#include <unistd.h>" "#include <openssl/" "#include <GLFW/" "#include <GL/" "#include <imgui.h>" "#include <nlohmann/json.hpp>" "SetThreadPriority(" "timeBeginPeriod(" "YieldProcessor(" "gmtime_s(" "localtime_s(" "glfw" "SSL_")
         assert_no_fragment("${source_file}" "${fragment}" "Application boundary violation")
     endforeach()
 endforeach()

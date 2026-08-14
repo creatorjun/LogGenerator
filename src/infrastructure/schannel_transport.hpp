@@ -2,7 +2,7 @@
 #pragma once
 
 #include "application/ports/log_transport.hpp"
-#include "infrastructure/winsock_support.hpp"
+#include "infrastructure/socket_support.hpp"
 
 #include <memory>
 
@@ -10,7 +10,7 @@ namespace loggen::infrastructure {
 
 class SchannelTransport final : public application::ILogTransport {
 public:
-    explicit SchannelTransport(const WinsockRuntime& runtime);
+    explicit SchannelTransport(const SocketRuntime& runtime);
     ~SchannelTransport() override;
 
     SchannelTransport(const SchannelTransport&) = delete;
@@ -22,7 +22,7 @@ public:
 
 private:
     struct Impl;
-    const WinsockRuntime& runtime_;
+    const SocketRuntime& runtime_;
     std::unique_ptr<Impl> impl_;
 };
 

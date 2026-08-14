@@ -1,14 +1,20 @@
 // src/infrastructure/json_log_catalog.cpp
 #include "infrastructure/json_log_catalog.hpp"
 
+#ifdef _WIN32
 #include <Windows.h>
+#else
+#include <unistd.h>
+#endif
 
 #include <nlohmann/json.hpp>
 
 #include <atomic>
+#include <chrono>
 #include <fstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <unordered_set>
 
 namespace loggen::infrastructure {
@@ -55,27 +61,39 @@ domain::LogTestCase read_test_case(const Json& value, const std::filesystem::pat
 std::filesystem::path temporary_path_for(const std::filesystem::path& file) {
     static std::atomic_uint64_t sequence{0};
     auto temporary = file;
-    temporary += L".tmp." + std::to_wstring(GetCurrentProcessId()) + L"." + std::to_wstring(sequence.fetch_add(1, std::memory_order_relaxed));
+#ifdef _WIN32
+    const auto process_id = static_cast<unsigned long>(GetCurrentProcessId());
+#else
+    const auto process_id = static_cast<unsigned long>(getpid());
+#endif
+    temporary += ".tmp." + std::to_string(process_id) + "." + std::to_string(sequence.fetch_add(1, std::memory_order_relaxed));
     return temporary;
 }
 
-bool replace_file_with_retry(const std::filesystem::path& source, const std::filesystem::path& destination, DWORD& final_error) {
+bool replace_file_with_retry(const std::filesystem::path& source, const std::filesystem::path& destination, int& final_error) {
+#ifdef _WIN32
     constexpr DWORD retryable_errors[]{ERROR_ACCESS_DENIED, ERROR_SHARING_VIOLATION, ERROR_LOCK_VIOLATION};
     for (DWORD attempt = 0; attempt < 7; ++attempt) {
         if (MoveFileExW(source.c_str(), destination.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-            final_error = ERROR_SUCCESS;
+            final_error = 0;
             return true;
         }
-        final_error = GetLastError();
+        final_error = static_cast<int>(GetLastError());
         bool retryable = false;
         for (const auto error : retryable_errors) {
-            retryable = retryable || final_error == error;
+            retryable = retryable || final_error == static_cast<int>(error);
         }
         if (!retryable || attempt == 6) {
             return false;
         }
-        Sleep(1U << attempt);
+        std::this_thread::sleep_for(std::chrono::milliseconds{1U << attempt});
     }
+#else
+    std::error_code error;
+    std::filesystem::rename(source, destination, error);
+    final_error = error.value();
+    return !error;
+#endif
     return false;
 }
 
@@ -159,7 +177,7 @@ void JsonLogCatalog::save(const std::filesystem::path& file, const std::span<con
             throw catalog_error(file, "temporary file write failed");
         }
     }
-    DWORD error = ERROR_SUCCESS;
+    int error = 0;
     if (!replace_file_with_retry(temporary, file, error)) {
         std::error_code cleanup_error;
         std::filesystem::remove(temporary, cleanup_error);

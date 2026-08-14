@@ -1,7 +1,7 @@
 // src/infrastructure/schannel_transport.cpp
 #include "infrastructure/schannel_transport.hpp"
 
-#include "infrastructure/winsock_support.hpp"
+#include "infrastructure/socket_support.hpp"
 
 #include <Windows.h>
 #include <winternl.h>
@@ -192,7 +192,7 @@ struct SchannelTransport::Impl {
     }
 };
 
-SchannelTransport::SchannelTransport(const WinsockRuntime& runtime)
+SchannelTransport::SchannelTransport(const SocketRuntime& runtime)
     : runtime_(runtime), impl_(std::make_unique<Impl>()) {
 }
 
@@ -201,10 +201,7 @@ SchannelTransport::~SchannelTransport() = default;
 void SchannelTransport::connect(const domain::EndpointConfig& endpoint) {
     impl_->socket = connect_socket(runtime_, endpoint.host, endpoint.port, SOCK_STREAM, IPPROTO_TCP);
     configure_send_buffer(impl_->socket.get(), 4 * 1024 * 1024);
-    BOOL enabled = TRUE;
-    if (setsockopt(impl_->socket.get(), IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&enabled), sizeof(enabled)) == SOCKET_ERROR) {
-        throw std::runtime_error(socket_error_message("setsockopt TCP_NODELAY"));
-    }
+    configure_tcp_stream(impl_->socket.get());
     impl_->acquire_credentials(endpoint.verify_certificate);
     const auto identity = endpoint.tls_server_name.empty() ? endpoint.host : endpoint.tls_server_name;
     impl_->handshake(utf8_to_wide(identity), endpoint.verify_certificate);

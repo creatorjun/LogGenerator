@@ -4,13 +4,17 @@
 #include "infrastructure/async_file_logger.hpp"
 #include "infrastructure/json_log_catalog.hpp"
 #include "infrastructure/transport_factory.hpp"
-#include "infrastructure/windows_execution_runtime.hpp"
 #include "presentation/app.hpp"
+#ifdef _WIN32
+#include "infrastructure/windows_execution_runtime.hpp"
 #include "presentation/windows_icon.hpp"
-
 #include <Windows.h>
+#else
+#include "infrastructure/posix_execution_runtime.hpp"
+#endif
 
 #include <array>
+#include <cstdio>
 #include <exception>
 #include <filesystem>
 #include <string>
@@ -18,45 +22,71 @@
 namespace {
 
 std::filesystem::path executable_directory() {
+#ifdef _WIN32
     std::array<wchar_t, 32'768> buffer{};
     const DWORD length = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
     if (length == 0 || length >= static_cast<DWORD>(buffer.size())) {
         return std::filesystem::current_path();
     }
     return std::filesystem::path(std::wstring(buffer.data(), length)).parent_path();
+#else
+    std::error_code error;
+    const auto executable = std::filesystem::read_symlink("/proc/self/exe", error);
+    return error ? std::filesystem::current_path() : executable.parent_path();
+#endif
 }
 
 }
 
+#ifdef _WIN32
 int WINAPI wWinMain(const HINSTANCE instance, HINSTANCE, PWSTR, const int show_command) {
     loggen::presentation::configure_application_identity();
+#else
+int main() {
+#endif
     try {
         const auto application_directory = executable_directory();
-        loggen::infrastructure::AsyncFileLogger logger{application_directory / L"logs"};
+        loggen::infrastructure::AsyncFileLogger logger{application_directory / "logs"};
         try {
             logger.info("LogGenerator startup");
             loggen::infrastructure::JsonLogCatalog catalog;
             loggen::application::LogCatalogService catalog_service{catalog};
-            const auto generated_directory = application_directory / L"generated";
+            const auto generated_directory = application_directory / "generated";
             loggen::infrastructure::TransportFactory transport_factory{generated_directory};
+#ifdef _WIN32
             loggen::infrastructure::WindowsExecutionRuntime execution_runtime;
+#else
+            loggen::infrastructure::PosixExecutionRuntime execution_runtime;
+#endif
             loggen::application::StressTestService stress_service{transport_factory, execution_runtime, logger};
-            auto catalog_file = application_directory / L"Sample Logs" / L"sample_logs.json";
+            auto catalog_file = application_directory / "Sample Logs" / "sample_logs.json";
             if (!std::filesystem::exists(catalog_file)) {
-                catalog_file = std::filesystem::current_path() / L"Sample Logs" / L"sample_logs.json";
+                catalog_file = std::filesystem::current_path() / "Sample Logs" / "sample_logs.json";
             }
             loggen::presentation::App app{catalog_service, logger, stress_service, std::move(catalog_file), generated_directory};
+#ifdef _WIN32
             const int result = app.run(instance, show_command);
+#else
+            const int result = app.run();
+#endif
             logger.info("LogGenerator shutdown completed");
             return result;
         } catch (const std::exception& error) {
             logger.critical(error.what());
+#ifdef _WIN32
             loggen::presentation::show_application_error(instance, error.what());
+#else
+            std::fprintf(stderr, "LogGenerator: %s\n", error.what());
+#endif
             return 1;
         }
     } catch (const std::exception& error) {
         const auto message = std::string("File logger initialization failed: ") + error.what();
+#ifdef _WIN32
         loggen::presentation::show_application_error(instance, message);
+#else
+        std::fprintf(stderr, "LogGenerator: %s\n", message.c_str());
+#endif
         return 1;
     }
 }

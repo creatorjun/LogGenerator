@@ -1,12 +1,14 @@
 // src/infrastructure/async_file_logger.cpp
 #include "infrastructure/async_file_logger.hpp"
 
-#include <Windows.h>
-
 #include <array>
 #include <cstdio>
+#include <ctime>
 #include <format>
+#include <functional>
+#include <mutex>
 #include <stdexcept>
+#include <thread>
 #include <utility>
 
 namespace loggen::infrastructure {
@@ -14,9 +16,17 @@ namespace {
 
 std::tm local_time(const std::chrono::system_clock::time_point timestamp) {
     const auto raw_time = std::chrono::system_clock::to_time_t(timestamp);
+    static std::mutex conversion_mutex;
+    const std::scoped_lock lock(conversion_mutex);
     std::tm result{};
-    localtime_s(&result, &raw_time);
+    if (const auto* converted = std::localtime(&raw_time); converted != nullptr) {
+        result = *converted;
+    }
     return result;
+}
+
+std::uint32_t current_thread_id() noexcept {
+    return static_cast<std::uint32_t>(std::hash<std::thread::id>{}(std::this_thread::get_id()));
 }
 
 std::string sanitize(const std::string_view message) {
@@ -68,7 +78,7 @@ void AsyncFileLogger::log(const domain::LogLevel level, const std::string_view m
         return;
     }
     try {
-        Entry entry{std::chrono::system_clock::now(), level, GetCurrentThreadId(), std::string(message)};
+        Entry entry{std::chrono::system_clock::now(), level, current_thread_id(), std::string(message)};
         {
             std::scoped_lock lock(mutex_);
             if (!accepting_.load(std::memory_order_relaxed)) {
@@ -138,9 +148,9 @@ void AsyncFileLogger::run(const std::stop_token stop_token) noexcept {
         output_.flush();
     } catch (const std::exception& error) {
         const auto message = std::string("LogGenerator file logger failure: ") + error.what() + "\n";
-        OutputDebugStringA(message.c_str());
+        std::fputs(message.c_str(), stderr);
     } catch (...) {
-        OutputDebugStringA("LogGenerator file logger failure: unknown error\n");
+        std::fputs("LogGenerator file logger failure: unknown error\n", stderr);
     }
 }
 
@@ -170,7 +180,7 @@ void AsyncFileLogger::write_entry(const Entry& entry) {
 }
 
 void AsyncFileLogger::write_dropped_notice(const std::uint64_t count) {
-    const Entry entry{std::chrono::system_clock::now(), domain::LogLevel::Warning, GetCurrentThreadId(), std::format("Logger queue discarded {} entries", count)};
+    const Entry entry{std::chrono::system_clock::now(), domain::LogLevel::Warning, current_thread_id(), std::format("Logger queue discarded {} entries", count)};
     open_for(entry.timestamp);
     write_entry(entry);
 }

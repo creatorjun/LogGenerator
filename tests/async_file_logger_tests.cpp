@@ -3,8 +3,6 @@
 
 #include "infrastructure/async_file_logger.hpp"
 
-#include <Windows.h>
-
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -13,7 +11,7 @@
 namespace loggen::tests {
 
 void run_async_file_logger_tests() {
-    const auto directory = std::filesystem::current_path() / (".test_file_logger_" + std::to_string(GetCurrentProcessId()));
+    const auto directory = unique_test_path("loggen_file_logger_");
     std::error_code cleanup_error;
     std::filesystem::remove_all(directory, cleanup_error);
 

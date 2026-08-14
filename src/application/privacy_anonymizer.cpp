@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <regex>
 #include <string>
+#include <vector>
 
 namespace loggen::application {
 namespace {
@@ -118,13 +119,6 @@ void replace_ascii_case_insensitive(std::string& value, const std::string_view n
     }
 }
 
-const std::regex& assigned_field_pattern() {
-    static const std::regex pattern(
-        R"privacy(((?:^|[\s,;|{])["']?([A-Za-z_][A-Za-z0-9_.-]{0,63})["']?[ \t]*[:=][ ]*)(?:"([^"]*)"|'([^']*)'|([^\s,;|}\]]+)))privacy",
-        std::regex::ECMAScript | std::regex::optimize);
-    return pattern;
-}
-
 const std::regex& legacy_store_code_pattern() {
     static const std::regex pattern(
         R"(((?:\b(?:store_code|branch_code|shop_code|site_num|site_code|site_cd|str_cd|bizpl_cd))\s*[:=]\s*["']?)\{\{STORE\}\})",
@@ -160,33 +154,96 @@ std::string escape_unsupported_controls(const std::string_view input) {
 }
 
 std::string replace_sensitive_fields(const std::string& input) {
+    struct Replacement {
+        std::size_t begin;
+        std::size_t end;
+        PrivacyTokenKind kind;
+    };
+
+    const auto field_character = [](const char character) {
+        const auto value = static_cast<unsigned char>(character);
+        return std::isalnum(value) != 0 || character == '_' || character == '.' || character == '-';
+    };
+    const auto field_boundary = [](const char character) {
+        return std::isspace(static_cast<unsigned char>(character)) != 0 || character == ',' || character == ';' || character == '|' || character == '{';
+    };
+    const auto value_boundary = [](const char character) {
+        return std::isspace(static_cast<unsigned char>(character)) != 0 || character == ',' || character == ';' || character == '|' || character == '}' || character == ']';
+    };
+
+    std::vector<Replacement> replacements;
+    for (std::size_t candidate = 0; candidate < input.size();) {
+        if (candidate > 0 && !field_boundary(input[candidate - 1])) {
+            ++candidate;
+            continue;
+        }
+        std::size_t position = candidate;
+        if (input[position] == '"' || input[position] == '\'') {
+            ++position;
+        }
+        const std::size_t field_begin = position;
+        if (position >= input.size() || (std::isalpha(static_cast<unsigned char>(input[position])) == 0 && input[position] != '_')) {
+            ++candidate;
+            continue;
+        }
+        while (position < input.size() && field_character(input[position]) && position - field_begin < 64) {
+            ++position;
+        }
+        if (position < input.size() && field_character(input[position])) {
+            ++candidate;
+            continue;
+        }
+        const std::string_view field_name{input.data() + field_begin, position - field_begin};
+        if (position < input.size() && (input[position] == '"' || input[position] == '\'')) {
+            ++position;
+        }
+        while (position < input.size() && (input[position] == ' ' || input[position] == '\t')) {
+            ++position;
+        }
+        if (position >= input.size() || (input[position] != ':' && input[position] != '=')) {
+            ++candidate;
+            continue;
+        }
+        ++position;
+        while (position < input.size() && input[position] == ' ') {
+            ++position;
+        }
+        if (position >= input.size()) {
+            break;
+        }
+        std::size_t value_begin = position;
+        std::size_t value_end = position;
+        if (input[position] == '"' || input[position] == '\'') {
+            const char quote = input[position];
+            value_begin = ++position;
+            while (position < input.size() && input[position] != quote) {
+                ++position;
+            }
+            value_end = position;
+        } else {
+            while (position < input.size() && !value_boundary(input[position])) {
+                ++position;
+            }
+            value_end = position;
+        }
+        const auto kind = PrivacyAnonymizer::classify_field(field_name);
+        const std::string_view current_value{input.data() + value_begin, value_end - value_begin};
+        if (kind != PrivacyTokenKind::None && !current_value.empty() && current_value.find("{{") == std::string_view::npos && current_value.find("}}") == std::string_view::npos) {
+            replacements.push_back({value_begin, value_end, kind});
+        }
+        candidate = std::max(position, candidate + 1);
+    }
+
     std::string output;
     output.reserve(input.size());
     std::size_t cursor = 0;
-    for (std::sregex_iterator iterator(input.begin(), input.end(), assigned_field_pattern()), end; iterator != end; ++iterator) {
-        const auto& match = *iterator;
-        const auto kind = PrivacyAnonymizer::classify_field(match[2].str());
-        if (kind == PrivacyTokenKind::None) {
+    for (const auto& replacement : replacements) {
+        if (replacement.begin < cursor) {
             continue;
         }
-        std::size_t value_group = 5;
-        if (match[3].matched) {
-            value_group = 3;
-        } else if (match[4].matched) {
-            value_group = 4;
-        }
-        const auto current_value = match[value_group].str();
-        if (current_value.empty() || current_value.find("{{") != std::string::npos || current_value.find("}}") != std::string::npos) {
-            continue;
-        }
-        const auto begin = static_cast<std::size_t>(match[value_group].first - input.begin());
-        const auto finish = static_cast<std::size_t>(match[value_group].second - input.begin());
-        if (begin < cursor) {
-            continue;
-        }
-        output.append(input, cursor, begin - cursor);
-        output.append(PrivacyAnonymizer::marker(kind));
-        cursor = finish;
+        output.append(input, cursor, replacement.begin - cursor);
+        output.append(PrivacyAnonymizer::marker(replacement.kind));
+        cursor = replacement.end;
     }
     output.append(input, cursor, std::string::npos);
     return output;

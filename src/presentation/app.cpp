@@ -4,12 +4,19 @@
 #include "application/privacy_anonymizer.hpp"
 #include "domain/generator_config.hpp"
 #include "presentation/ui_theme.hpp"
+#ifdef _WIN32
 #include "presentation/windows_icon.hpp"
-
 #include <dwmapi.h>
-#include <imgui.h>
 #include <imgui_impl_dx11.h>
 #include <imgui_impl_win32.h>
+#else
+#include <GLFW/glfw3.h>
+#include <GL/gl.h>
+#include <imgui_impl_glfw.h>
+#include <imgui_impl_opengl3.h>
+#endif
+
+#include <imgui.h>
 #include <misc/cpp/imgui_stdlib.h>
 
 #include <algorithm>
@@ -22,7 +29,9 @@
 #include <stdexcept>
 #include <string_view>
 
+#ifdef _WIN32
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND window, UINT message, WPARAM word_parameter, LPARAM long_parameter);
+#endif
 
 namespace loggen::presentation {
 namespace {
@@ -212,6 +221,7 @@ App::~App() {
     release_window_resources();
 }
 
+#ifdef _WIN32
 int App::run(const HINSTANCE instance, const int show_command) {
     instance_ = instance;
     logger_.info("UI initialization started");
@@ -352,12 +362,78 @@ LRESULT App::handle_message(const HWND window, const UINT message, const WPARAM 
     }
     return DefWindowProcW(window, message, word_parameter, long_parameter);
 }
+#else
+int App::run() {
+    logger_.info("UI initialization started");
+    glfwSetErrorCallback([](const int, const char* description) {
+        std::fprintf(stderr, "GLFW: %s\n", description == nullptr ? "unknown error" : description);
+    });
+    if (glfwInit() != GLFW_TRUE) {
+        throw std::runtime_error("GLFW initialization failed");
+    }
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
+    int window_width = 1180;
+    int window_height = 900;
+    if (GLFWmonitor* monitor = glfwGetPrimaryMonitor(); monitor != nullptr) {
+        int work_x = 0;
+        int work_y = 0;
+        int work_width = 0;
+        int work_height = 0;
+        glfwGetMonitorWorkarea(monitor, &work_x, &work_y, &work_width, &work_height);
+        static_cast<void>(work_x);
+        static_cast<void>(work_y);
+        window_width = std::min(window_width, work_width);
+        window_height = std::min(window_height, work_height);
+    }
+    window_ = glfwCreateWindow(window_width, window_height, "LogGenerator", nullptr, nullptr);
+    if (window_ == nullptr) {
+        glfwTerminate();
+        throw std::runtime_error("Window creation failed");
+    }
+    glfwSetWindowSizeLimits(window_, 520, 480, GLFW_DONT_CARE, GLFW_DONT_CARE);
+    glfwMakeContextCurrent(window_);
+    glfwSwapInterval(1);
+    initialize_imgui();
+    request_catalog_load();
+    logger_.info("UI initialization completed");
+
+    while (glfwWindowShouldClose(window_) == GLFW_FALSE) {
+        if (glfwGetWindowAttrib(window_, GLFW_ICONIFIED) == GLFW_TRUE) {
+            glfwWaitEvents();
+            continue;
+        }
+        glfwPollEvents();
+        update_ui_scale();
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+        render();
+        ImGui::Render();
+        int framebuffer_width = 0;
+        int framebuffer_height = 0;
+        glfwGetFramebufferSize(window_, &framebuffer_width, &framebuffer_height);
+        glViewport(0, 0, framebuffer_width, framebuffer_height);
+        glClearColor(0.955F, 0.966F, 0.982F, 1.0F);
+        glClear(GL_COLOR_BUFFER_BIT);
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        glfwSwapBuffers(window_);
+    }
+    stress_service_.stop();
+    release_window_resources();
+    logger_.info("UI event loop stopped");
+    return 0;
+}
+#endif
 
 void App::initialize_imgui() {
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+#ifdef _WIN32
     const UINT detected_dpi = GetDpiForWindow(window_);
     dpi_scale_ = static_cast<float>(detected_dpi == 0 ? 96U : detected_dpi) / 96.0F;
     RECT client_bounds{};
@@ -366,6 +442,31 @@ void App::initialize_imgui() {
     ui_scale_ = dpi_scale_ * visual_scale_;
     const std::filesystem::path korean_font = L"C:\\Windows\\Fonts\\malgun.ttf";
     const std::filesystem::path korean_bold_font = L"C:\\Windows\\Fonts\\malgunbd.ttf";
+#else
+    float horizontal_scale = 1.0F;
+    float vertical_scale = 1.0F;
+    glfwGetWindowContentScale(window_, &horizontal_scale, &vertical_scale);
+    dpi_scale_ = std::clamp(std::max(horizontal_scale, vertical_scale), 1.0F, 4.0F);
+    int framebuffer_width = 0;
+    int framebuffer_height = 0;
+    glfwGetFramebufferSize(window_, &framebuffer_width, &framebuffer_height);
+    visual_scale_ = responsive_visual_scale(static_cast<float>(framebuffer_width), static_cast<float>(framebuffer_height), dpi_scale_);
+    ui_scale_ = dpi_scale_ * visual_scale_;
+    std::filesystem::path korean_font;
+    std::filesystem::path korean_bold_font;
+    for (const std::filesystem::path candidate : {"/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", "/usr/share/fonts/opentype/noto/NotoSansCJKkr-Regular.otf", "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"}) {
+        if (std::filesystem::exists(candidate)) {
+            korean_font = candidate;
+            break;
+        }
+    }
+    for (const std::filesystem::path candidate : {"/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", "/usr/share/fonts/opentype/noto/NotoSansCJKkr-Bold.otf", "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf"}) {
+        if (std::filesystem::exists(candidate)) {
+            korean_bold_font = candidate;
+            break;
+        }
+    }
+#endif
     if (std::filesystem::exists(korean_font)) {
         regular_font_ = io.Fonts->AddFontFromFileTTF(path_to_utf8(korean_font).c_str(), 17.0F, nullptr, io.Fonts->GetGlyphRangesKorean());
         if (std::filesystem::exists(korean_bold_font)) {
@@ -376,7 +477,11 @@ void App::initialize_imgui() {
     }
     bold_font_ = bold_font_ == nullptr ? regular_font_ : bold_font_;
     apply_ui_theme(ui_scale_);
+#ifdef _WIN32
     if (!ImGui_ImplWin32_Init(window_) || !ImGui_ImplDX11_Init(d3d_.device(), d3d_.context())) {
+#else
+    if (!ImGui_ImplGlfw_InitForOpenGL(window_, true) || !ImGui_ImplOpenGL3_Init("#version 150")) {
+#endif
         ImGui::DestroyContext();
         throw std::runtime_error("Dear ImGui initialization failed");
     }
@@ -384,13 +489,30 @@ void App::initialize_imgui() {
 }
 
 void App::update_ui_scale() {
+#ifdef _WIN32
     const UINT detected_dpi = GetDpiForWindow(window_);
     const float next_dpi_scale = std::clamp(static_cast<float>(detected_dpi == 0 ? 96U : detected_dpi) / 96.0F, 1.0F, 4.0F);
     RECT client_bounds{};
     if (!GetClientRect(window_, &client_bounds)) {
         return;
     }
-    const float next_visual_scale = responsive_visual_scale(static_cast<float>(client_bounds.right), static_cast<float>(client_bounds.bottom), next_dpi_scale);
+    const float viewport_width = static_cast<float>(client_bounds.right);
+    const float viewport_height = static_cast<float>(client_bounds.bottom);
+#else
+    if (window_ == nullptr) {
+        return;
+    }
+    float horizontal_scale = 1.0F;
+    float vertical_scale = 1.0F;
+    glfwGetWindowContentScale(window_, &horizontal_scale, &vertical_scale);
+    const float next_dpi_scale = std::clamp(std::max(horizontal_scale, vertical_scale), 1.0F, 4.0F);
+    int framebuffer_width = 0;
+    int framebuffer_height = 0;
+    glfwGetFramebufferSize(window_, &framebuffer_width, &framebuffer_height);
+    const float viewport_width = static_cast<float>(framebuffer_width);
+    const float viewport_height = static_cast<float>(framebuffer_height);
+#endif
+    const float next_visual_scale = responsive_visual_scale(viewport_width, viewport_height, next_dpi_scale);
     const float next_scale = next_dpi_scale * next_visual_scale;
     if (std::abs(next_scale - ui_scale_) < 0.01F) {
         return;
@@ -408,14 +530,20 @@ void App::shutdown_imgui() noexcept {
     if (!imgui_ready_) {
         return;
     }
+#ifdef _WIN32
     ImGui_ImplDX11_Shutdown();
     ImGui_ImplWin32_Shutdown();
+#else
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+#endif
     ImGui::DestroyContext();
     imgui_ready_ = false;
 }
 
 void App::release_window_resources() noexcept {
     shutdown_imgui();
+#ifdef _WIN32
     if (window_ != nullptr && IsWindow(window_)) {
         DestroyWindow(window_);
     }
@@ -425,6 +553,13 @@ void App::release_window_resources() noexcept {
     }
     window_class_registered_ = false;
     instance_ = nullptr;
+#else
+    if (window_ != nullptr) {
+        glfwDestroyWindow(window_);
+        window_ = nullptr;
+    }
+    glfwTerminate();
+#endif
 }
 
 void App::request_catalog_load() {
@@ -989,7 +1124,7 @@ void App::save_catalog_editor() {
         while (std::ranges::any_of(catalog_items_, [&identifier](const domain::LogTemplate& item) { return item.id == identifier; })) {
             identifier = std::format("user-{:x}-{}", static_cast<std::uint64_t>(ticks), ++suffix);
         }
-        catalog_items_.push_back(domain::LogTemplate{std::move(identifier), editor_name_, editor_sample_, "사용자 정의"});
+        catalog_items_.push_back(domain::LogTemplate{std::move(identifier), editor_name_, editor_sample_, "사용자 정의", {}});
         catalog_search_names_.push_back(catalog_search_text(catalog_items_.back(), editor_analysis_));
         catalog_previews_.push_back(sample_preview(editor_sample_));
         catalog_analyses_.push_back(editor_analysis_);

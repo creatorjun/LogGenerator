@@ -2,7 +2,7 @@
 #pragma once
 
 #include "application/ports/log_transport.hpp"
-#include "infrastructure/winsock_support.hpp"
+#include "infrastructure/socket_support.hpp"
 
 #include <filesystem>
 
@@ -14,7 +14,7 @@ public:
     [[nodiscard]] std::unique_ptr<application::ILogTransport> create(domain::TransportProtocol protocol) const override;
 
 private:
-    WinsockRuntime winsock_;
+    SocketRuntime socket_runtime_;
     std::filesystem::path generated_directory_;
 };
 

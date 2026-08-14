@@ -1,24 +1,16 @@
 // src/infrastructure/tcp_transport.cpp
 #include "infrastructure/tcp_transport.hpp"
 
-#include <WS2tcpip.h>
-
-#include <stdexcept>
-
 namespace loggen::infrastructure {
 
-TcpTransport::TcpTransport(const WinsockRuntime& runtime) noexcept
+TcpTransport::TcpTransport(const SocketRuntime& runtime) noexcept
     : runtime_(runtime) {
 }
 
 void TcpTransport::connect(const domain::EndpointConfig& endpoint) {
     socket_ = connect_socket(runtime_, endpoint.host, endpoint.port, SOCK_STREAM, IPPROTO_TCP);
     configure_send_buffer(socket_.get(), 4 * 1024 * 1024);
-    BOOL enabled = TRUE;
-    if (setsockopt(socket_.get(), IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&enabled), sizeof(enabled)) == SOCKET_ERROR) {
-        throw std::runtime_error(socket_error_message("setsockopt TCP_NODELAY"));
-    }
-    setsockopt(socket_.get(), SOL_SOCKET, SO_KEEPALIVE, reinterpret_cast<const char*>(&enabled), sizeof(enabled));
+    configure_tcp_stream(socket_.get());
 }
 
 application::SendResult TcpTransport::send(const std::string_view payload) {

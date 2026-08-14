@@ -4,8 +4,6 @@
 #include "application/log_renderer.hpp"
 #include "infrastructure/json_log_catalog.hpp"
 
-#include <Windows.h>
-
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
@@ -209,13 +207,13 @@ void run_json_log_catalog_tests() {
         expect(item.sample.find("{{SRC_IP}}") != std::string::npos, "Position-based source IP mapping is missing in " + std::string{id});
     }
 
-    const auto directory = std::filesystem::current_path() / (".test_json_catalog_" + std::to_string(GetCurrentProcessId()));
+    const auto directory = unique_test_path("loggen_json_catalog_");
     const auto file = directory / "sample_logs.json";
     std::error_code cleanup_error;
     std::filesystem::remove_all(directory, cleanup_error);
     std::vector<domain::LogTemplate> expected{
-        {"custom-1", "사용자 로그", "timestamp=2030-01-02T03:04:05Z src_ip=10.0.0.1 dst_ip=10.0.0.2", "사용자 정의"},
-        {"custom-2", "Multiline", "line one\nline two", "사용자 정의"},
+        {"custom-1", "사용자 로그", "timestamp=2030-01-02T03:04:05Z src_ip=10.0.0.1 dst_ip=10.0.0.2", "사용자 정의", {}},
+        {"custom-2", "Multiline", "line one\nline two", "사용자 정의", {}},
     };
     expected[0].test_case.values["FILE_PATH"] = {"C:/ProgramData/Your-Company/example.dat"};
     catalog.save(file, expected);
