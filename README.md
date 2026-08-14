@@ -84,7 +84,7 @@ Linux UI는 X11 또는 Wayland 데스크톱의 XWayland에서 실행됩니다. `
 
 ## 요구 환경
 
-공통 요구사항은 64비트 환경, CMake 3.28 이상, C++23 컴파일러, Git입니다. Dear ImGui 1.92.9, GLFW 3.4, nlohmann/json 3.12.0은 CMake가 고정 태그에서 가져옵니다.
+공통 요구사항은 64비트 환경, CMake 3.26 이상, C++23 컴파일러, Git입니다. Dear ImGui 1.92.9, GLFW 3.4, nlohmann/json 3.12.0은 CMake가 고정 태그에서 가져옵니다.
 
 ### Windows
 

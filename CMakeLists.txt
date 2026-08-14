@@ -1,5 +1,5 @@
 # CMakeLists.txt
-cmake_minimum_required(VERSION 3.28)
+cmake_minimum_required(VERSION 3.26)
 
 project(LogGenerator VERSION 1.0.0 LANGUAGES CXX)
 
