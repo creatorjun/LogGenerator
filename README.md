@@ -17,6 +17,8 @@ LogGenerator/
 ├─ Sample Logs/
 │  └─ sample_logs.json
 ├─ scripts/
+│  ├─ build-cli-linux.sh
+│  ├─ build-cli-windows.cmd
 │  ├─ build.ps1
 │  ├─ build.sh
 │  └─ publish.ps1
@@ -76,7 +78,7 @@ LogGenerator/
 | 소켓 | Winsock2 | POSIX socket |
 | TLS | Schannel | OpenSSL |
 | 실행 환경 | Win32 고해상도 타이머 | POSIX 스레드 실행 환경 |
-| 헤드리스 모드 | `LogGeneratorCli.exe` | `LogGenerator` CLI 전용 바이너리 |
+| CLI 전용 빌드 | `LogGenerator.exe` | `LogGenerator` |
 
 Linux UI는 X11 또는 Wayland 데스크톱의 XWayland에서 실행됩니다. `LOGGEN_BUILD_GUI=OFF`에서는 Dear ImGui, GLFW, OpenGL, X11을 구성하거나 링크하지 않습니다. TLS 인증서 검증은 기본으로 활성화되며 Windows는 운영체제 인증서 저장소, Linux는 OpenSSL 시스템 CA 저장소를 사용합니다.
 
@@ -119,11 +121,21 @@ Python 런타임은 사용하지 않으므로 `requirements.txt`에는 설치할
 
 ### Windows
 
+GUI와 CLI를 함께 빌드합니다.
+
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build.ps1 -Configuration Release
 ```
 
 GUI 실행 파일은 `build\bin\Release\LogGenerator.exe`, CLI 실행 파일은 `build\bin\Release\LogGeneratorCli.exe`에 생성됩니다.
+
+CLI만 간단하게 빌드하려면 다음 명령을 실행합니다.
+
+```powershell
+.\scripts\build-cli-windows.cmd
+```
+
+Debug 빌드는 `.\scripts\build-cli-windows.cmd Debug`으로 실행합니다. CLI 전용 실행 파일은 `build-windows-cli\bin\Release\LogGenerator.exe`에 생성됩니다.
 
 ### Linux GUI
 
@@ -148,11 +160,11 @@ ctest --test-dir build-linux --output-on-failure
 ### Linux 헤드리스
 
 ```bash
-bash scripts/build.sh Release --headless
+bash scripts/build-cli-linux.sh
 ./build-linux-headless/bin/LogGenerator --help
 ```
 
-헤드리스 빌드는 `build-linux-headless/bin/LogGenerator`를 CLI 전용 실행 파일로 만듭니다. CMake를 직접 실행하려면 다음 명령을 사용합니다.
+Debug 빌드는 `bash scripts/build-cli-linux.sh Debug`으로 실행합니다. 헤드리스 빌드는 `build-linux-headless/bin/LogGenerator`를 CLI 전용 실행 파일로 만듭니다. 기존 통합 스크립트의 `bash scripts/build.sh Release --headless` 명령도 계속 사용할 수 있습니다. CMake를 직접 실행하려면 다음 명령을 사용합니다.
 
 ```bash
 cmake -S . -B build-linux-headless -DCMAKE_BUILD_TYPE=Release -DLOGGEN_BUILD_GUI=OFF
@@ -177,9 +189,44 @@ FILE 방식은 네트워크 객체를 생성하지 않으며 실행 파일 옆 `
 
 ## CLI 사용 방법
 
-샘플 목록을 확인합니다.
+### Windows CLI
+
+도움말과 샘플 목록을 확인합니다.
+
+```powershell
+.\build-windows-cli\bin\Release\LogGenerator.exe --help
+.\build-windows-cli\bin\Release\LogGenerator.exe list
+```
+
+FILE 로그 100개를 생성합니다.
+
+```powershell
+.\build-windows-cli\bin\Release\LogGenerator.exe run `
+  --protocol file `
+  --sample-id 0001 `
+  --file-max-count 100 `
+  --output-dir .\generated
+```
+
+60초 동안 UDP로 목표 1,000 EPS를 전송합니다.
+
+```powershell
+.\build-windows-cli\bin\Release\LogGenerator.exe run `
+  --protocol udp `
+  --host 192.0.2.10 `
+  --port 514 `
+  --eps 1000 `
+  --duration 60
+```
+
+GUI와 함께 빌드한 경우에는 같은 옵션으로 `build\bin\Release\LogGeneratorCli.exe`를 사용할 수 있습니다.
+
+### Linux CLI
+
+도움말과 샘플 목록을 확인합니다.
 
 ```bash
+./build-linux-headless/bin/LogGenerator --help
 ./build-linux-headless/bin/LogGenerator list
 ```
 
@@ -188,7 +235,7 @@ FILE 로그 100개를 생성합니다.
 ```bash
 ./build-linux-headless/bin/LogGenerator run \
   --protocol file \
-  --sample-id woori-0001 \
+  --sample-id 0001 \
   --file-max-count 100 \
   --output-dir ./generated
 ```
@@ -204,7 +251,7 @@ FILE 로그 100개를 생성합니다.
   --duration 60
 ```
 
-`--sample-id`를 생략하면 전체 샘플을 순환합니다. 실행 시간을 생략하거나 0으로 설정하면 `Ctrl+C` 또는 FILE 제한에 도달할 때까지 실행합니다. TCP/TLS는 `--framing newline|octet`, TLS는 `--tls-server-name`을 지원합니다. 전체 옵션은 `--help`에서 확인할 수 있습니다.
+샘플 ID는 `0001`처럼 숫자로만 지정합니다. `--sample-id`를 생략하면 전체 샘플을 순환합니다. 실행 시간을 생략하거나 0으로 설정하면 `Ctrl+C` 또는 FILE 제한에 도달할 때까지 실행합니다. TCP/TLS는 `--framing newline|octet`, TLS는 `--tls-server-name`을 지원합니다. 전체 옵션은 `--help`에서 확인할 수 있습니다.
 
 ## 데이터와 로그
 

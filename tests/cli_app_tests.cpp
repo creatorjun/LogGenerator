@@ -20,8 +20,8 @@ void run_cli_app_tests() {
         "--tls-server-name", "siem.example.test",
         "--insecure",
         "--framing", "octet",
-        "--sample-id", "woori-0001",
-        "--sample-id", "woori-0002",
+        "--sample-id", "0001",
+        "--sample-id", "0002",
         "--workers", "4",
         "--eps", "1000",
         "--duration", "5",
@@ -58,6 +58,15 @@ void run_cli_app_tests() {
         invalid_rejected = true;
     }
     expect(invalid_rejected, "CLI accepted an invalid worker count");
+
+    bool invalid_sample_id_rejected = false;
+    try {
+        constexpr std::array<std::string_view, 3> invalid_arguments{"run", "--sample-id", "sample-0001"};
+        static_cast<void>(presentation::CliApp::parse_arguments(invalid_arguments));
+    } catch (const std::invalid_argument&) {
+        invalid_sample_id_rejected = true;
+    }
+    expect(invalid_sample_id_rejected, "CLI accepted a non-numeric sample id");
 }
 
 }

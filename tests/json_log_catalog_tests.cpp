@@ -36,9 +36,9 @@ void run_json_log_catalog_tests() {
     const infrastructure::JsonLogCatalog catalog;
     const auto source = std::filesystem::path{LOGGEN_SOURCE_DIR} / "Sample Logs" / "sample_logs.json";
     const auto items = catalog.load(source);
-    expect(items.size() == 60, "Expected 60 revised Woori POC sample logs");
-    expect(items.front().id == "woori-0001", "First revised sample id is incorrect");
-    expect(items.back().id == "woori-0060", "Last revised sample id is incorrect");
+    expect(items.size() == 60, "Expected 60 revised sample logs");
+    expect(items.front().id == "0001", "First revised sample id is incorrect");
+    expect(items.back().id == "0060", "Last revised sample id is incorrect");
     expect(items.front().name == "[MONITORAPP]_AIWAF_Traffic_v1_cef_01", "First revised parser name is incorrect");
     expect(items.back().name == "[Somansa]_DB-i_Security_v1_json_09", "Last revised parser name is incorrect");
 
@@ -87,7 +87,7 @@ void run_json_log_catalog_tests() {
     for (std::size_t index = 0; index < items.size(); ++index) {
         const auto& item = items[index];
         char expected_id[16]{};
-        std::snprintf(expected_id, sizeof(expected_id), "woori-%04zu", index + 1);
+        std::snprintf(expected_id, sizeof(expected_id), "%04zu", index + 1);
         expect(item.id == expected_id, "Revised sample ids are not sequential");
         expect(!item.name.empty() && !item.sample.empty(), "A revised sample is empty");
         expect(item.source.empty(), "Imported sample source metadata should be omitted");
@@ -142,9 +142,9 @@ void run_json_log_catalog_tests() {
         expect(iterator != items.end(), "Required revised catalog item is missing");
         return *iterator;
     };
-    expect(application::LogRenderer::analyze(find_item("woori-0008").sample).timestamp_count >= 2, "Secuway timestamps are not recognized");
-    expect(application::LogRenderer::analyze(find_item("woori-0027").sample).timestamp_count >= 4, "AIPS compact timestamps are not recognized");
-    expect(application::LogRenderer::analyze(find_item("woori-0060")).timestamp_count >= 2, "DB-i filename and transaction timestamps are not recognized");
+    expect(application::LogRenderer::analyze(find_item("0008").sample).timestamp_count >= 2, "Secuway timestamps are not recognized");
+    expect(application::LogRenderer::analyze(find_item("0027").sample).timestamp_count >= 4, "AIPS compact timestamps are not recognized");
+    expect(application::LogRenderer::analyze(find_item("0060")).timestamp_count >= 2, "DB-i filename and transaction timestamps are not recognized");
 
     const auto validation_time = std::chrono::sys_days{std::chrono::year{2030} / std::chrono::January / 2} + std::chrono::hours{3} + std::chrono::minutes{4} + std::chrono::seconds{5};
     const std::regex stale_separated_date{R"(\b(?:201[89]|202[0-6])[-/](?:0[1-9]|1[0-2])[-/](?:0[1-9]|[12][0-9]|3[01])\b)", std::regex::ECMAScript};
@@ -167,39 +167,39 @@ void run_json_log_catalog_tests() {
         auto prepared = application::LogRenderer::prepare_one(find_item(id), "192.0.2.10", "192.0.2.20", std::chrono::seconds{0});
         return std::string{prepared.render(validation_time, true)};
     };
-    const auto waf = render_item("woori-0003");
+    const auto waf = render_item("0003");
     expect(waf.find("|||192.0.2.10|||54141|||192.0.2.20|||443|||") != std::string::npos, "WAF source or destination IP mapping is incorrect");
     expect(waf.find("|||/commonAction.do|||") != std::string::npos && waf.find("POST /commonAction.do HTTP/1.1") != std::string::npos, "WAF path test case was not restored");
-    const auto nac_auth = render_item("woori-0024");
+    const auto nac_auth = render_item("0024");
     expect(std::regex_search(nac_auth, std::regex{R"(mac="(?:[0-9A-F]{2}:){5}[0-9A-F]{2}")", std::regex::icase}), "Genian NAC MAC address is malformed");
     expect(nac_auth.find("mac=\"B8:\"") == std::string::npos, "A partial Genian NAC MAC address remains");
-    expect(render_item("woori-0025").find_first_of("\r\n") == std::string::npos, "Genian NAC audit event was split across lines");
-    const auto trusguard_metrics = render_item("woori-0039");
+    expect(render_item("0025").find_first_of("\r\n") == std::string::npos, "Genian NAC audit event was split across lines");
+    const auto trusguard_metrics = render_item("0039");
     expect(trusguard_metrics.find("`20300102`03:04:05`") != std::string::npos, "TrusGuard split date or time was not regenerated");
     expect(trusguard_metrics.find("010-0000-") == std::string::npos, "TrusGuard metrics were rendered as phone numbers");
-    expect(render_item("woori-0041").find("decide_time=\"0000-00-00 00:00:00\"") != std::string::npos, "DBSafer zero-date sentinel was modified");
-    expect(render_item("woori-0044").find("gateway=\"192.0.2.10\"") != std::string::npos, "DBSafer gateway was not mapped to the configured source IP");
-    const auto chakra_query = render_item("woori-0056");
+    expect(render_item("0041").find("decide_time=\"0000-00-00 00:00:00\"") != std::string::npos, "DBSafer zero-date sentinel was modified");
+    expect(render_item("0044").find("gateway=\"192.0.2.10\"") != std::string::npos, "DBSafer gateway was not mapped to the configured source IP");
+    const auto chakra_query = render_item("0056");
     expect(chakra_query.find('\b') == std::string::npos, "ChakraMax query contains a backspace control character");
     expect(count_occurrences(chakra_query, "\\b") == 4, "ChakraMax query separators were not escaped consistently");
-    expect(render_item("woori-0010").find(",SIEM,203001_aws_cloudtrail_log.csv,") != std::string::npos, "CloudTrail file test cases are structurally inaccurate");
-    expect(render_item("woori-0046").starts_with("/CloudESM/data/dbilog/20300102__policyevaluated_0.json,{"), "DB-i event path was not restored");
-    expect(render_item("woori-0049").starts_with("20300102__transaction_0.json,{"), "DB-i transaction filename was not restored");
-    expect(render_item("woori-0053").starts_with("20300102__statement_0.json,{"), "DB-i statement filename was not restored");
-    expect(render_item("woori-0054").starts_with("db_sess_info_sf_20300102.csv,"), "ChakraMax filename was not restored");
-    expect(render_item("woori-0056").starts_with("db_sql_info_gw_20300102.csv,"), "ChakraMax query filename was not restored");
-    const auto dbi_session = render_item("woori-0047");
+    expect(render_item("0010").find(",SIEM,203001_aws_cloudtrail_log.csv,") != std::string::npos, "CloudTrail file test cases are structurally inaccurate");
+    expect(render_item("0046").starts_with("/CloudESM/data/dbilog/20300102__policyevaluated_0.json,{"), "DB-i event path was not restored");
+    expect(render_item("0049").starts_with("20300102__transaction_0.json,{"), "DB-i transaction filename was not restored");
+    expect(render_item("0053").starts_with("20300102__statement_0.json,{"), "DB-i statement filename was not restored");
+    expect(render_item("0054").starts_with("db_sess_info_sf_20300102.csv,"), "ChakraMax filename was not restored");
+    expect(render_item("0056").starts_with("db_sql_info_gw_20300102.csv,"), "ChakraMax query filename was not restored");
+    const auto dbi_session = render_item("0047");
     expect(dbi_session.starts_with("/CloudESM/data/dbilog/20300102__session_0.json,{"), "DB-i session source path was not restored");
     expect(dbi_session.find("/somansa/data/gfs_data/dbi/20300102/default/id-") != std::string::npos, "DB-i nested test case path was not restored");
 
-    for (const auto id : {std::string_view{"woori-0026"}, std::string_view{"woori-0046"}, std::string_view{"woori-0047"}, std::string_view{"woori-0048"}, std::string_view{"woori-0049"}, std::string_view{"woori-0050"}, std::string_view{"woori-0051"}, std::string_view{"woori-0052"}, std::string_view{"woori-0053"}, std::string_view{"woori-0060"}}) {
+    for (const auto id : {std::string_view{"0026"}, std::string_view{"0046"}, std::string_view{"0047"}, std::string_view{"0048"}, std::string_view{"0049"}, std::string_view{"0050"}, std::string_view{"0051"}, std::string_view{"0052"}, std::string_view{"0053"}, std::string_view{"0060"}}) {
         const auto rendered = render_item(id);
         const auto json_start = rendered.find('{');
         expect(json_start != std::string::npos, "Expected JSON payload is missing in " + std::string{id});
         const auto parsed = nlohmann::json::parse(rendered.substr(json_start));
         expect(!parsed.is_discarded(), "Generated JSON payload is invalid in " + std::string{id});
     }
-    for (const auto id : {std::string_view{"woori-0055"}, std::string_view{"woori-0056"}, std::string_view{"woori-0057"}, std::string_view{"woori-0058"}, std::string_view{"woori-0059"}}) {
+    for (const auto id : {std::string_view{"0055"}, std::string_view{"0056"}, std::string_view{"0057"}, std::string_view{"0058"}, std::string_view{"0059"}}) {
         const auto& item = find_item(id);
         expect(item.sample.find("{{PERSON}}") != std::string::npos, "Position-based person mapping is missing in " + std::string{id});
         expect(item.sample.find("{{USER_ID}}") != std::string::npos, "Position-based account mapping is missing in " + std::string{id});
@@ -212,8 +212,8 @@ void run_json_log_catalog_tests() {
     std::error_code cleanup_error;
     std::filesystem::remove_all(directory, cleanup_error);
     std::vector<domain::LogTemplate> expected{
-        {"custom-1", "사용자 로그", "timestamp=2030-01-02T03:04:05Z src_ip=10.0.0.1 dst_ip=10.0.0.2", "사용자 정의", {}},
-        {"custom-2", "Multiline", "line one\nline two", "사용자 정의", {}},
+        {"9001", "사용자 로그", "timestamp=2030-01-02T03:04:05Z src_ip=10.0.0.1 dst_ip=10.0.0.2", "사용자 정의", {}},
+        {"9002", "Multiline", "line one\nline two", "사용자 정의", {}},
     };
     expected[0].test_case.values["FILE_PATH"] = {"C:/ProgramData/Your-Company/example.dat"};
     catalog.save(file, expected);
@@ -224,6 +224,15 @@ void run_json_log_catalog_tests() {
     expect(actual[0].sample == expected[0].sample, "JSON catalog round trip changed sample");
     expect(actual[1].sample == expected[1].sample, "JSON catalog round trip changed multiline sample");
     expect(actual[0].test_case.values == expected[0].test_case.values, "JSON catalog round trip changed test case values");
+    auto invalid = expected;
+    invalid.front().id = "custom-1";
+    bool invalid_id_rejected = false;
+    try {
+        catalog.save(file, invalid);
+    } catch (const std::exception&) {
+        invalid_id_rejected = true;
+    }
+    expect(invalid_id_rejected, "JSON catalog accepted a non-numeric sample id");
     const std::vector<domain::LogTemplate> empty;
     for (int iteration = 0; iteration < 32; ++iteration) {
         catalog.save(file, expected);

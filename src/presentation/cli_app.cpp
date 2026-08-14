@@ -1,6 +1,8 @@
 // src/presentation/cli_app.cpp
 #include "presentation/cli_app.hpp"
 
+#include "domain/sample_id.hpp"
+
 #include <algorithm>
 #include <charconv>
 #include <cctype>
@@ -153,7 +155,7 @@ CliApp::CliApp(application::LogCatalogService& catalog_service, application::Str
     : catalog_service_(catalog_service), stress_service_(stress_service), logger_(logger), default_catalog_file_(std::move(default_catalog_file)) {
 }
 
-int CliApp::run(const std::span<const std::string_view> arguments) {
+int CliApp::run(const std::span<const std::string_view> arguments, const std::string_view executable_name) {
     try {
         auto options = parse_arguments(arguments);
         if (options.catalog_file.empty()) {
@@ -161,7 +163,7 @@ int CliApp::run(const std::span<const std::string_view> arguments) {
         }
         switch (options.command) {
         case CliCommand::Help:
-            print_help();
+            print_help(executable_name);
             return 0;
         case CliCommand::List:
             return list_catalog(options);
@@ -171,7 +173,7 @@ int CliApp::run(const std::span<const std::string_view> arguments) {
     } catch (const std::invalid_argument& error) {
         logger_.warning(error.what());
         std::cerr << "인자 오류: " << error.what() << "\n\n";
-        print_help();
+        print_help(executable_name);
         return 2;
     } catch (const std::exception& error) {
         logger_.error(error.what());
@@ -216,7 +218,11 @@ CliOptions CliApp::parse_arguments(const std::span<const std::string_view> argum
         } else if (option == "--catalog") {
             options.catalog_file = value();
         } else if (option == "--sample-id") {
-            options.sample_ids.emplace_back(value());
+            const auto sample_id = value();
+            if (!domain::valid_sample_id(sample_id)) {
+                throw std::invalid_argument("--sample-id 값은 숫자로만 구성되어야 합니다");
+            }
+            options.sample_ids.emplace_back(sample_id);
         } else if (option == "--protocol") {
             const auto protocol = lowercase(value());
             if (protocol == "udp") {
@@ -330,12 +336,12 @@ CliOptions CliApp::parse_arguments(const std::span<const std::string_view> argum
     return options;
 }
 
-void CliApp::print_help() {
+void CliApp::print_help(const std::string_view executable_name) {
     std::cout
-        << "LogGeneratorCli\n\n"
+        << executable_name << " CLI\n\n"
         << "사용법:\n"
-        << "  LogGeneratorCli list [--catalog PATH]\n"
-        << "  LogGeneratorCli run [OPTIONS]\n\n"
+        << "  " << executable_name << " list [--catalog PATH]\n"
+        << "  " << executable_name << " run [OPTIONS]\n\n"
         << "주요 옵션:\n"
         << "  --protocol file|udp|tcp|tls   기본값: file\n"
         << "  --sample-id ID                반복 지정 가능, 생략 시 전체 샘플\n"
@@ -354,9 +360,9 @@ void CliApp::print_help() {
         << "  --from yyyy-MM-dd --to yyyy-MM-dd\n"
         << "  --catalog PATH --status-interval SECONDS --quiet\n\n"
         << "예시:\n"
-        << "  LogGeneratorCli list\n"
-        << "  LogGeneratorCli run --protocol file --sample-id woori-0001 --file-max-count 100 --output-dir ./generated\n"
-        << "  LogGeneratorCli run --protocol udp --host 192.0.2.10 --port 514 --eps 1000 --duration 60\n";
+        << "  " << executable_name << " list\n"
+        << "  " << executable_name << " run --protocol file --sample-id 0001 --file-max-count 100 --output-dir ./generated\n"
+        << "  " << executable_name << " run --protocol udp --host 192.0.2.10 --port 514 --eps 1000 --duration 60\n";
 }
 
 int CliApp::list_catalog(const CliOptions& options) {

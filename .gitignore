@@ -1,5 +1,8 @@
 # .gitignore
 /build/
+/build-windows-cli/
+/build-linux/
+/build-linux-headless/
 /out/
 /.vs/
 /.codex_xlsx_inspect/

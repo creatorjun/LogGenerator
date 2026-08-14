@@ -143,12 +143,12 @@ target_link_libraries(LogGeneratorCli PRIVATE loggen_cli_presentation loggen_inf
 if(WIN32)
     target_compile_definitions(LogGeneratorCli PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _WIN32_WINNT=0x0A00)
 endif()
-add_custom_command(
-    TARGET LogGeneratorCli
-    POST_BUILD
+add_custom_target(loggen_copy_sample_logs
     COMMAND ${CMAKE_COMMAND} -E remove_directory "$<TARGET_FILE_DIR:LogGeneratorCli>/Sample Logs"
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/Sample Logs" "$<TARGET_FILE_DIR:LogGeneratorCli>/Sample Logs"
+    VERBATIM
 )
+add_dependencies(LogGeneratorCli loggen_copy_sample_logs)
 
 if(LOGGEN_BUILD_GUI)
 set(LOGGEN_PRESENTATION_SOURCES
@@ -196,6 +196,9 @@ endif()
 add_executable(LogGeneratorTests ${LOGGEN_TEST_SOURCES})
 target_include_directories(LogGeneratorTests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_SOURCE_DIR}/tests")
 target_compile_definitions(LogGeneratorTests PRIVATE LOGGEN_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+if(WIN32 AND LOGGEN_BUILD_GUI)
+    target_compile_definitions(LogGeneratorTests PRIVATE LOGGEN_HAS_WINDOWS_ICON_TESTS=1)
+endif()
 target_link_libraries(LogGeneratorTests PRIVATE loggen_application loggen_cli_presentation loggen_infrastructure nlohmann_json::nlohmann_json)
 if(WIN32)
     target_compile_definitions(LogGeneratorTests PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _WIN32_WINNT=0x0A00)

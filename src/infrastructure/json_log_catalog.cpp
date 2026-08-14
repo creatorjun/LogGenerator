@@ -1,6 +1,8 @@
 // src/infrastructure/json_log_catalog.cpp
 #include "infrastructure/json_log_catalog.hpp"
 
+#include "domain/sample_id.hpp"
+
 #ifdef _WIN32
 #include <Windows.h>
 #else
@@ -128,8 +130,11 @@ std::vector<domain::LogTemplate> JsonLogCatalog::load(const std::filesystem::pat
         item.sample = required_text(value, "sample", file);
         item.source = value.value("source", std::string{});
         item.test_case = read_test_case(value, file);
-        if (item.id.empty() || item.name.empty() || item.sample.empty()) {
-            throw catalog_error(file, "id, name and sample must not be empty");
+        if (!domain::valid_sample_id(item.id)) {
+            throw catalog_error(file, "id must contain only digits");
+        }
+        if (item.name.empty() || item.sample.empty()) {
+            throw catalog_error(file, "name and sample must not be empty");
         }
         if (!identifiers.insert(item.id).second) {
             throw catalog_error(file, "duplicate id '" + item.id + "'");
@@ -144,8 +149,11 @@ void JsonLogCatalog::save(const std::filesystem::path& file, const std::span<con
     std::unordered_set<std::string> identifiers;
     identifiers.reserve(items.size());
     for (const auto& item : items) {
-        if (item.id.empty() || item.name.empty() || item.sample.empty()) {
-            throw catalog_error(file, "id, name and sample must not be empty");
+        if (!domain::valid_sample_id(item.id)) {
+            throw catalog_error(file, "id must contain only digits");
+        }
+        if (item.name.empty() || item.sample.empty()) {
+            throw catalog_error(file, "name and sample must not be empty");
         }
         if (!identifiers.insert(item.id).second) {
             throw catalog_error(file, "duplicate id '" + item.id + "'");

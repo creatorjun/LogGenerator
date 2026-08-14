@@ -7,7 +7,7 @@ set(output_directory "${BUILD_ROOT}/cli-smoke-output")
 file(REMOVE_RECURSE "${output_directory}")
 
 execute_process(
-    COMMAND "${CLI_PATH}" run --protocol file --sample-id woori-0001 --file-max-count 2 --output-dir "${output_directory}" --catalog "${SOURCE_ROOT}/Sample Logs/sample_logs.json" --quiet
+    COMMAND "${CLI_PATH}" run --protocol file --sample-id 0001 --file-max-count 2 --output-dir "${output_directory}" --catalog "${SOURCE_ROOT}/Sample Logs/sample_logs.json" --quiet
     RESULT_VARIABLE cli_result
     OUTPUT_VARIABLE cli_output
     ERROR_VARIABLE cli_error

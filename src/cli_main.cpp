@@ -64,8 +64,15 @@ int main(const int argument_count, char** argument_values) {
         for (int index = 1; index < argument_count; ++index) {
             arguments.emplace_back(argument_values[index]);
         }
+        auto executable_name = std::string{"LogGeneratorCli"};
+        if (argument_count > 0 && argument_values[0] != nullptr) {
+            const auto candidate = std::filesystem::path(argument_values[0]).filename().string();
+            if (!candidate.empty()) {
+                executable_name = candidate;
+            }
+        }
         loggen::presentation::CliApp app{catalog_service, stress_service, logger, std::move(catalog_file)};
-        return app.run(arguments);
+        return app.run(arguments, executable_name);
     } catch (const std::exception& error) {
         std::fprintf(stderr, "LogGeneratorCli: %s\n", error.what());
         return 1;

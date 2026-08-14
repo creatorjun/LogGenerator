@@ -35,9 +35,9 @@ class CliApp final {
 public:
     CliApp(application::LogCatalogService& catalog_service, application::StressTestService& stress_service, application::ILogger& logger, std::filesystem::path default_catalog_file);
 
-    int run(std::span<const std::string_view> arguments);
+    int run(std::span<const std::string_view> arguments, std::string_view executable_name = "LogGeneratorCli");
     [[nodiscard]] static CliOptions parse_arguments(std::span<const std::string_view> arguments);
-    static void print_help();
+    static void print_help(std::string_view executable_name = "LogGeneratorCli");
 
 private:
     int list_catalog(const CliOptions& options);

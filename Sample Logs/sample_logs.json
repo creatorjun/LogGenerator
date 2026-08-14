@@ -2,17 +2,17 @@
   "schema_version": 1,
   "logs": [
     {
-      "id": "woori-0001",
+      "id": "0001",
       "name": "[MONITORAPP]_AIWAF_Traffic_v1_cef_01",
       "sample": "TRAFFIC|||2025-11-27 08:46:50|||{{HOST}}|||75997.6|||0|||75997.6|||2.9|||0|||2.9|||0|||0.7|||0.7|||0|||29|||29"
     },
     {
-      "id": "woori-0002",
+      "id": "0002",
       "name": "[MONITORAPP]_AIWAF_System_v1_cef_03",
       "sample": "SYSTEM|||2025-11-27 09:10:10|||12|||정상|||mgmt(UP,1000,full) ha(UP,1000,full) S1E1(UP,1000,full) S1E2(UP,1000,full) S1E3(DOWN,0,unknown) S1E4(DOWN,0,unknown)|||3|||24|||43"
     },
     {
-      "id": "woori-0003",
+      "id": "0003",
       "name": "[MONITORAPP]_AIWAF_Security_v1_cef_03",
       "sample": "DETECT|||2025-11-27 08:37:56|||{{SRC_IP}}|||54141|||{{DST_IP}}|||443|||{{HOST}}|||Abnormal HTTP Request|||중간|||탐지|||15|||HTTP 비정상 요청 탐지|||[페이로드 개수: 설정 개수 - 256 , 탐지 개수 - 365, 다중 사선(Slash) 문자 삽입: //]|||https|||{{HOST}}|||{{FILE_PATH}}|||6313||||||KR||||||POST /commonAction.do HTTP/1.1",
       "test_case": {
@@ -22,37 +22,37 @@
       }
     },
     {
-      "id": "woori-0004",
+      "id": "0004",
       "name": "[MONITORAPP]_AIWAF_Security_v1_cef_04",
       "sample": "AUDIT|||2025-11-27 09:10:09|||{{SRC_IP}}|||{{USER_ID}}|||로그아웃"
     },
     {
-      "id": "woori-0005",
+      "id": "0005",
       "name": "[Secuwiz]_SecuwaySSL_Security_v1_cef_01",
       "sample": "<14>Nov 26 15:29:18 localhost system_log: block_log: {{IP_ADDRESS}},tun0,{{SRC_IP}},{{DST_IP}},TCP,8443"
     },
     {
-      "id": "woori-0006",
+      "id": "0006",
       "name": "[Secuwiz]_SecuwaySSL_Security_v1_cef_02",
       "sample": "<14>Nov 26 11:30:42 localhost access_log: {{IP_ADDRESS}},{{DST_IP}},{{USER_ID}},8661,{{SRC_IP}},{{SRC_IP}}"
     },
     {
-      "id": "woori-0007",
+      "id": "0007",
       "name": "[Secuwiz]_SecuwaySSL_System_v1_cef_01",
       "sample": "<14>Nov 26 13:08:27 localhost journal: Suppressed 3435 messages from /user.slice/user-0.slice"
     },
     {
-      "id": "woori-0008",
+      "id": "0008",
       "name": "[Secuwiz]_SecuwaySSL_Security_v1_cef_03",
       "sample": "<14>Nov 26 10:36:50 localhost security: {{IP_ADDRESS}},2025-11-26 10:36:50,{{USER_ID}},{{SRC_IP}},admin logout,logout : Admin ID = {{USER_ID}}(관리자 로그아웃 성공)"
     },
     {
-      "id": "woori-0009",
+      "id": "0009",
       "name": "[Secuwiz]_SecuwaySSL_System_v1_cef_02",
       "sample": "<14>Nov 26 13:04:36 localhost loginlog: {{IP_ADDRESS}},{{USER_ID}},{{SRC_IP}},login,{{SRC_IP}},pc"
     },
     {
-      "id": "woori-0010",
+      "id": "0010",
       "name": "[AWS]_CloudTrail_Security_v1_cef_01",
       "sample": "Your-Companygo-dev-s3-siem,Your-Companygo-dev-log-bucket,{{FILE_PATH}},{{FILE_PATH}},1.11,\"{type=IAMUser, principalid={{IDENTIFIER}} arn=arn:aws:iam::{{IDENTIFIER}}:user/{{PERSON}} accountid={{USER_ID}} invokedby=null, accesskeyid=null, username={{PERSON}} sessioncontext=null}\",2025-12-03 11:17,signin.amazonaws.com,ConsoleLogin,ap-northeast-2,{{SRC_IP}},\"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36\",,,,\"{\"\"ConsoleLogin\"\":\"\"Success\"\"}\",\"{\"\"LoginTo\"\":\"\"https://ap-northeast-2.console.aws.amazon.com/console/home?hashArgs=%23&isauthcode=true&region=ap-northeast-2&state=hashArgsFromTB_ap-northeast-2_8d1d6d7998650414\"\",\"\"MobileVersion\"\":\"\"No\"\",\"\"MFAIdentifier\"\":\"\"{{IDENTIFIER}}\"\",\"\"MFAUsed\"\":\"\"Yes\"\"}\",,\"{\"\"ConsoleLogin\"\":\"\"Success\"\"}\",,{{IDENTIFIER}},AwsConsoleSignIn,,FALSE,,{{USER_ID}},,,",
       "test_case": {
@@ -63,7 +63,7 @@
       }
     },
     {
-      "id": "woori-0011",
+      "id": "0011",
       "name": "[AWS]_CloudTrail_Security_v1_cef_02",
       "sample": "Your-Companygo-prod-s3-siem,Your-Companygo-prod-log-bucket,{{FILE_PATH}},{{FILE_PATH}},역할명,직무명,메뉴명,권한명,등록일시",
       "test_case": {
@@ -74,7 +74,7 @@
       }
     },
     {
-      "id": "woori-0012",
+      "id": "0012",
       "name": "[AWS]_CloudTrail_Security_v1_cef_03",
       "sample": "Your-Companygo-prod-s3-siem,Your-Companygo-prod-log-bucket,{{FILE_PATH}},{{FILE_PATH}},권한부여자,권한부여자명,역할명,직무코드,직무명,권한명,메뉴명,부여일시",
       "test_case": {
@@ -85,7 +85,7 @@
       }
     },
     {
-      "id": "woori-0013",
+      "id": "0013",
       "name": "[AWS]_CloudTrail_Security_v1_cef_04",
       "sample": "Your-Companygo-prod-s3-siem,Your-Companygo-prod-log-bucket,{{FILE_PATH}},{{FILE_PATH}},API_ID,API설명,메뉴명,IP,API_KEY(조회내역),사번,사원명,ID,등록일자",
       "test_case": {
@@ -96,7 +96,7 @@
       }
     },
     {
-      "id": "woori-0014",
+      "id": "0014",
       "name": "[AWS]_CloudTrail_Security_v1_cef_05",
       "sample": "Your-Companygo-dev-s3-siem,Your-Companygo-dev-log-bucket,{{FILE_PATH}},{{FILE_PATH}},{{USER_ID}},{{DEPARTMENT}},{{PERSON}},(본)원투원시스템개발팀_팀장,{{SRC_IP}},BO_TENANT_10,입점업체 템플릿 목록 조회,/apis/bo/assistant/tenant/template/select,2025-12-18 10:03,3",
       "test_case": {
@@ -107,7 +107,7 @@
       }
     },
     {
-      "id": "woori-0015",
+      "id": "0015",
       "name": "[AWS]_CloudTrail_Security_v1_cef_06",
       "sample": "Your-Companygo-dev-s3-siem,Your-Companygo-dev-log-bucket,{{FILE_PATH}},{{FILE_PATH}},BO_TENANT_4,입점업체 상세,입점사,{{SRC_IP}},{{SECRET}},{{USER_ID}},{{PERSON}},{{USER_ID}},2025-12-08 12:54",
       "test_case": {
@@ -118,7 +118,7 @@
       }
     },
     {
-      "id": "woori-0016",
+      "id": "0016",
       "name": "[AWS]_CloudTrail_Security_v1_cef_07",
       "sample": "Your-Companygo-prod-s3-siem,Your-Companygo-prod-log-bucket,{{FILE_PATH}},{{FILE_PATH}},BB_BO_07101,예약내역 목록 조회,예약내역 조회,{{IP_ADDRESS}},{{SECRET}},{{EMPLOYEE_ID}},{{PERSON}},{{USER_ID}},2026-04-21 17:28:13",
       "test_case": {
@@ -129,7 +129,7 @@
       }
     },
     {
-      "id": "woori-0017",
+      "id": "0017",
       "name": "[AWS]_CloudTrail_Security_v1_cef_08",
       "sample": "Your-Companygo-prod-s3-siem,Your-Companygo-prod-log-bucket,{{FILE_PATH}},{{FILE_PATH}},광고기획팀,(본)광고기획_사원,로그 통계,조회,2026-01-29 09:51:02",
       "test_case": {
@@ -140,7 +140,7 @@
       }
     },
     {
-      "id": "woori-0018",
+      "id": "0018",
       "name": "[AWS]_CloudTrail_Security_v1_cef_09",
       "sample": "Your-Companygo-dev-s3-siem,Your-Companygo-dev-log-bucket,{{FILE_PATH}},{{FILE_PATH}},2025-12-29 14:50,{{USER_ID}},{{IDENTIFIER}},{{IDENTIFIER}},SSM,{{USER_ID}},대상 서버 접속,시스템 접속",
       "test_case": {
@@ -151,7 +151,7 @@
       }
     },
     {
-      "id": "woori-0019",
+      "id": "0019",
       "name": "[AWS]_CloudTrail_Security_v1_cef_10",
       "sample": "Your-Companygo-dev-s3-siem,Your-Companygo-dev-log-bucket,{{FILE_PATH}},{{FILE_PATH}},{{USER_ID}},{{USER_ID}},{{PERSON}},B20001502_55,(점)영업/지원_BottleBunker_Senior_사원,2025-12-04 13:03,{{SRC_IP}},\"{\"\"search_info\"\":{\"\"str_cd\"\":\"\"{{STORE_CODE}}\"\",\"\"pick_date\"\":null,\"\"start_dd\"\":null,\"\"end_dd\"\":null,\"\"rsrv_sts_cd\"\":\"\"01\"\",\"\"pin_no\"\":null,\"\"am_pm_cd\"\":null,\"\"user_rep_id\"\":null,\"\"rsrv_user_nm\"\":null,\"\"rsrv_cnl_yn\"\":null,\"\"item_cd\"\":null},\"\"page\"\":1,\"\"rows\"\":10,\"\"_search\"\":true,\"\"sord\"\":\"\"desc\"\",\"\"sidx\"\":\"\"rsrv_no\"\",\"\"empno\"\":\"\"{{EMPLOYEE_ID}}\"\",\"\"cust_no\"\":\"\"{{USER_ID}}\"\"}\",주문 관리,예약내역 목록 조회",
       "test_case": {
@@ -162,7 +162,7 @@
       }
     },
     {
-      "id": "woori-0020",
+      "id": "0020",
       "name": "[AWS]_CloudTrail_Security_v1_cef_11",
       "sample": "Your-Companygo-dev-s3-siem,Your-Companygo-dev-log-bucket,{{FILE_PATH}},{{FILE_PATH}},{{USER_ID}},{{PERSON}},{{DEPARTMENT}},A00080401_55,(본)판촉마케팅_사원,등록,지류전단 판형 등록,2025-07-02 14:51",
       "test_case": {
@@ -173,7 +173,7 @@
       }
     },
     {
-      "id": "woori-0021",
+      "id": "0021",
       "name": "[AWS]_CloudTrail_Security_v1_cef_12",
       "sample": "Your-Companygo-dev-s3-siem,Your-Companygo-dev-log-bucket,{{FILE_PATH}},{{FILE_PATH}},(본)VIC** 직무 전체,(본)VIC뷰티/아로마_MDer,달려라 선착순,등록,2024-04-05 15:37:07",
       "test_case": {
@@ -184,7 +184,7 @@
       }
     },
     {
-      "id": "woori-0022",
+      "id": "0022",
       "name": "[AWS]_CloudTrail_Security_v1_cef_13",
       "sample": "Your-Companygo-dev-s3-siem,Your-Companygo-dev-log-bucket,{{FILE_PATH}},{{FILE_PATH}},{{EMPLOYEE_ID}},{{DEPARTMENT}},{{PERSON}},(본)시스템관리자,{{SRC_IP}},USER_002,로그인,/apis/bo/user/sso/login,2025-12-01 0:52,38",
       "test_case": {
@@ -195,7 +195,7 @@
       }
     },
     {
-      "id": "woori-0023",
+      "id": "0023",
       "name": "[AWS]_CloudTrail_Security_v1_cef_14",
       "sample": "Your-Companygo-dev-s3-siem,Your-Companygo-dev-log-bucket,{{FILE_PATH}},{{FILE_PATH}},BO_COUPON_14,회원별 쿠폰 리스트 조회,회원별 쿠폰,{{SRC_IP}},{{SECRET}},{{EMPLOYEE_ID}},{{PERSON}},{{USER_ID}},2025-12-01 11:18",
       "test_case": {
@@ -206,117 +206,117 @@
       }
     },
     {
-      "id": "woori-0024",
+      "id": "0024",
       "name": "[Genians]_Genian NAC_Security_v1_cef_08",
       "sample": "20251218161008`|{{IP_ADDRESS}}`|NAC_인증로그`|table_nm=\"NAC_SIEM\" ip=\"{{IP_ADDRESS}}\" mac=\"{{MAC_ADDRESS}}\" 노드타입=\"PC\" 동작상태=\"UP\" 인증사용자id=\"\" 인증사용자=\"\" 인증사용자부서=\"\" 인증사용자직급=\"\" 마지막동작시각=\"2025-12-18 16:09:57.0\" 관리센서=\"{{HOST}}\""
     },
     {
-      "id": "woori-0025",
+      "id": "0025",
       "name": "[Genians]_Genian NAC_Security_v1_cef_09",
       "sample": "20251214100640`|{{IP_ADDRESS}}`|NAC_감사로그`|<30>2025-12-14 10:06:38 INFO 116 {{SRC_IP}} {{IP_ADDRESS}} {{MAC_ADDRESS}} 노드의 사용자가 인증됨. ID={{USER_ID}}, NAME={{PERSON}}, SOURCE=STEAD_API, BY='인증대체' NONE"
     },
     {
-      "id": "woori-0026",
+      "id": "0026",
       "name": "[PNPSecure]_KAMOS_Security_v1_json_01",
       "sample": "{\"_id\":{\"$oid\":\"{{IDENTIFIER}}\"},\"date\":\"2025-12-05\",\"time\":\"11:08:30.131\",\"level\":\"INFO\",\"code\":\"22300\",\"sessionId\":\"{{IDENTIFIER}}\",\"protocol\":\"SSH\",\"srcIp\":\"{{SRC_IP}}\",\"srcId\":\"{{USER_ID}}\",\"srcNm\":\"{{PERSON}}\",\"srcGrpId\":\"{{IDENTIFIER}}\",\"dstIp\":\"{{DST_IP}}\",\"dstId\":\"{{IDENTIFIER}}\",\"dstNm\":\"{{PERSON}}\",\"dstGrpId\":\"{{IDENTIFIER}}\",\"account\":\"{{USER_ID}}\",\"hmac\":\"{{SECRET}}\",\"content\":\"사용자가 대상 시스템에서 접속 해제\",\"timedate_ts\":{\"$date\":\"2025-12-05T11:08:30.131Z\"}}"
     },
     {
-      "id": "woori-0027",
+      "id": "0027",
       "name": "[AhnLab]_AIPS_Security_v1_leef_06",
       "sample": "LEEF:2.0|AhnLab|AIPS|1.0|event||stime=20251128T051713.524\tetime=20251128T051716.352\tsid=1216\tdevice_id={{HOST}}\tvulnerability_id=804\tcve=\tattackname=SMTP user Unknown-1\thost_name={{HOST}}\thost_alias={{HOST}}\tcateid=Predefined Signature\tscateid=Network Protocol\tmodule=IPS\tpriority=MEDIUM\tether_type=IPv4\tsrc_ip={{SRC_IP}}\tsrc_country=KR\tsrc_mac={{MAC_ADDRESS}}\tdst_ip={{DST_IP}}\tdst_country=KR\tsrc_port=25\tdst_port=45718\tproto=TCP\tsrc_asset_os=\tsrc_asset_app=\tdst_asset_os=\tdst_asset_app=\tsuser_id=\tsuser_name=\tsuser_team=\tduser_id=\tduser_name=\tduser_team=\thttp_ver=0\thttp_code=NONE\ticmp_type=0\ticmp_code=0\tattack_try_cnt=1\tdetect_pkts=1\tdetect_bytes=208\tblock=ALLOW\tblock_action=PACKET\tblock_time=1\treaction=NONE\tszone=Internal\tszone_id=3\tszone_group=defaultGroup\tinterface=eth2\tsegment=SEG/0\tvirtual_id=0\tinner_sport=0\tinner_dport=0\tinner_proto= \tsessionid={{IDENTIFIER}}\tpktid=0\tdetour=TCP_REASSEMBLE\tssl_decrypt=NONE\tpkt_dir=II\tsession_dir=II\tlogcompress=Lvl1\torigin_filename=\tfile_reference=\tv_data=110,\toffset=121\tpatternsize=12\treassembled_offset=674\treassembled_patternsize=12\tsrc_service=NONE\tdst_service=NONE\tmax_latency=\tavg_latency=\toversig_hits=\toversig_detects=\toversig_rate=\tpayload={{SECRET}}\treassembled={{SECRET}}\tlocalstime=20251128T141713.524\tlocaletime=20251128T141716.352"
     },
     {
-      "id": "woori-0028",
+      "id": "0028",
       "name": "[AhnLab]_AIPS_Security_v1_leef_05",
       "sample": "LEEF:2.0|AhnLab|AIPS|1.0|framesize||stime=20251127T082315.144\tdevice_id={{HOST}}\tpkt_dir=EI\tpktsize=~64\tframetype=64\trx_pkts=83\tdetect_pkts=0\tblock_pkts=0\tallow_pkts=83\trx_pps=1\tdetect_pps=0\tblock_pps=0\tallow_pps=1\trx_bytes=7060\tdetect_bytes=0\tblock_bytes=0\tallow_bytes=7060\trx_bps=941\tdetect_bps=0\tblock_bps=0\tallow_bps=941\thost_name={{HOST}}\thost_alias={{HOST}}\tlocalstime=20251127T172315.144"
     },
     {
-      "id": "woori-0029",
+      "id": "0029",
       "name": "[AhnLab]_AIPS_Security_v1_leef_04",
       "sample": "LEEF:2.0|AhnLab|AIPS|1.0|interface||stime=20251126T085100.344\tdevice_id={{HOST}}\tinterface=eth2\tproto=TCP\trx_pkts=205650\tdetect_pkts=4\tblock_pkts=0\tallow_pkts=205646\ttx_pkts=335421\trx_pps=3427\tdetect_pps=0\tblock_pps=0\tallow_pps=3427\ttx_pps=5590\trx_bytes=44875815\tdetect_bytes=801\tblock_bytes=0\tallow_bytes=44875014\ttx_bytes=360296867\trx_bps=5983442\tdetect_bps=106\tblock_bps=0\tallow_bps=5983335\ttx_bps=48039580\thost_name={{HOST}}\thost_alias={{HOST}}\tlocalstime=20251126T175100.344"
     },
     {
-      "id": "woori-0030",
+      "id": "0030",
       "name": "[AhnLab]_AIPS_Security_v1_leef_03",
       "sample": "LEEF:2.0|AhnLab|AIPS|1.0|securityzone||stime=20251127T082615.140\tdevice_id={{HOST}}\tpkt_dir=EI\tszone=default\tszone_group=defaultGroup\tproto=TCP\trx_pkts=0\tdetect_pkts=0\tblock_pkts=0\tallow_pkts=0\trx_pps=0\tdetect_pps=0\tblock_pps=0\tallow_pps=0\trx_bytes=0\tdetect_bytes=0\tblock_bytes=0\tallow_bytes=0\trx_bps=0\tdetect_bps=0\tblock_bps=0\tallow_bps=0\thost_name={{HOST}}\thost_alias={{HOST}}\tlocalstime=20251127T172615.140"
     },
     {
-      "id": "woori-0031",
+      "id": "0031",
       "name": "[AhnLab]_AIPS_Security_v1_leef_02",
       "sample": "LEEF:2.0|AhnLab|AIPS|1.0|service||stime=20251127T074118.211\tdevice_id={{HOST}}\tpkt_dir=EI\tsession_dir=EI\tproto=TCP\tservice=57251\trx_pkts=0\tdetect_pkts=0\tblock_pkts=0\tallow_pkts=0\trx_pps=0\tdetect_pps=0\tblock_pps=0\tallow_pps=0\trx_bytes=0\tdetect_bytes=0\tblock_bytes=0\tallow_bytes=0\trx_bps=0\tdetect_bps=0\tblock_bps=0\tallow_bps=0\thost_name={{HOST}}\thost_alias={{HOST}}\tlocalstime=20251127T164118.211"
     },
     {
-      "id": "woori-0032",
+      "id": "0032",
       "name": "[AhnLab]_AIPS_Security_v1_leef_01",
       "sample": "LEEF:2.0|AhnLab|AIPS|1.0|event||stime=20251203T015908.232\tetime=20251203T015910.020\tsid=11544\tdevice_id={{HOST}}\tvulnerability_id=6718\tcve=CVE-2022-22954\tattackname=VMware Workspace ONE Access and Identity Manager Server-Side Template Injection-2\thost_name={{HOST}}\thost_alias={{HOST}}\tcateid=Predefined Signature\tscateid=Server Side Application\tmodule=IPS\tpriority=Very_HIGH\tether_type=IPv4\tsrc_ip={{SRC_IP}}\tsrc_country=US\tsrc_mac={{MAC_ADDRESS}}\tdst_ip={{DST_IP}}\tdst_country=KR\tsrc_port=43170\tdst_port=443\tproto=TCP\tsrc_asset_os=\tsrc_asset_app=\tdst_asset_os=\tdst_asset_app=\tsuser_id=\tsuser_name=\tsuser_team=\tduser_id=\tduser_name=\tduser_team=\thttp_ver=1\thttp_code=0\ticmp_type=0\ticmp_code=0\tattack_try_cnt=1\tdetect_pkts=1\tdetect_bytes=744\tblock=ALLOW\tblock_action=PACKET\tblock_time=1\treaction=NONE\tszone=Internal\tszone_id=3\tszone_group=defaultGroup\tinterface=eth2\tsegment=SEG/0\tvirtual_id=0\tinner_sport=0\tinner_dport=0\tinner_proto= \tsessionid={{IDENTIFIER}}\tpktid=0\tdetour=HTTP_ENCODING\tssl_decrypt=NONE\tpkt_dir=II\tsession_dir=II\tlogcompress=Lvl1\torigin_filename=\tfile_reference=\tv_data=48,\tsrc_service=NONE\tdst_service={{DST_IP}}:443\tmax_latency=\tavg_latency=\toversig_hits=\toversig_detects=\toversig_rate=\tpayload={{SECRET}}\treassembled={{SECRET}}\tlocalstime=20251203T105908.232\tlocaletime=20251203T105910.020"
     },
     {
-      "id": "woori-0033",
+      "id": "0033",
       "name": "[AhnLab]_TrusGuard_Security_v1_cef_04",
       "sample": "3`0`6`1`827ba0`1020`20260430`09:07:26`1`6`250327175213`{{SRC_IP}}`49667`{{DST_IP}}`443`eth1`eth2````````````SYN_SENT(S)`EXT`INT`608``4`````0`{{IDENTIFIER}}`0````0`0`0``https`KR`KR```20260430`09:07:26```0`0`0`0`````````0`0`"
     },
     {
-      "id": "woori-0034",
+      "id": "0034",
       "name": "[AhnLab]_TrusGuard_Security_v1_cef_05",
       "sample": "3`0`1`1`9a83f2`1020`20251127`09:49:45`1`17`210120082805383`{{SRC_IP}}`55824`{{DST_IP}}`53`eth9`eth1`````````````외부`내부`597``4`````2`{{IDENTIFIER}}`0````0`0`0``domain`````20251127`09:49:45``````"
     },
     {
-      "id": "woori-0035",
+      "id": "0035",
       "name": "[AhnLab]_TrusGuard_Security_v1_cef_06",
       "sample": "3`0`6`1`827ba0`1021`20260430`09:08:26`2`6`UTM_DEFAULT`{{SRC_IP}}`50946`{{DST_IP}}`7022`eth1`eth2````58`1```````SYN_SENT(S)`EXT`INT`1``4````DENY BY FW POLICY`40`{{IDENTIFIER}}`0````0`0`0```US`KR```````0`0`0`0`````````0`0`"
     },
     {
-      "id": "woori-0036",
+      "id": "0036",
       "name": "[AhnLab]_TrusGuard_Security_v1_cef_07",
       "sample": "3`0`1`1`9a83f2`1021`20251127`10:07:48`2`6`210114130240886`{{SRC_IP}}`54790`{{DST_IP}}`8443`eth9`eth1````0`1```````S`외부`내부`104``4`````2`{{IDENTIFIER}}`0````0`0`0```````20251127`10:07:48``````"
     },
     {
-      "id": "woori-0037",
+      "id": "0037",
       "name": "[AhnLab]_TrusGuard_System_v1_cef_01",
       "sample": "3`0`14`1`827e9d`1010`20260430`09:54:38`2``````515``시스템 이벤트`C&C DB 자동 업데이트를 중지합니다. 최신 버전을 사용하고 있습니다.``0`0`1`4````"
     },
     {
-      "id": "woori-0038",
+      "id": "0038",
       "name": "[AhnLab]_TrusGuard_System_v1_cef_02",
       "sample": "3`0`2`1`9a83f2`1010`20251128`11:38:07`2``````99`{{USER_ID}}`시스템 이벤트`IPv4 정책을 추가했습니다(우선순위: 0, 사용: ON, 처리 방법: Allow, 양방향 정책: OFF, 설명: [시스템 파트] 차세대 오픈 대응을 위한 방화벽 정책 허용 ( 사용기한 : 25/12/31), 일정: always, 로그: ON, 로그 ID: 251128113807383, QoS: -, 프록시: -, 사용자: -, IP 헤더 유지: OFF, 세션 제한: 제한 없음, 정책별 세션 제한: 1500, 정책 타임아웃 사용: OFF, 정책 타임아웃: 600, IPS 연동: OFF, IPS 프로파일: default, 애플리케이션 제어 연동: OFF, 애플리케이션 제어 프로파일: default, 안티 바이러스 연동: OFF, 안티 바이러스 프로파일: -, 안티 스팸 연동: OFF, 안티 스팸: -, 웹 필터 연동: OFF, 웹 필터 프로파일: default, 유해 사이트 차단 연동: OFF, 유해 사이트 차단 프로파일: -, C&C 연결 차단 연동: OFF, C&C 연결 차단 프로파일: default, 데이터 유출 방지 연동: OFF, 데이터 유출 방지 프로파일: default, Zero Hit 정책 자동 비활성: 사용 안함, Zero Hit 기간: 180, 정책 기반 라우팅 우선순위: 0, 출발지: 4F_NewGen_{{IP_ADDRESS}}, 목적지: {{IP_ADDRESS}};lmbojap03_{{IP_ADDRESS}};lmbojap_vip_{{IP_ADDRESS}};lmewpo01-{{IP_ADDRESS}};lmewpo02-{{IP_ADDRESS}};lmewpo_vip-{{IP_ADDRESS}};lmewpo_vip-{{IP_ADDRESS}};lmspoeai01_{{IP_ADDRESS}};lmspoeai01_{{IP_ADDRESS}};lmspoeai02_{{IP_ADDRESS}};lmspoeai02_{{IP_ADDRESS}};lmspoeai_vip_{{IP_ADDRESS}}, 서비스: http8080;tcp-3500;tcp-3510;tcp-50000;tcp-6400).``1`0`1`11`{{SRC_IP}}`1421`"
     },
     {
-      "id": "woori-0039",
+      "id": "0039",
       "name": "[AhnLab]_TrusGuard_SMS_v1_cef_01",
       "sample": "3`0`30`1`827ba0`1011`20260430`09:45:34`시스템 상태`2`17`70`4853`108136744`114468928`18550`21580`MASTER``1092710530`26488959`748573081148`1633337448`0`0`0`0`0`0`"
     },
     {
-      "id": "woori-0040",
+      "id": "0040",
       "name": "[AhnLab]_TrusGuard_SMS_v1_cef_02",
       "sample": "3`0`2`1`9a8634`1011`20251127`11:16:43`시스템 상태`0`10`1`38675`53566072`1759128`16324`1157`SLAVE``14`0`9335`0`0`0`0`0`0`0`"
     },
     {
-      "id": "woori-0041",
+      "id": "0041",
       "name": "[PNPsecure]_DBSafer_Security_v1_keyvalue_01",
       "sample": "table_nm=\"DBSafer_db_query\":u_index=\"1767830115917976113\":c_index=\"225464\":query=\"ix_spc_perf_ins\":query_bind=\"\":query_info=\"12\":c_time=\"2026-01-08 16:30:36\":rtn=\"Run complete. \":rtn_filesaved=\"0\":isformal=\"0\":r_time=\"2026-01-08 16:30:36\":elapsed=\"1\":resp_time=\"2026-01-08 16:30:36\":resp_elapsed=\"1\":r_size=\"13\":row_size=\"0\":qry_count=\"1\":policy_no=\"1540367216249480028\":policy_name=\"데이터마스킹_적용그룹(기본)\":manual_auth_id=\"\":manual_auth_name=\"\":decide_datamask_policy=\"\":accumulation_policy=\"\":denied=\"0\":alert=\"\":loglevel=\"4\":decide_type=\"0\":decide_time=\"0000-00-00 00:00:00\":decide_mgr_id=\"\":formal_hash=\"69785F7370635F706572665F696E730000000000\":is_contraction=\"0\":global_policy=\"\":result_scan_count=\"0\":id=\"{{USER_ID}}\":clt_ip=\"{{SRC_IP}}\":clt_port=\"59459\":application=\"ProSpace.exe\":com_name=\"\":net_id=\"\":os=\"\":com_id=\"\":ldap_sno=\"{{USER_ID}}\":ldap_name=\"{{PERSON}}\":ldap_tel=\"{{DEPARTMENT}}\""
     },
     {
-      "id": "woori-0042",
+      "id": "0042",
       "name": "[PNPsecure]_DBSafer_Security_v1_keyvalue_02",
       "sample": "table_nm=\"DBSafer_shell_user\":index=\"1766494882951152408\":id=\"{{USER_ID}}\":user_ip=\"{{SRC_IP}}\":user_port=\"0\":private_ip=\"\":in_time=\"2025-12-23 22:01:26\":out_time=\"2025-12-23 22:01:26\":service_no=\"204\":server_ip=\"{{DST_IP}}\":server_port=\"22\":policy_no=\"1629685280700092002\":policy_name=\"ESL그리티스 개발유지보수\":manual_auth_id=\"\":manual_auth_name=\"\":denied=\"0\":operating_mode=\"0\":conn_mode=\"0\":alert=\"\":loglevel=\"4\":decide_type=\"0\":decide_time=\"0000-00-00 00:00:00\":decide_mgr_id=\"\":ldap_sno=\"{{USER_ID}}\":ldap_name=\"{{PERSON}}\":ldap_tel=\"{{DEPARTMENT}}\":gateway=\"{{SRC_IP}}\":dbsafer_name=\"\":cmd_count=\"0\""
     },
     {
-      "id": "woori-0043",
+      "id": "0043",
       "name": "[PNPsecure]_DBSafer_Security_v1_keyvalue_03",
       "sample": "table_nm=\"DBSafer_shell_cmd\":cmd=\"db.log.deleteMany({mac: \"{{MAC_ADDRESS}}\"})db.log.deleteMany({mac:\"{{MAC_ADDRESS}}\"})db.log.deleteMany({mac:\"{{MAC_ADDRESS}}\"}) \":rtn=\"db.log.deleteMany({mac: \"{{MAC_ADDRESS}}\"}) { \"acknowledged\" : true, \"deletedCount\" : 3284 }  rs:PRIMARY> \":u_index=\"1767846270876248662\":c_index=\"46\":c_time=\"2026-01-08 16:31:53\":r_time=\"2026-01-08 16:31:53\":policy_no=\"0\":policy_name=\"default\":manual_auth_id=\"\":manual_auth_name=\"\":denied=\"0\":alert=\"\":loglevel=\"0\":decide_type=\"0\":decide_time=\"0000-00-00 00:00:00\":decide_mgr_id=\"\":r_index=\"10\":c_offset=\"67509\":id=\"{{USER_ID}}\":user_ip=\"{{SRC_IP}}\":in_time=\"2026-01-08 13:24:34\":out_time=\"2026-01-08 13:24:34\":ldap_sno=\"{{USER_ID}}\":ldap_name=\"{{PERSON}}\":ldap_tel=\"{{DEPARTMENT}}\""
     },
     {
-      "id": "woori-0044",
+      "id": "0044",
       "name": "[PNPsecure]_DBSafer_Security_v1_keyvalue_04",
       "sample": "table_nm=\"DBSafer_db_user\":index=\"1766448579861736458\":id=\"{{USER_ID}}\":clt_ip=\"{{SRC_IP}}\":clt_port=\"52910\":private_ip=\"\":application=\"ProSpace.exe\":com_name=\"\":net_id=\"\":os=\"\":com_id=\"\":sid=\"CKB\":in_time=\"2025-12-23 09:09:40\":out_time=\"2025-12-23 09:09:40\":service_no=\"237\":server_ip=\"{{DST_IP}}\":server_port=\"1433\":policy_no=\"1540367058485544017\":policy_name=\"POG 프로그램 단품운영팀 접속\":manual_auth_id=\"\":manual_auth_name=\"\":denied=\"0\":operating_mode=\"0\":conn_mode=\"0\":alert=\"\":decide_type=\"0\":decide_time=\"0000-00-00 00:00:00\":decide_mgr_id=\"\":loglevel=\"4\":ldap_sno=\"{{USER_ID}}\":ldap_name=\"{{PERSON}}\":ldap_tel=\"{{DEPARTMENT}}\":gateway=\"{{SRC_IP}}\":svc_type=\"0\":group_index=\"0\":dbsafer_name=\"\":cmd_count=\"0\""
     },
     {
-      "id": "woori-0045",
+      "id": "0045",
       "name": "[TrendMicro]_DeepSecurity__Security_v1_cef_01",
       "sample": "<134>May 29 04:01:44 {{HOST}} CEF:0|Trend Micro|Deep Security Manager|20.0.1073|273|Security Update: Security Update Check and Download Requested|3|suser=System target={{IP_ADDRESS}} msg=Description Omitted TrendMicroDsTenant=Primary TrendMicroDsTenantId=0"
     },
     {
-      "id": "woori-0046",
+      "id": "0046",
       "name": "[Somansa]_DB-i_Security_v1_json_01",
       "sample": "{{FILE_PATH}},{\"ev_sessguid\":\"{{IDENTIFIER}}\",\"ev_policyname\":\"원투원시스템_마트GO_AWS\",\"ev_tags\":[],\"ev_policytype\":\"3\",\"ev_policyaction\":\"0\",\"ev_safpath\":\"{{FILE_PATH}}\",\"ev_time\":\"2026-04-08 09:47:57\",\"ev_type\":\"policyevaluated\",\"ev_guid\":\"{{IDENTIFIER}}\",\"ev_txnguid\":\"{{IDENTIFIER}}\",\"ev_abnormalnested\":[]}",
       "test_case": {
@@ -327,7 +327,7 @@
       }
     },
     {
-      "id": "woori-0047",
+      "id": "0047",
       "name": "[Somansa]_DB-i_Security_v1_json_02",
       "sample": "{{FILE_PATH}},{\"sess_dname\":\"{{ORGANIZATION}}\",\"sess_rowtype\":\"0\",\"sess_cport\":\"63178\",\"sess_reuse\":\"0\",\"sess_cip\":\"{{SRC_IP}}\",\"sess_localid\":\"{{USER_ID}}\",\"sess_did\":\"{{IDENTIFIER}}\",\"sess_programname\":\"dbeaver\",\"sess_instancename\":\"\",\"sess_domain\":\"{{HOST}}\",\"sess_rcvid\":\"{{IDENTIFIER}}\",\"sess_sport\":\"3306\",\"sess_time\":\"2026-04-08 08:59:46\",\"sess_serverdid\":\"{{IDENTIFIER}}\",\"sess_guid\":\"{{IDENTIFIER}}\",\"sess_uname\":\"{{PERSON}}\",\"sess_userid\":\"{{USER_ID}}\",\"sess_logondata\":\"\",\"sess_safpath\":\"{{FILE_PATH}}\",\"sess_serveruname\":\"{{HOST}}\",\"sess_dbtype\":\"200\",\"sess_serverdname\":\"{{ORGANIZATION}}\",\"sess_historynested\":[],\"sess_sip\":\"{{DST_IP}}\",\"sess_uid\":\"{{IDENTIFIER}}\",\"sess_serveruid\":\"{{IDENTIFIER}}\",\"sess_dbaccount\":\"{{USER_ID}}\",\"sess_dbname\":\"PAYMENT\"}",
       "test_case": {
@@ -338,7 +338,7 @@
       }
     },
     {
-      "id": "woori-0048",
+      "id": "0048",
       "name": "[Somansa]_DB-i_Security_v1_json_03",
       "sample": "{{FILE_PATH}},{\"stm_safpath\":\"{{FILE_PATH}}\",\"stm_parsedcolumns\":[\"\"],\"stm_hash\":\"\",\"stm_parsedcommands\":[\"\"],\"stm_fullhash\":\"\",\"stm_parsedquerytypes\":[\"\"],\"stm_parsedtables\":[\"\"],\"stm_guid\":\"{{IDENTIFIER}}\",\"stm_sessguid\":\"{{IDENTIFIER}}\",\"stm_content\":\"\",\"stm_abbrcontent\":\"\"}",
       "test_case": {
@@ -349,7 +349,7 @@
       }
     },
     {
-      "id": "woori-0049",
+      "id": "0049",
       "name": "[Somansa]_DB-i_Security_v1_json_04",
       "sample": "{{FILE_PATH}},{\"tt\":\"2026-02-24 14:01:57\",\"tda\":\"{{USER_ID}}\",\"tea\":\"1\",\"_parent#dbi_session\":\"{{IDENTIFIER}}\",\"tpa\":\"0\",\"tbv\":\"SCM_AD\\\\r\\\\nonline\\\\r\\\\n{{IP_ADDRESS}}\\\\r\\\\n/main/viewScmContent.do\\\\r\\\\n,initTitle=2,initUrl=/product/selectProduct.do\\\\r\\\\nonline\\\\r\\\\n\",\"_uid\":\"{{IDENTIFIER}}\",\"_parent#dbi_statement\":\"{{IDENTIFIER}}\",\"tr\":\"0\",\"ts\":\"338\",\"tdn\":\"LMSTSDB\"}",
       "test_case": {
@@ -359,12 +359,12 @@
       }
     },
     {
-      "id": "woori-0050",
+      "id": "0050",
       "name": "[Somansa]_DB-i_Security_v1_json_05",
       "sample": "{\"stpc\":[\"[SRC.OSP_PD_CD] [SRC.BARCODESCANNINGMETHOD] [SRC.SEG_CHILL] [SRC.SEG_AMB] [SRC.QTY_WEGT_DIVN_CD] [SRC.FIRE_PRVT_PD_YN] [SRC.DARK_ATTR] [SRC.DESC_VALUE] [SRC.PHYSIC_LENGTH] [SRC.PHYSIC_WIDTH] [SRC.PHYSIC_HEIGHT] [SRC.NNST_PD_YN] [SRC.MTP_SL_QTY] [SRC.WEIGHTVALUE] [SRC.WESCL_PD_YN] [SRC.SL_CD] [CD_NM] [CD_GRP_ID] [CMN_CD] [SRC.DETRASHMETHOD] [SRC.FILL] [SRC.ASSETS] [FALSE] [SRC.PICKHANDLINGINSTRUCTIONS] [SRC.WINEHOLDERCATEGORY] [SRC.RECEIVEHANDLINGINSTRUCTIONS] [HASEXPIRYDATE] [TRUE] [MINIMUMDELIVERABLELIFE] [MINACCEPTABLERECEIPTLIFE] [MAXACCEPTABLERECEIPTLIFE] [OSPTEMP] [PRIMARY_IMG_ID] [IMG_URL] [OSP_PD_CD] [PICK_ONE] [PICK_TWO] [PICK_THREE] [CD.CMN_CD] [GRP.CD_GRP_ID] [PD.OSP_PD_CD] [POPSCR.SL_CD] [PD.SL_CD] [PD.PICKHANDLINGINSTRUCTIONS] [PD.WINEHOLDERCATEGORY] [PD.RECEIVEHANDLINGINSTRUCTIONS] [PD.DARK_ATTR] [PD.WESCL_PD_YN] [PD.QTY_WEGT_DIVN_CD] [PD.CAT_CD] [PD.OSPTEMP] [CD_ADTN_ATTR] [PD.HOME_CD] [PSPSA.STR_CD] [PSPSA.MINIMUMDELIVERABLELIFE] [PSPSA.SITE_TYP_CD] [PD.MINIMUMDELIVERABLELIFE] [PS.STR_CD] [PSPSA.OSP_PD_CD] [PS.ONLN_OPR_YN] [IMG_NO] [S3_PATH] [IMG_ID] [RPRT_IMG_YN] [SORT_SEQ] [USE_YN] [OSP_CNTN_DTTM] [SORT] [X.OSP_PD_CD] [X.IF_SN]\"],\"_parent#dbi_session\":\"{{IDENTIFIER}}\",\"stpt\":[\"[ST_CMN_CD] [ST_CMN_CD_GRP] [PD_STR_PD_SITE_ATTR] [PD_STR] [PD_PD_IMG] [PD_VOL_CHG_HIST]\"],\"stct\":\"select src.osp_pd_cd AS retailerProductId\\\\n\\\\t\\\\t\\\\t , src.barcodeScanningMethod\\\\n\\\\t\\\\t\\\\t , src.seg_chill\\\\n\\\\t\\\\t\\\\t , src.seg_amb\\\\n\\\\t\\\\t\\\\t , case when src.qty_wegt_divn_cd = '1' then 'EACH'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\twhen src.qty_wegt_divn_cd = '2' then 'KG'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\telse null\\\\n\\\\t\\\\t\\\\t   end AS unitOfMeasure\\\\n\\\\t\\\\t\\\\t , ifnull(src.fire_prvt_pd_yn, 'N') as firePreventionStorage\\\\n\\\\t\\\\t\\\\t , 'KR'     AS countriesOfOrigin\\\\n\\\\t\\\\t\\\\t , 'ko-KR' AS desc_locale\\\\n\\\\t\\\\t\\\\t , IF(src.DARK_ATTR = 'Y', CONCAT('[다크]', src.desc_value), src.desc_value) AS desc_value\\\\n\\\\t\\\\t\\\\t , src.physic_length\\\\n\\\\t\\\\t\\\\t , src.physic_width\\\\n\\\\t\\\\t\\\\t , src.physic_height\\\\n\\\\t\\\\t\\\\t , if(src.nnst_pd_yn = 'Y', 0.1 * src.mtp_sl_qty, src.weightValue)                          AS weightValue\\\\n\\\\t\\\\t\\\\t , CASE WHEN src.qty_wegt_divn_cd='2' AND src.wescl_pd_yn='X' THEN concat('010', src.sl_cd, '70030000000000310300000039200000000998')       \\\\n\\\\t\\\\t\\\\t\\\\t\\\\tWHEN src.qty_wegt_divn_cd='1' AND src.wescl_pd_yn='X' THEN concat('010', src.sl_cd, '70030000000000300000000039200000000998') \\\\n\\\\t\\\\t\\\\t\\\\t\\\\tELSE src.sl_cd\\\\n\\\\t\\\\t\\\\t   END AS sl_cd\\\\n\\\\t\\\\t\\\\t \\\\n\\\\t\\\\t\\\\t , (\\\\n\\\\t\\\\t\\\\t\\\\t SELECT cd_nm\\\\n\\\\t\\\\t\\\\t\\\\t   FROM st_cmn_cd scc\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  WHERE cd_grp_id = 'C00095'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tAND cmn_cd = src.detrashMethod\\\\n\\\\t\\\\t\\\\t\\\\t) AS detrashMethod\\\\n\\\\t\\\\t\\\\t , src.fill\\\\n\\\\t\\\\t\\\\t , src.assets\\\\n\\\\t\\\\t\\\\t , 'ITEM' AS barcodeType          \\\\n\\\\t\\\\t\\\\t , 1 AS itemsPerCase         \\\\n\\\\t\\\\t\\\\t , FALSE as sample\\\\n\\\\t\\\\t\\\\t , src.pickHandlingInstructions\\\\n\\\\t\\\\t\\\\t , src.wineHolderCategory\\\\n\\\\t\\\\t\\\\t , src.receiveHandlingInstructions\\\\n\\\\t\\\\t\\\\t \\\\n             , CASE WHEN hasExpiryDate = 'Y' THEN TRUE ELSE FALSE END AS hasExpiryDate\\\\n             , CASE WHEN hasExpiryDate = 'Y' THEN IFNULL(minimumDeliverableLife,0) ELSE NULL END AS minimumDeliverableLife\\\\n             , CASE WHEN hasExpiryDate = 'Y' THEN IFNULL(minAcceptableReceiptLife,0) ELSE NULL END AS minAcceptableReceiptLife\\\\n             , CASE WHEN hasExpiryDate = 'Y' THEN IFNULL(maxAcceptableReceiptLife,0) ELSE NULL END AS maxAcceptableReceiptLife\\\\n\\\\t\\\\t\\\\t , (\\\\n\\\\t\\\\t\\\\t\\\\t SELECT cd_nm\\\\n\\\\t\\\\t\\\\t\\\\t   FROM st_cmn_cd scc\\\\n\\\\t\\\\t\\\\t\\\\t  WHERE cd_grp_id = 'C00084'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\tAND cmn_cd = ospTemp\\\\n\\\\t\\\\t\\\\t   ) AS temperatureRegime\\\\n\\\\t\\\\t\\\\t , primary_img_id\\\\n\\\\t\\\\t\\\\t , img_url\\\\n\\\\t\\\\t\\\\t , CASE WHEN osp_pd_cd='INT01_OS2528300000004' OR osp_pd_cd='INT01_OS2528730000001' THEN 'LOOSE_ITEM'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\tWHEN osp_pd_cd='INT01_OS2525210000001' THEN 'REGULAR'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\tWHEN pick_one > 550 OR pick_two > 350 OR pick_three > 240 THEN  \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t CASE WHEN SUBSTR(cat_cd, 1, 3) IN ( \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t SELECT ifnull(cd.cmn_cd,'')\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t   FROM st_cmn_cd_grp AS grp\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t   JOIN st_cmn_cd AS cd\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t ON (grp.cd_grp_id = cd.cd_grp_id)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  WHERE grp.cd_grp_id = 'C00227'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t   )\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t   THEN\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tCASE WHEN SUBSTR(REPLACE(src.sl_cd, 'XX', ''), 1, 2) IN ('04', '88') THEN 'BULKY' \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t WHEN wescl_pd_yn = 'X' AND qty_wegt_divn_cd='2' THEN 'LOOSE_INCREMENT'   \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t ELSE 'PREPACKED'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tEND\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  ELSE 'BULKY' END\\\\n\\\\t\\\\t\\\\t\\\\t\\\\tWHEN   wescl_pd_yn = 'X' AND qty_wegt_divn_cd='2' THEN 'LOOSE_INCREMENT'     \\\\n\\\\t\\\\t\\\\t\\\\t\\\\tELSE 'PREPACKED'\\\\n\\\\t\\\\t\\\\t   END AS pickCategory\\\\n\\\\t\\\\t\\\\t , src.packUnit\\\\n\\\\t\\\\t\\\\t , src.packValue\\\\n\\\\t\\\\t\\\\t , src.packNumberOfItems\\\\n\\\\t\\\\t     , src.expiryDateCalculationMethod\\\\n\\\\t\\\\t  from (\\\\n\\\\t\\\\t\\\\t\\\\t SELECT pd.osp_pd_cd\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , IFNULL(popscr.sl_cd, pd.sl_cd) as sl_cd\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.pickHandlingInstructions\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.wineHolderCategory\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.receiveHandlingInstructions\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.dark_attr\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , case when pd.wescl_pd_yn = 'X' AND pd.qty_wegt_divn_cd = '2' AND substr(pd.cat_cd,1,3) in (\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tselect ifnull(cd.cmn_cd,'')\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  from st_cmn_cd_grp AS grp\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  join st_cmn_cd AS cd\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tON (grp.cd_grp_id = cd.cd_grp_id)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t WHERE grp.cd_grp_id = 'C00228'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  )\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  then 'DO_NOT_SCAN' \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t when pd.wescl_pd_yn = 'X' AND pd.qty_wegt_divn_cd in('1','2') AND substr(pd.cat_cd,1,3) in (\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tselect ifnull(cd.cmn_cd,'')\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  from st_cmn_cd_grp AS grp\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  join st_cmn_cd AS cd\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tON (grp.cd_grp_id = cd.cd_grp_id)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t WHERE grp.cd_grp_id = 'C00229'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  )\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  then 'DO_NOT_SCAN'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t when pd.wescl_pd_yn = 'X' THEN 'CATCH_WEIGHT'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t when pd.wescl_pd_yn = 'N' THEN 'REGULAR'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t else ''\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tend AS barcodeScanningMethod\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , IF(pd.ospTemp IN ('CHL', 'CLD'), 'DAIRY', '') AS seg_chill\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , IF(pd.ospTemp='CHL', 'NEUTRAL', '') AS seg_amb\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.home_cd\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , (\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  SELECT cd_adtn_attr\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tFROM st_cmn_cd                       \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t   WHERE cd_grp_id = 'PRD16'  \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t AND cmn_cd   = pd.home_cd\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t   LIMIT 1\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t   ) AS home_nm\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , case WHEN pd.nnst_pd_yn = 'Y' AND pd.wescl_pd_yn ='X' AND qty_wegt_divn_cd='2' AND  SUBSTR(pd.cat_cd, 1, 3) IN ('009', '010', '011', '012', '013')     \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  then CONCAT('(작업장)',pd.nnst_pd_nm)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t when pd.nnst_pd_yn = 'Y' AND pd.wescl_pd_yn ='X' AND SUBSTR(pd.cat_cd, 1, 3) IN ('014', '016', '017', '110' , '020', '021', '093', '115', '116' )\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  THEN CONCAT('(작업장)',pd.nnst_pd_nm)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t WHEN pd.nnst_pd_yn = 'Y' THEN pd.nnst_pd_nm\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t WHEN pd.wescl_pd_yn ='X' AND qty_wegt_divn_cd='2' AND SUBSTR(pd.cat_cd, 1, 3) IN ('009', '010', '011', '012', '013')     \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  THEN CONCAT('(작업장)',pd.prod_nm)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t WHEN pd.wescl_pd_yn ='X' AND  SUBSTR(pd.cat_cd, 1, 3) IN ('014', '016', '017', '110', '020', '021', '093', '115', '116')\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  THEN CONCAT('(작업장)',pd.prod_nm)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t ELSE pd.prod_nm\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tend AS desc_value\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng) / 1000 as physic_length\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng) / 1000 as physic_width\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , ifnull(pvch.prod_higt, pd.prod_higt) / 1000 as physic_height\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , if(ifnull(pvch.weightUnit, pd.weightUnit) = 'G', ifnull(pvch.weightValue, pd.weightValue) / 1000, ifnull(pvch.weightValue, pd.weightValue)) as weightValue\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.ospTemp\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pi.img_id  AS primary_img_id\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pi.img_url\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.wescl_pd_yn\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.qty_wegt_divn_cd\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.cat_cd\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.mtp_sl_qty\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.nnst_pd_yn\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , GREATEST(ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng), ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng), ifnull(pvch.prod_higt, pd.prod_higt)) AS pick_one                               \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , CASE WHEN ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng)  <   greatest(ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng),ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng),ifnull(pvch.prod_higt, pd.prod_higt)) AND ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng) > least(ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng),ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng),ifnull(pvch.prod_higt, pd.prod_higt)) THEN ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t WHEN ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng)  <   greatest(ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng),ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng),ifnull(pvch.prod_higt, pd.prod_higt)) AND ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng) > least(ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng),ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng),ifnull(pvch.prod_higt, pd.prod_higt)) THEN ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t WHEN ifnull(pvch.prod_higt, pd.prod_higt)            <   greatest(ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng),ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng),ifnull(pvch.prod_higt, pd.prod_higt)) AND ifnull(pvch.prod_higt, pd.prod_higt) > least(ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng),ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng),ifnull(pvch.prod_higt, pd.prod_higt)) THEN ifnull(pvch.prod_higt, pd.prod_higt)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t WHEN ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng) = ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng) AND ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng) = ifnull(pvch.prod_higt, pd.prod_higt) THEN ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t WHEN ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng) = ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng) AND ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng) =greatest(ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng),ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng),ifnull(pvch.prod_higt, pd.prod_higt)) THEN ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t WHEN ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng) = ifnull(pvch.prod_higt, pd.prod_higt) AND ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng) =greatest(ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng),ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng),ifnull(pvch.prod_higt, pd.prod_higt)) THEN ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t WHEN ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng) = ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng) AND ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng) =least(ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng),ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng),ifnull(pvch.prod_higt, pd.prod_higt)) THEN ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t WHEN ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng) = ifnull(pvch.prod_higt, pd.prod_higt) AND ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng) =least(ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng),ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng),ifnull(pvch.prod_higt, pd.prod_higt)) THEN ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t WHEN ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng) = ifnull(pvch.prod_higt, pd.prod_higt) AND ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng) =greatest(ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng),ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng),ifnull(pvch.prod_higt, pd.prod_higt)) THEN ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t WHEN ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng) = ifnull(pvch.prod_higt, pd.prod_higt) AND ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng) =least(ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng),ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng),ifnull(pvch.prod_higt, pd.prod_higt)) THEN ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t END pick_two \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t   , LEAST(ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng),ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng),ifnull(pvch.prod_higt, pd.prod_higt)) AS pick_three \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t   \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.packUnit\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.packValue\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.packNumberOfItems\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.hasExpiryDate\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , (\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  select case when pspsa.str_cd  = '9001'  and pspsa.minimumDeliverableLife is not null then pspsa.minimumDeliverableLife\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  when pspsa.str_cd != '9001' and pspsa.site_typ_cd = 'CFC' and pspsa.minimumDeliverableLife is not null then pspsa.minimumDeliverableLife\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  else pd.minimumDeliverableLife\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t end\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tfrom pd_str_pd_site_attr pspsa\\\\n\\\\t\\\\t                   INNER JOIN pd_str ps\\\\n\\\\t\\\\t                      ON pspsa.str_cd = ps.str_cd\\\\n\\\\t\\\\t                   WHERE pspsa.osp_pd_cd = 'INT01_OS8809861135393'\\\\n\\\\t\\\\t                     AND ps.onln_opr_yn = 'Y'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t   order by case when pspsa.site_typ_cd = 'CFC' then 1\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t else 9\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tEND\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t   limit 1\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t) as minimumDeliverableLife\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.iwh_std_shlflife_dd as maxAcceptableReceiptLife \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , IF(pd.dstrb_mgt_fg in ('01', '02'), pd.minimumDeliverableLife, NULL) as minAcceptableReceiptLife \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.fire_prvt_pd_yn\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.assets\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.detrashMethod\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , NULLIF(pd.fill, 0) as fill\\\\n\\\\t\\\\t\\\\t\\\\t      , IF(pd.hasExpiryDate = 'Y', IFNULL(pd.expiryDateCalculationMethod, 'NO_OFFSET'), NULL) AS expiryDateCalculationMethod \\\\n\\\\t\\\\t\\\\t\\\\t   FROM pd_osp_pd pd\\\\n\\\\t\\\\t\\\\t\\\\t   LEFT JOIN (\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t   SELECT img_no\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t, IF(s3_path is not null,s3_path, img_url) as img_url\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t, img_id\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t, osp_pd_cd\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t, IF(rprt_img_yn = 'Y', 1, 99) AS sort\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t, sort_seq\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t FROM pd_pd_img\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tWHERE osp_pd_cd     = 'INT01_OS8809861135393'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  AND use_yn        = 'Y'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  AND osp_cntn_dttm IS NOT NULL\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tORDER BY sort, sort_seq, img_no\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tLIMIT 1\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t ) pi\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t ON pi.osp_pd_cd = pd.osp_pd_cd\\\\n\\\\t\\\\t\\\\t\\\\t   LEFT JOIN (\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t   SELECT \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  x.osp_pd_cd\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t, x.prod_higt\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t, x.prod_vtcl_leng\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t, x.prod_hrzn_leng\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t, x.weightUnit\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t, x.weightValue\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t FROM pd_vol_chg_hist x\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tWHERE x.osp_pd_cd = 'INT01_OS8809861135393'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  AND x.osp_cntn_yn = 'N'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  AND NOW() BETWEEN x.vol_aply_strt_dttm AND x.vol_aply_end_dttm\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  AND x.vol_reg_typ = 'USER'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tORDER BY x.if_sn DESC\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tLIMIT 1\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t ) pvch\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t ON pvch.osp_pd_cd = pd.osp_pd_cd\\\\n\\\\t\\\\t\\\\t\\\\t   left join pd_osp_pd_sl_cd_rel popscr\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t on popscr.osp_pd_cd = pd.osp_pd_cd\\\\n\\\\t\\\\t\\\\t\\\\t\\\\tand popscr.use_yn = 'Y'\\\\n\\\\t\\\\t\\\\t\\\\t  WHERE pd.osp_pd_cd = 'INT01_OS8809861135393'\\\\n\\\\t\\\\t\\\\t   ) src\",\"stac\":\"select src.osp_pd_cd AS retailerProductId\\\\n\\\\t\\\\t\\\\t , src.barcodeScanningMethod\\\\n\\\\t\\\\t\\\\t , src.seg_chill\\\\n\\\\t\\\\t\\\\t , src.seg_amb\\\\n\\\\t\\\\t\\\\t , case when src.qty_wegt_divn_cd = '1' then 'EACH'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\twhen src.qty_wegt_divn_cd = '2' then 'KG'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\telse null\\\\n\\\\t\\\\t\\\\t   end AS unitOfMeasure\\\\n\",\"stfh\":\"b43448a0aeb749722297bcbb29e437261c67463fa442bd220f38e229c3e3498a\",\"sth\":\"ddfc1373a7fbd7af\",\"stsize\":\"12622\",\"stpqt\":[\"DML\"],\"stpcd\":[\"SELECT\"],\"_uid\":\"{{IDENTIFIER}}\"}"
     },
     {
-      "id": "woori-0051",
+      "id": "0051",
       "name": "[Somansa]_DB-i_Security_v1_json_06",
       "sample": "{{FILE_PATH}},{\"ssc\":\"{{SRC_IP}}\",\"ssui\":\"{{USER_ID}}\",\"ssd\":\"{{HOST}}\",\"ssdt\":\"200\",\"sssd\":\"{{IDENTIFIER}}\",\"sssp\":\"13306\",\"ssun\":\"{{PERSON}}\",\"sshn\":[],\"sss\":\"{{DST_IP}}\",\"ssr\":\"0\",\"ssrt\":\"0\",\"sst\":\"2026-02-19 00:22:41\",\"ssdid\":\"{{IDENTIFIER}}\",\"sssdn\":\"{{ORGANIZATION}}\",\"ssdbn\":\"{{ORGANIZATION}}\",\"ssdn\":\"{{DEPARTMENT}}\",\"ssri\":\"1217464411\",\"sssun\":\"{{HOST}}\",\"sspn\":\"java\",\"ssda\":\"{{USER_ID}}\",\"ssli\":\"{{USER_ID}}\",\"ssld\":\"\",\"ssin\":\"\",\"sssu\":\"{{IDENTIFIER}}\",\"ssuid\":\"{{IDENTIFIER}}\",\"sscp\":\"64580\",\"_uid\":\"{{IDENTIFIER}}\"}",
       "test_case": {
@@ -374,7 +374,7 @@
       }
     },
     {
-      "id": "woori-0052",
+      "id": "0052",
       "name": "[Somansa]_DB-i_Security_v1_json_07",
       "sample": "{{FILE_PATH}},{\"etp\":\"policyevaluated\",\"_parent#dbi_session\":\"{{IDENTIFIER}}\",\"ean\":[],\"epon\":\"DBA_ALL\",\"epa\":\"0\",\"ept\":\"3\",\"etg\":[],\"_parent#dbi_transaction\":\"{{IDENTIFIER}}\",\"_uid\":\"{{IDENTIFIER}}\",\"etm\":\"2026-02-19 21:53:15\"}",
       "test_case": {
@@ -384,7 +384,7 @@
       }
     },
     {
-      "id": "woori-0053",
+      "id": "0053",
       "name": "[Somansa]_DB-i_Security_v1_json_08",
       "sample": "{{FILE_PATH}},{\"stpc\":[\"[SRC.OSP_PD_CD] [SRC.BARCODESCANNINGMETHOD] [SRC.SEG_CHILL] [SRC.SEG_AMB] [SRC.QTY_WEGT_DIVN_CD] [SRC.FIRE_PRVT_PD_YN] [SRC.DARK_ATTR] [SRC.DESC_VALUE] [SRC.PHYSIC_LENGTH] [SRC.PHYSIC_WIDTH] [SRC.PHYSIC_HEIGHT] [SRC.NNST_PD_YN] [SRC.MTP_SL_QTY] [SRC.WEIGHTVALUE] [SRC.WESCL_PD_YN] [SRC.SL_CD] [CD_NM] [CD_GRP_ID] [CMN_CD] [SRC.DETRASHMETHOD] [SRC.FILL] [SRC.ASSETS] [FALSE] [SRC.PICKHANDLINGINSTRUCTIONS] [SRC.WINEHOLDERCATEGORY] [SRC.RECEIVEHANDLINGINSTRUCTIONS] [HASEXPIRYDATE] [TRUE] [MINIMUMDELIVERABLELIFE] [MINACCEPTABLERECEIPTLIFE] [MAXACCEPTABLERECEIPTLIFE] [OSPTEMP] [PRIMARY_IMG_ID] [IMG_URL] [OSP_PD_CD] [PICK_ONE] [PICK_TWO] [PICK_THREE] [CD.CMN_CD] [GRP.CD_GRP_ID] [PD.OSP_PD_CD] [POPSCR.SL_CD] [PD.SL_CD] [PD.PICKHANDLINGINSTRUCTIONS] [PD.WINEHOLDERCATEGORY] [PD.RECEIVEHANDLINGINSTRUCTIONS] [PD.DARK_ATTR] [PD.WESCL_PD_YN] [PD.QTY_WEGT_DIVN_CD] [PD.CAT_CD] [PD.OSPTEMP] [CD_ADTN_ATTR] [PD.HOME_CD] [PSPSA.STR_CD] [PSPSA.MINIMUMDELIVERABLELIFE] [PSPSA.SITE_TYP_CD] [PD.MINIMUMDELIVERABLELIFE] [PS.STR_CD] [PSPSA.OSP_PD_CD] [PS.ONLN_OPR_YN] [IMG_NO] [S3_PATH] [IMG_ID] [RPRT_IMG_YN] [SORT_SEQ] [USE_YN] [OSP_CNTN_DTTM] [SORT] [X.OSP_PD_CD] [X.IF_SN]\"],\"_parent#dbi_session\":\"{{IDENTIFIER}}\",\"stpt\":[\"[ST_CMN_CD] [ST_CMN_CD_GRP] [PD_STR_PD_SITE_ATTR] [PD_STR] [PD_PD_IMG] [PD_VOL_CHG_HIST]\"],\"stct\":\"select src.osp_pd_cd AS retailerProductId\\\\n\\\\t\\\\t\\\\t , src.barcodeScanningMethod\\\\n\\\\t\\\\t\\\\t , src.seg_chill\\\\n\\\\t\\\\t\\\\t , src.seg_amb\\\\n\\\\t\\\\t\\\\t , case when src.qty_wegt_divn_cd = '1' then 'EACH'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\twhen src.qty_wegt_divn_cd = '2' then 'KG'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\telse null\\\\n\\\\t\\\\t\\\\t   end AS unitOfMeasure\\\\n\\\\t\\\\t\\\\t , ifnull(src.fire_prvt_pd_yn, 'N') as firePreventionStorage\\\\n\\\\t\\\\t\\\\t , 'KR'     AS countriesOfOrigin\\\\n\\\\t\\\\t\\\\t , 'ko-KR' AS desc_locale\\\\n\\\\t\\\\t\\\\t , IF(src.DARK_ATTR = 'Y', CONCAT('[다크]', src.desc_value), src.desc_value) AS desc_value\\\\n\\\\t\\\\t\\\\t , src.physic_length\\\\n\\\\t\\\\t\\\\t , src.physic_width\\\\n\\\\t\\\\t\\\\t , src.physic_height\\\\n\\\\t\\\\t\\\\t , if(src.nnst_pd_yn = 'Y', 0.1 * src.mtp_sl_qty, src.weightValue)                          AS weightValue\\\\n\\\\t\\\\t\\\\t , CASE WHEN src.qty_wegt_divn_cd='2' AND src.wescl_pd_yn='X' THEN concat('010', src.sl_cd, '70030000000000310300000039200000000998')       \\\\n\\\\t\\\\t\\\\t\\\\t\\\\tWHEN src.qty_wegt_divn_cd='1' AND src.wescl_pd_yn='X' THEN concat('010', src.sl_cd, '70030000000000300000000039200000000998') \\\\n\\\\t\\\\t\\\\t\\\\t\\\\tELSE src.sl_cd\\\\n\\\\t\\\\t\\\\t   END AS sl_cd\\\\n\\\\t\\\\t\\\\t \\\\n\\\\t\\\\t\\\\t , (\\\\n\\\\t\\\\t\\\\t\\\\t SELECT cd_nm\\\\n\\\\t\\\\t\\\\t\\\\t   FROM st_cmn_cd scc\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  WHERE cd_grp_id = 'C00095'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tAND cmn_cd = src.detrashMethod\\\\n\\\\t\\\\t\\\\t\\\\t) AS detrashMethod\\\\n\\\\t\\\\t\\\\t , src.fill\\\\n\\\\t\\\\t\\\\t , src.assets\\\\n\\\\t\\\\t\\\\t , 'ITEM' AS barcodeType          \\\\n\\\\t\\\\t\\\\t , 1 AS itemsPerCase         \\\\n\\\\t\\\\t\\\\t , FALSE as sample\\\\n\\\\t\\\\t\\\\t , src.pickHandlingInstructions\\\\n\\\\t\\\\t\\\\t , src.wineHolderCategory\\\\n\\\\t\\\\t\\\\t , src.receiveHandlingInstructions\\\\n\\\\t\\\\t\\\\t \\\\n             , CASE WHEN hasExpiryDate = 'Y' THEN TRUE ELSE FALSE END AS hasExpiryDate\\\\n             , CASE WHEN hasExpiryDate = 'Y' THEN IFNULL(minimumDeliverableLife,0) ELSE NULL END AS minimumDeliverableLife\\\\n             , CASE WHEN hasExpiryDate = 'Y' THEN IFNULL(minAcceptableReceiptLife,0) ELSE NULL END AS minAcceptableReceiptLife\\\\n             , CASE WHEN hasExpiryDate = 'Y' THEN IFNULL(maxAcceptableReceiptLife,0) ELSE NULL END AS maxAcceptableReceiptLife\\\\n\\\\t\\\\t\\\\t , (\\\\n\\\\t\\\\t\\\\t\\\\t SELECT cd_nm\\\\n\\\\t\\\\t\\\\t\\\\t   FROM st_cmn_cd scc\\\\n\\\\t\\\\t\\\\t\\\\t  WHERE cd_grp_id = 'C00084'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\tAND cmn_cd = ospTemp\\\\n\\\\t\\\\t\\\\t   ) AS temperatureRegime\\\\n\\\\t\\\\t\\\\t , primary_img_id\\\\n\\\\t\\\\t\\\\t , img_url\\\\n\\\\t\\\\t\\\\t , CASE WHEN osp_pd_cd='INT01_OS2528300000004' OR osp_pd_cd='INT01_OS2528730000001' THEN 'LOOSE_ITEM'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\tWHEN osp_pd_cd='INT01_OS2525210000001' THEN 'REGULAR'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\tWHEN pick_one > 550 OR pick_two > 350 OR pick_three > 240 THEN  \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t CASE WHEN SUBSTR(cat_cd, 1, 3) IN ( \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t SELECT ifnull(cd.cmn_cd,'')\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t   FROM st_cmn_cd_grp AS grp\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t   JOIN st_cmn_cd AS cd\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t ON (grp.cd_grp_id = cd.cd_grp_id)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  WHERE grp.cd_grp_id = 'C00227'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t   )\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t   THEN\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tCASE WHEN SUBSTR(REPLACE(src.sl_cd, 'XX', ''), 1, 2) IN ('04', '88') THEN 'BULKY' \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t WHEN wescl_pd_yn = 'X' AND qty_wegt_divn_cd='2' THEN 'LOOSE_INCREMENT'   \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t ELSE 'PREPACKED'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tEND\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  ELSE 'BULKY' END\\\\n\\\\t\\\\t\\\\t\\\\t\\\\tWHEN   wescl_pd_yn = 'X' AND qty_wegt_divn_cd='2' THEN 'LOOSE_INCREMENT'     \\\\n\\\\t\\\\t\\\\t\\\\t\\\\tELSE 'PREPACKED'\\\\n\\\\t\\\\t\\\\t   END AS pickCategory\\\\n\\\\t\\\\t\\\\t , src.packUnit\\\\n\\\\t\\\\t\\\\t , src.packValue\\\\n\\\\t\\\\t\\\\t , src.packNumberOfItems\\\\n\\\\t\\\\t     , src.expiryDateCalculationMethod\\\\n\\\\t\\\\t  from (\\\\n\\\\t\\\\t\\\\t\\\\t SELECT pd.osp_pd_cd\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , IFNULL(popscr.sl_cd, pd.sl_cd) as sl_cd\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.pickHandlingInstructions\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.wineHolderCategory\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.receiveHandlingInstructions\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.dark_attr\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , case when pd.wescl_pd_yn = 'X' AND pd.qty_wegt_divn_cd = '2' AND substr(pd.cat_cd,1,3) in (\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tselect ifnull(cd.cmn_cd,'')\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  from st_cmn_cd_grp AS grp\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  join st_cmn_cd AS cd\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tON (grp.cd_grp_id = cd.cd_grp_id)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t WHERE grp.cd_grp_id = 'C00228'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  )\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  then 'DO_NOT_SCAN' \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t when pd.wescl_pd_yn = 'X' AND pd.qty_wegt_divn_cd in('1','2') AND substr(pd.cat_cd,1,3) in (\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tselect ifnull(cd.cmn_cd,'')\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  from st_cmn_cd_grp AS grp\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  join st_cmn_cd AS cd\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tON (grp.cd_grp_id = cd.cd_grp_id)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t WHERE grp.cd_grp_id = 'C00229'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  )\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  then 'DO_NOT_SCAN'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t when pd.wescl_pd_yn = 'X' THEN 'CATCH_WEIGHT'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t when pd.wescl_pd_yn = 'N' THEN 'REGULAR'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t else ''\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tend AS barcodeScanningMethod\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , IF(pd.ospTemp IN ('CHL', 'CLD'), 'DAIRY', '') AS seg_chill\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , IF(pd.ospTemp='CHL', 'NEUTRAL', '') AS seg_amb\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.home_cd\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , (\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  SELECT cd_adtn_attr\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tFROM st_cmn_cd                       \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t   WHERE cd_grp_id = 'PRD16'  \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t AND cmn_cd   = pd.home_cd\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t   LIMIT 1\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t   ) AS home_nm\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , case WHEN pd.nnst_pd_yn = 'Y' AND pd.wescl_pd_yn ='X' AND qty_wegt_divn_cd='2' AND  SUBSTR(pd.cat_cd, 1, 3) IN ('009', '010', '011', '012', '013')     \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  then CONCAT('(작업장)',pd.nnst_pd_nm)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t when pd.nnst_pd_yn = 'Y' AND pd.wescl_pd_yn ='X' AND SUBSTR(pd.cat_cd, 1, 3) IN ('014', '016', '017', '110' , '020', '021', '093', '115', '116' )\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  THEN CONCAT('(작업장)',pd.nnst_pd_nm)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t WHEN pd.nnst_pd_yn = 'Y' THEN pd.nnst_pd_nm\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t WHEN pd.wescl_pd_yn ='X' AND qty_wegt_divn_cd='2' AND SUBSTR(pd.cat_cd, 1, 3) IN ('009', '010', '011', '012', '013')     \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  THEN CONCAT('(작업장)',pd.prod_nm)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t WHEN pd.wescl_pd_yn ='X' AND  SUBSTR(pd.cat_cd, 1, 3) IN ('014', '016', '017', '110', '020', '021', '093', '115', '116')\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  THEN CONCAT('(작업장)',pd.prod_nm)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t ELSE pd.prod_nm\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tend AS desc_value\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng) / 1000 as physic_length\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng) / 1000 as physic_width\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , ifnull(pvch.prod_higt, pd.prod_higt) / 1000 as physic_height\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , if(ifnull(pvch.weightUnit, pd.weightUnit) = 'G', ifnull(pvch.weightValue, pd.weightValue) / 1000, ifnull(pvch.weightValue, pd.weightValue)) as weightValue\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.ospTemp\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pi.img_id  AS primary_img_id\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pi.img_url\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.wescl_pd_yn\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.qty_wegt_divn_cd\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.cat_cd\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.mtp_sl_qty\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.nnst_pd_yn\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , GREATEST(ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng), ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng), ifnull(pvch.prod_higt, pd.prod_higt)) AS pick_one                               \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , CASE WHEN ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng)  <   greatest(ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng),ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng),ifnull(pvch.prod_higt, pd.prod_higt)) AND ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng) > least(ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng),ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng),ifnull(pvch.prod_higt, pd.prod_higt)) THEN ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t WHEN ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng)  <   greatest(ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng),ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng),ifnull(pvch.prod_higt, pd.prod_higt)) AND ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng) > least(ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng),ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng),ifnull(pvch.prod_higt, pd.prod_higt)) THEN ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t WHEN ifnull(pvch.prod_higt, pd.prod_higt)            <   greatest(ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng),ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng),ifnull(pvch.prod_higt, pd.prod_higt)) AND ifnull(pvch.prod_higt, pd.prod_higt) > least(ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng),ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng),ifnull(pvch.prod_higt, pd.prod_higt)) THEN ifnull(pvch.prod_higt, pd.prod_higt)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t WHEN ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng) = ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng) AND ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng) = ifnull(pvch.prod_higt, pd.prod_higt) THEN ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t WHEN ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng) = ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng) AND ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng) =greatest(ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng),ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng),ifnull(pvch.prod_higt, pd.prod_higt)) THEN ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t WHEN ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng) = ifnull(pvch.prod_higt, pd.prod_higt) AND ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng) =greatest(ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng),ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng),ifnull(pvch.prod_higt, pd.prod_higt)) THEN ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t WHEN ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng) = ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng) AND ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng) =least(ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng),ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng),ifnull(pvch.prod_higt, pd.prod_higt)) THEN ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t WHEN ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng) = ifnull(pvch.prod_higt, pd.prod_higt) AND ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng) =least(ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng),ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng),ifnull(pvch.prod_higt, pd.prod_higt)) THEN ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t WHEN ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng) = ifnull(pvch.prod_higt, pd.prod_higt) AND ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng) =greatest(ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng),ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng),ifnull(pvch.prod_higt, pd.prod_higt)) THEN ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t WHEN ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng) = ifnull(pvch.prod_higt, pd.prod_higt) AND ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng) =least(ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng),ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng),ifnull(pvch.prod_higt, pd.prod_higt)) THEN ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng)\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t END pick_two \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t   , LEAST(ifnull(pvch.prod_vtcl_leng, pd.prod_vtcl_leng),ifnull(pvch.prod_hrzn_leng, pd.prod_hrzn_leng),ifnull(pvch.prod_higt, pd.prod_higt)) AS pick_three \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t   \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.packUnit\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.packValue\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.packNumberOfItems\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.hasExpiryDate\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , (\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  select case when pspsa.str_cd  = '9001'  and pspsa.minimumDeliverableLife is not null then pspsa.minimumDeliverableLife\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  when pspsa.str_cd != '9001' and pspsa.site_typ_cd = 'CFC' and pspsa.minimumDeliverableLife is not null then pspsa.minimumDeliverableLife\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  else pd.minimumDeliverableLife\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t end\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tfrom pd_str_pd_site_attr pspsa\\\\n\\\\t\\\\t                   INNER JOIN pd_str ps\\\\n\\\\t\\\\t                      ON pspsa.str_cd = ps.str_cd\\\\n\\\\t\\\\t                   WHERE pspsa.osp_pd_cd = 'INT01_OS8809861135393'\\\\n\\\\t\\\\t                     AND ps.onln_opr_yn = 'Y'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t   order by case when pspsa.site_typ_cd = 'CFC' then 1\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t else 9\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tEND\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t   limit 1\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t) as minimumDeliverableLife\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.iwh_std_shlflife_dd as maxAcceptableReceiptLife \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , IF(pd.dstrb_mgt_fg in ('01', '02'), pd.minimumDeliverableLife, NULL) as minAcceptableReceiptLife \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.fire_prvt_pd_yn\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.assets\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , pd.detrashMethod\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t  , NULLIF(pd.fill, 0) as fill\\\\n\\\\t\\\\t\\\\t\\\\t      , IF(pd.hasExpiryDate = 'Y', IFNULL(pd.expiryDateCalculationMethod, 'NO_OFFSET'), NULL) AS expiryDateCalculationMethod \\\\n\\\\t\\\\t\\\\t\\\\t   FROM pd_osp_pd pd\\\\n\\\\t\\\\t\\\\t\\\\t   LEFT JOIN (\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t   SELECT img_no\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t, IF(s3_path is not null,s3_path, img_url) as img_url\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t, img_id\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t, osp_pd_cd\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t, IF(rprt_img_yn = 'Y', 1, 99) AS sort\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t, sort_seq\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t FROM pd_pd_img\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tWHERE osp_pd_cd     = 'INT01_OS8809861135393'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  AND use_yn        = 'Y'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  AND osp_cntn_dttm IS NOT NULL\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tORDER BY sort, sort_seq, img_no\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tLIMIT 1\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t ) pi\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t ON pi.osp_pd_cd = pd.osp_pd_cd\\\\n\\\\t\\\\t\\\\t\\\\t   LEFT JOIN (\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t   SELECT \\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  x.osp_pd_cd\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t, x.prod_higt\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t, x.prod_vtcl_leng\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t, x.prod_hrzn_leng\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t, x.weightUnit\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t, x.weightValue\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t FROM pd_vol_chg_hist x\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tWHERE x.osp_pd_cd = 'INT01_OS8809861135393'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  AND x.osp_cntn_yn = 'N'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  AND NOW() BETWEEN x.vol_aply_strt_dttm AND x.vol_aply_end_dttm\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t  AND x.vol_reg_typ = 'USER'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tORDER BY x.if_sn DESC\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\tLIMIT 1\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t\\\\t ) pvch\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t ON pvch.osp_pd_cd = pd.osp_pd_cd\\\\n\\\\t\\\\t\\\\t\\\\t   left join pd_osp_pd_sl_cd_rel popscr\\\\n\\\\t\\\\t\\\\t\\\\t\\\\t on popscr.osp_pd_cd = pd.osp_pd_cd\\\\n\\\\t\\\\t\\\\t\\\\t\\\\tand popscr.use_yn = 'Y'\\\\n\\\\t\\\\t\\\\t\\\\t  WHERE pd.osp_pd_cd = 'INT01_OS8809861135393'\\\\n\\\\t\\\\t\\\\t   ) src\",\"stac\":\"select src.osp_pd_cd AS retailerProductId\\\\n\\\\t\\\\t\\\\t , src.barcodeScanningMethod\\\\n\\\\t\\\\t\\\\t , src.seg_chill\\\\n\\\\t\\\\t\\\\t , src.seg_amb\\\\n\\\\t\\\\t\\\\t , case when src.qty_wegt_divn_cd = '1' then 'EACH'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\twhen src.qty_wegt_divn_cd = '2' then 'KG'\\\\n\\\\t\\\\t\\\\t\\\\t\\\\telse null\\\\n\\\\t\\\\t\\\\t   end AS unitOfMeasure\\\\n\",\"stfh\":\"b43448a0aeb749722297bcbb29e437261c67463fa442bd220f38e229c3e3498a\",\"sth\":\"ddfc1373a7fbd7af\",\"stsize\":\"12622\",\"stpqt\":[\"DML\"],\"stpcd\":[\"SELECT\"],\"_uid\":\"{{IDENTIFIER}}\"}",
       "test_case": {
@@ -394,7 +394,7 @@
       }
     },
     {
-      "id": "woori-0054",
+      "id": "0054",
       "name": "[WareValley]_ChakraMax_Security_v1_cef_01",
       "sample": "{{FILE_PATH}},chakra_id,key_id,db_node_id,server_id,server_name,server_mac,server_ip,server_port,sid,client_mac,client_ip,client_port,term_name,app_name,host_name,sid_no,serial_no,tot_sql_count,tot_sql_fail,tot_rtrn_rows,tot_server_time,tot_resp_time,tot_pkts_in,tot_pkts_out,tot_byte_in,tot_byte_out,db_user,os_user,start_time,end_time,last_exec_time,alert_count",
       "test_case": {
@@ -404,7 +404,7 @@
       }
     },
     {
-      "id": "woori-0055",
+      "id": "0055",
       "name": "[WareValley]_ChakraMax_Security_v1_cef_02",
       "sample": "{{FILE_PATH}},{{IDENTIFIER}},{{IDENTIFIER}},1017,1,{{IP_ADDRESS}},1,3,2026-02-23 14:30:28,{{USER_ID}},{{PERSON}},{{SRC_IP}},{{DEPARTMENT}},비밀번호 입력 오류로 인한 클라이언트 재인증 실패",
       "test_case": {
@@ -414,7 +414,7 @@
       }
     },
     {
-      "id": "woori-0056",
+      "id": "0056",
       "name": "[WareValley]_ChakraMax_Security_v1_cef_03",
       "sample": "{{FILE_PATH}},{{IDENTIFIER}},{{IDENTIFIER}},1301,1011,1011,ETL 개발 AP/DB,393,{{USER_ID}},{{USER_ID}},{{USER_ID}},{{PERSON}},{{DEPARTMENT}},{{HOST}},{{SRC_IP}},AL_ENGINE.EXE,1,\"SELECT POSITION, ATTR_KEY, ATTR_NAME,ATTR_VALUE, OVERFLOW_FLAG, PARENT_ATTR_KEY FROM AL_ATTR , AL_COLUMN WHERE OBJECT_KEY = PARENT_OBJID AND PARENT_OBJ_TYPE = \\b AND TABLEKEY = \\b ORDER BY POSITION\",8\\b2555\\b,2026-02-19 11:12:40,2026-02-19 11:12:40,0,0,0,562,2720,,,1403,ORA-01403: 데이터를 찾을 수 없습니다.,,",
       "test_case": {
@@ -424,7 +424,7 @@
       }
     },
     {
-      "id": "woori-0057",
+      "id": "0057",
       "name": "[WareValley]_ChakraMax_Security_v1_cef_04",
       "sample": "{{FILE_PATH}},{{IDENTIFIER}},{{IDENTIFIER}},38,159,2,SSH,{{HOST}},{{SRC_IP}},60832,{{MAC_ADDRESS}},{{HOST}},{{MAC_ADDRESS}},{{USER_ID}},2026-02-20 08:37:02,0,2026-02-20 08:40:43,{{IDENTIFIER}},{{DEPARTMENT}},{{USER_ID}},{{PERSON}}",
       "test_case": {
@@ -434,7 +434,7 @@
       }
     },
     {
-      "id": "woori-0058",
+      "id": "0058",
       "name": "[WareValley]_ChakraMax_Security_v1_cef_05",
       "sample": "{{FILE_PATH}},1,{{IDENTIFIER}},{{IDENTIFIER}},88,383,2,SSH,{{HOST}},2026-02-19 08:18:47,cd /log,{{SRC_IP}},57478,{{MAC_ADDRESS}},{{HOST}},{{MAC_ADDRESS}},{{USER_ID}},{{IDENTIFIER}},{{DEPARTMENT}},{{USER_ID}},{{USER_ID}},{{PERSON}}",
       "test_case": {
@@ -444,7 +444,7 @@
       }
     },
     {
-      "id": "woori-0059",
+      "id": "0059",
       "name": "[WareValley]_ChakraMax_Security_v1_cef_06",
       "sample": "{{FILE_PATH}},{{IDENTIFIER}},{{IDENTIFIER}},1052,51,{{HOST}},{{USER_ID}},{{PERSON}},{{DEPARTMENT}},{{MAC_ADDRESS}},{{DST_IP}},1526,MSTMSDEV,{{MAC_ADDRESS}},{{SRC_IP}},55345,,JAVAW.EXE,{{HOST}},772,11935,1,0,1,0.001372,0.001372,12,9,6298,6281,{{USER_ID}},{{USER_ID}},2026-02-19 14:31:30,2026-02-19 14:31:30,2026-02-19 14:31:30,0",
       "test_case": {
@@ -454,7 +454,7 @@
       }
     },
     {
-      "id": "woori-0060",
+      "id": "0060",
       "name": "[Somansa]_DB-i_Security_v1_json_09",
       "sample": "{{FILE_PATH}},{\"txn_safpath\":\"{{FILE_PATH}}\",\"txn_rowtype\":\"0\",\"txn_guid\":\"{{IDENTIFIER}}\",\"txn_size\":\"32\",\"txn_reuse\":\"0\",\"txn_stmguid\":\"{{IDENTIFIER}}\",\"txn_bindvariable\":\"\",\"txn_sessguid\":\"{{IDENTIFIER}}\",\"txn_dbaccount\":\"{{USER_ID}}\",\"txn_dbname\":\"\",\"txn_time\":\"2026-04-08 13:34:18\",\"txn_enable\":\"1\",\"txn_policyaction\":\"0\"}",
       "test_case": {

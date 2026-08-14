@@ -1118,12 +1118,7 @@ void App::save_catalog_editor() {
     editor_sample_ = application::PrivacyAnonymizer::sanitize(editor_sample_);
     analyze_editor_sample();
     if (editor_is_new_) {
-        const auto ticks = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        auto identifier = std::format("user-{:x}", static_cast<std::uint64_t>(ticks));
-        std::uint32_t suffix = 0;
-        while (std::ranges::any_of(catalog_items_, [&identifier](const domain::LogTemplate& item) { return item.id == identifier; })) {
-            identifier = std::format("user-{:x}-{}", static_cast<std::uint64_t>(ticks), ++suffix);
-        }
+        auto identifier = application::LogCatalogService::next_id(catalog_items_);
         catalog_items_.push_back(domain::LogTemplate{std::move(identifier), editor_name_, editor_sample_, "사용자 정의", {}});
         catalog_search_names_.push_back(catalog_search_text(catalog_items_.back(), editor_analysis_));
         catalog_previews_.push_back(sample_preview(editor_sample_));

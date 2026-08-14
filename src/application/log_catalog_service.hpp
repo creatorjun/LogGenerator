@@ -5,6 +5,7 @@
 
 #include <filesystem>
 #include <span>
+#include <string>
 #include <vector>
 
 namespace loggen::application {
@@ -14,6 +15,7 @@ public:
     explicit LogCatalogService(ILogCatalog& catalog) noexcept;
     [[nodiscard]] std::vector<domain::LogTemplate> load(const std::filesystem::path& file) const;
     void save(const std::filesystem::path& file, std::span<const domain::LogTemplate> items) const;
+    [[nodiscard]] static std::string next_id(std::span<const domain::LogTemplate> items);
 
 private:
     ILogCatalog& catalog_;
