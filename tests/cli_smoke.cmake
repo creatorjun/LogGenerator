@@ -19,6 +19,12 @@ if(NOT cli_result EQUAL 0)
     message(FATAL_ERROR "CLI smoke failed (${cli_result}): ${cli_error}${cli_output}")
 endif()
 
+string(FIND "${cli_output}" "FILE 생성 파일 개수 제한에 도달하여 자동 중지했습니다." cli_utf8_message_index)
+if(cli_utf8_message_index EQUAL -1)
+    file(REMOVE_RECURSE "${output_directory}")
+    message(FATAL_ERROR "CLI smoke output does not contain the expected UTF-8 status message: ${cli_output}")
+endif()
+
 file(GLOB generated_logs "${output_directory}/*.log")
 list(LENGTH generated_logs generated_count)
 file(REMOVE_RECURSE "${output_directory}")

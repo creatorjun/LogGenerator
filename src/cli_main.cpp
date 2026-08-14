@@ -24,6 +24,51 @@
 
 namespace {
 
+#ifdef _WIN32
+bool is_console_handle(const DWORD standard_handle) noexcept {
+    const HANDLE handle = GetStdHandle(standard_handle);
+    if (handle == nullptr || handle == INVALID_HANDLE_VALUE) {
+        return false;
+    }
+    DWORD mode = 0;
+    return GetConsoleMode(handle, &mode) != 0;
+}
+
+class ConsoleUtf8Guard final {
+public:
+    ConsoleUtf8Guard() noexcept {
+        if (is_console_handle(STD_INPUT_HANDLE)) {
+            input_code_page_ = GetConsoleCP();
+            input_changed_ = input_code_page_ != 0 && input_code_page_ != CP_UTF8 && SetConsoleCP(CP_UTF8) != 0;
+        }
+        if (is_console_handle(STD_OUTPUT_HANDLE) || is_console_handle(STD_ERROR_HANDLE)) {
+            output_code_page_ = GetConsoleOutputCP();
+            output_changed_ = output_code_page_ != 0 && output_code_page_ != CP_UTF8 && SetConsoleOutputCP(CP_UTF8) != 0;
+        }
+    }
+
+    ~ConsoleUtf8Guard() {
+        std::fflush(stdout);
+        std::fflush(stderr);
+        if (output_changed_) {
+            static_cast<void>(SetConsoleOutputCP(output_code_page_));
+        }
+        if (input_changed_) {
+            static_cast<void>(SetConsoleCP(input_code_page_));
+        }
+    }
+
+    ConsoleUtf8Guard(const ConsoleUtf8Guard&) = delete;
+    ConsoleUtf8Guard& operator=(const ConsoleUtf8Guard&) = delete;
+
+private:
+    UINT input_code_page_{0};
+    UINT output_code_page_{0};
+    bool input_changed_{false};
+    bool output_changed_{false};
+};
+#endif
+
 std::filesystem::path executable_directory() {
 #ifdef _WIN32
     std::array<wchar_t, 32'768> buffer{};
@@ -42,6 +87,9 @@ std::filesystem::path executable_directory() {
 }
 
 int main(const int argument_count, char** argument_values) {
+#ifdef _WIN32
+    const ConsoleUtf8Guard console_encoding;
+#endif
     try {
         const auto application_directory = executable_directory();
         loggen::infrastructure::AsyncFileLogger logger{application_directory / "logs", "LogGeneratorCli"};
