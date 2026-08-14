@@ -5,11 +5,13 @@
 #include "application/ports/execution_runtime.hpp"
 #include "application/ports/logger.hpp"
 #include "application/ports/log_transport.hpp"
+#include "application/round_robin_cursor.hpp"
 #include "domain/transmission_stats.hpp"
 
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <memory>
 #include <mutex>
 #include <stop_token>
 #include <string>
@@ -33,7 +35,7 @@ public:
 
 private:
     void run_supervisor(domain::GeneratorConfig config, std::stop_token stop_token) noexcept;
-    void run_worker(domain::EndpointConfig endpoint, domain::TimestampGeneration timestamp_generation, std::vector<PreparedLog> logs, std::uint64_t quota, std::uint32_t worker_index, std::uint32_t worker_count, std::stop_token stop_token) noexcept;
+    void run_worker(domain::EndpointConfig endpoint, domain::TimestampGeneration timestamp_generation, std::vector<PreparedLog> logs, std::shared_ptr<RoundRobinCursor> round_robin, std::uint64_t quota, std::uint32_t worker_index, std::uint32_t worker_count, std::stop_token stop_token) noexcept;
     void publish_error(std::string message) noexcept;
     void publish_completion(std::string message) noexcept;
 

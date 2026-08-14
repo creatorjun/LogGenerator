@@ -217,6 +217,8 @@ CliOptions CliApp::parse_arguments(const std::span<const std::string_view> argum
             options.command = CliCommand::Help;
         } else if (option == "--catalog") {
             options.catalog_file = value();
+        } else if (option == "--all") {
+            options.all_samples = true;
         } else if (option == "--sample-id") {
             const auto sample_id = value();
             if (!domain::valid_sample_id(sample_id)) {
@@ -309,6 +311,16 @@ CliOptions CliApp::parse_arguments(const std::span<const std::string_view> argum
         }
     }
 
+    if (options.command == CliCommand::Run) {
+        if (options.all_samples && !options.sample_ids.empty()) {
+            throw std::invalid_argument("--all과 --sample-id는 함께 사용할 수 없습니다");
+        }
+        if (!options.all_samples && options.sample_ids.empty()) {
+            throw std::invalid_argument("--all 또는 --sample-id를 지정해야 합니다");
+        }
+    } else if (options.command == CliCommand::List && (options.all_samples || !options.sample_ids.empty())) {
+        throw std::invalid_argument("--all과 --sample-id는 run 명령에서만 사용할 수 있습니다");
+    }
     if (!valid_ipv4(options.config.source_ip) || !valid_ipv4(options.config.destination_ip)) {
         throw std::invalid_argument("--source-ip와 --destination-ip는 유효한 IPv4 주소여야 합니다");
     }
@@ -341,10 +353,11 @@ void CliApp::print_help(const std::string_view executable_name) {
         << executable_name << " CLI\n\n"
         << "사용법:\n"
         << "  " << executable_name << " list [--catalog PATH]\n"
-        << "  " << executable_name << " run [OPTIONS]\n\n"
+        << "  " << executable_name << " run (--all | --sample-id ID...) [OPTIONS]\n\n"
         << "주요 옵션:\n"
         << "  --protocol file|udp|tcp|tls   기본값: file\n"
-        << "  --sample-id ID                반복 지정 가능, 생략 시 전체 샘플\n"
+        << "  --all                         전체 샘플을 전역 Round-Robin으로 순환\n"
+        << "  --sample-id ID                반복 지정 가능, --all과 동시 사용 불가\n"
         << "  --host HOST --port PORT       네트워크 목적지\n"
         << "  --workers N --eps N           Worker 수와 목표 EPS, EPS 0은 무제한\n"
         << "  --duration SECONDS            실행 시간, 0은 Ctrl+C까지 실행\n"
@@ -362,7 +375,7 @@ void CliApp::print_help(const std::string_view executable_name) {
         << "예시:\n"
         << "  " << executable_name << " list\n"
         << "  " << executable_name << " run --protocol file --sample-id 0001 --file-max-count 100 --output-dir ./generated\n"
-        << "  " << executable_name << " run --protocol udp --host 192.0.2.10 --port 514 --eps 1000 --duration 60\n";
+        << "  " << executable_name << " run --all --protocol udp --host 192.0.2.10 --port 514 --eps 1000 --duration 60\n";
 }
 
 int CliApp::list_catalog(const CliOptions& options) {
@@ -376,7 +389,7 @@ int CliApp::list_catalog(const CliOptions& options) {
 
 int CliApp::run_generator(CliOptions options) {
     auto catalog = catalog_service_.load(options.catalog_file);
-    if (options.sample_ids.empty()) {
+    if (options.all_samples) {
         options.config.templates = std::move(catalog);
     } else {
         std::unordered_set<std::string> requested(options.sample_ids.begin(), options.sample_ids.end());

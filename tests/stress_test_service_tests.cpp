@@ -4,8 +4,10 @@
 #include "application/ports/execution_runtime.hpp"
 #include "application/ports/log_transport.hpp"
 #include "application/ports/logger.hpp"
+#include "application/round_robin_cursor.hpp"
 #include "application/stress_test_service.hpp"
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -124,6 +126,29 @@ public:
 
 void run_stress_test_service_tests() {
     using namespace std::chrono;
+    application::RoundRobinCursor sequential_cursor{3};
+    expect(sequential_cursor.next() == 0, "Global round-robin did not start at the first sample");
+    expect(sequential_cursor.next() == 1, "Global round-robin did not advance to the second sample");
+    expect(sequential_cursor.next() == 2, "Global round-robin did not advance to the third sample");
+    expect(sequential_cursor.next() == 0, "Global round-robin did not wrap to the first sample");
+
+    application::RoundRobinCursor concurrent_cursor{5};
+    std::array<std::atomic_size_t, 5> selections{};
+    std::vector<std::jthread> cursor_workers;
+    for (std::size_t worker = 0; worker < 8; ++worker) {
+        cursor_workers.emplace_back([&concurrent_cursor, &selections] {
+            for (std::size_t iteration = 0; iteration < 1000; ++iteration) {
+                selections[concurrent_cursor.next()].fetch_add(1, std::memory_order_relaxed);
+            }
+        });
+    }
+    for (auto& worker : cursor_workers) {
+        worker.join();
+    }
+    for (const auto& selection : selections) {
+        expect(selection.load(std::memory_order_relaxed) == 1600, "Global round-robin lost or duplicated a concurrent selection");
+    }
+
     auto state = std::make_shared<TransportState>();
     BlockingTransportFactory factory{state};
     TestExecutionRuntime execution_runtime;

@@ -28,6 +28,7 @@ struct CliOptions {
     std::vector<std::string> sample_ids;
     std::chrono::seconds duration{0};
     std::chrono::milliseconds status_interval{1000};
+    bool all_samples{false};
     bool quiet{false};
 };
 

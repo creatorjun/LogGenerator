@@ -25,3 +25,45 @@ file(REMOVE_RECURSE "${output_directory}")
 if(NOT generated_count EQUAL 2)
     message(FATAL_ERROR "CLI smoke generated ${generated_count} files instead of 2")
 endif()
+
+set(all_catalog "${BUILD_ROOT}/cli-smoke-all-catalog.json")
+file(WRITE "${all_catalog}" "{\n  \"schema_version\": 1,\n  \"logs\": [\n    {\"id\": \"0001\", \"name\": \"One\", \"sample\": \"ROUND_ROBIN_1\"},\n    {\"id\": \"0002\", \"name\": \"Two\", \"sample\": \"ROUND_ROBIN_2\"},\n    {\"id\": \"0003\", \"name\": \"Three\", \"sample\": \"ROUND_ROBIN_3\"}\n  ]\n}\n")
+
+execute_process(
+    COMMAND "${CLI_PATH}" run --all --protocol file --file-max-count 6 --output-dir "${output_directory}" --catalog "${all_catalog}" --quiet
+    RESULT_VARIABLE all_result
+    OUTPUT_VARIABLE all_output
+    ERROR_VARIABLE all_error
+    TIMEOUT 15
+)
+
+if(NOT all_result EQUAL 0)
+    file(REMOVE_RECURSE "${output_directory}")
+    file(REMOVE "${all_catalog}")
+    message(FATAL_ERROR "CLI --all smoke failed (${all_result}): ${all_error}${all_output}")
+endif()
+
+file(GLOB all_logs "${output_directory}/*.log")
+list(SORT all_logs)
+list(LENGTH all_logs all_count)
+if(NOT all_count EQUAL 6)
+    file(REMOVE_RECURSE "${output_directory}")
+    file(REMOVE "${all_catalog}")
+    message(FATAL_ERROR "CLI --all smoke generated ${all_count} files instead of 6")
+endif()
+
+set(expected_round_robin ROUND_ROBIN_1 ROUND_ROBIN_2 ROUND_ROBIN_3 ROUND_ROBIN_1 ROUND_ROBIN_2 ROUND_ROBIN_3)
+foreach(index RANGE 0 5)
+    list(GET all_logs ${index} generated_file)
+    list(GET expected_round_robin ${index} expected_payload)
+    file(READ "${generated_file}" actual_payload)
+    string(STRIP "${actual_payload}" actual_payload)
+    if(NOT actual_payload STREQUAL expected_payload)
+        file(REMOVE_RECURSE "${output_directory}")
+        file(REMOVE "${all_catalog}")
+        message(FATAL_ERROR "CLI --all round-robin mismatch at ${index}: ${actual_payload} != ${expected_payload}")
+    endif()
+endforeach()
+
+file(REMOVE_RECURSE "${output_directory}")
+file(REMOVE "${all_catalog}")

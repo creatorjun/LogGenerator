@@ -208,10 +208,21 @@ FILE 로그 100개를 생성합니다.
   --output-dir .\generated
 ```
 
+전체 샘플을 전역 Round-Robin으로 한 번씩 저장합니다.
+
+```powershell
+.\build-windows-cli\bin\Release\LogGenerator.exe run `
+  --all `
+  --protocol file `
+  --file-max-count 60 `
+  --output-dir .\generated
+```
+
 60초 동안 UDP로 목표 1,000 EPS를 전송합니다.
 
 ```powershell
 .\build-windows-cli\bin\Release\LogGenerator.exe run `
+  --all `
   --protocol udp `
   --host 192.0.2.10 `
   --port 514 `
@@ -240,10 +251,21 @@ FILE 로그 100개를 생성합니다.
   --output-dir ./generated
 ```
 
+전체 샘플을 전역 Round-Robin으로 한 번씩 저장합니다.
+
+```bash
+./build-linux-headless/bin/LogGenerator run \
+  --all \
+  --protocol file \
+  --file-max-count 60 \
+  --output-dir ./generated
+```
+
 60초 동안 UDP로 목표 1,000 EPS를 전송합니다.
 
 ```bash
 ./build-linux-headless/bin/LogGenerator run \
+  --all \
   --protocol udp \
   --host 192.0.2.10 \
   --port 514 \
@@ -251,7 +273,7 @@ FILE 로그 100개를 생성합니다.
   --duration 60
 ```
 
-샘플 ID는 `0001`처럼 숫자로만 지정합니다. `--sample-id`를 생략하면 전체 샘플을 순환합니다. 실행 시간을 생략하거나 0으로 설정하면 `Ctrl+C` 또는 FILE 제한에 도달할 때까지 실행합니다. TCP/TLS는 `--framing newline|octet`, TLS는 `--tls-server-name`을 지원합니다. 전체 옵션은 `--help`에서 확인할 수 있습니다.
+샘플 ID는 `0001`처럼 숫자로만 지정합니다. 전체 샘플은 `--all`, 일부 샘플은 반복 가능한 `--sample-id`로 선택하며 두 옵션은 함께 사용할 수 없습니다. 실행 시간을 생략하거나 0으로 설정하면 `Ctrl+C` 또는 FILE 제한에 도달할 때까지 실행합니다. 여러 Worker는 하나의 전역 Round-Robin 커서를 공유하므로 샘플 선택이 Worker별로 분리되지 않습니다. TCP/TLS는 `--framing newline|octet`, TLS는 `--tls-server-name`을 지원합니다. 전체 옵션은 `--help`에서 확인할 수 있습니다.
 
 ## 데이터와 로그
 

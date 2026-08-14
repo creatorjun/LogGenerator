@@ -34,17 +34,17 @@ void run_cli_app_tests() {
     expect(run.config.endpoint.host == "logs.example.test" && run.config.endpoint.port == 6514, "CLI network endpoint was not parsed");
     expect(run.config.endpoint.tls_server_name == "siem.example.test" && !run.config.endpoint.verify_certificate, "CLI TLS options were not parsed");
     expect(run.config.endpoint.framing == domain::StreamFraming::OctetCounting, "CLI stream framing was not parsed");
-    expect(run.sample_ids.size() == 2, "CLI repeated sample identifiers were not parsed");
+    expect(run.sample_ids.size() == 2 && !run.all_samples, "CLI repeated sample identifiers were not parsed");
     expect(run.config.worker_count == 4 && run.config.target_eps == 1000, "CLI worker or EPS option was not parsed");
     expect(run.duration == seconds{5} && run.quiet, "CLI duration or quiet option was not parsed");
     expect(run.config.timestamp_generation.offset.negative, "CLI negative offset sign was not parsed");
     expect(run.config.timestamp_generation.offset.hours == 1 && run.config.timestamp_generation.offset.minutes == 30, "CLI offset magnitude was not parsed");
 
-    constexpr std::array<std::string_view, 7> range_arguments{"run", "--from", "2026-01-01", "--to", "2026-01-31", "--file-max-count", "10"};
+    constexpr std::array<std::string_view, 8> range_arguments{"run", "--all", "--from", "2026-01-01", "--to", "2026-01-31", "--file-max-count", "10"};
     const auto range = presentation::CliApp::parse_arguments(range_arguments);
     expect(range.config.timestamp_generation.mode == domain::TimestampGenerationMode::Range, "CLI timestamp range mode was not parsed");
     expect(range.config.timestamp_generation.range.inclusive_seconds() == 31ULL * 24ULL * 60ULL * 60ULL, "CLI timestamp range boundaries are incorrect");
-    expect(range.config.endpoint.file_max_count == 10, "CLI FILE count limit was not parsed");
+    expect(range.config.endpoint.file_max_count == 10 && range.all_samples, "CLI FILE count limit or all switch was not parsed");
 
     constexpr std::array<std::string_view, 3> list_arguments{"list", "--catalog", "custom.json"};
     const auto list = presentation::CliApp::parse_arguments(list_arguments);
@@ -67,6 +67,24 @@ void run_cli_app_tests() {
         invalid_sample_id_rejected = true;
     }
     expect(invalid_sample_id_rejected, "CLI accepted a non-numeric sample id");
+
+    bool conflicting_selection_rejected = false;
+    try {
+        constexpr std::array<std::string_view, 4> invalid_arguments{"run", "--all", "--sample-id", "0001"};
+        static_cast<void>(presentation::CliApp::parse_arguments(invalid_arguments));
+    } catch (const std::invalid_argument&) {
+        conflicting_selection_rejected = true;
+    }
+    expect(conflicting_selection_rejected, "CLI accepted --all with --sample-id");
+
+    bool missing_selection_rejected = false;
+    try {
+        constexpr std::array<std::string_view, 1> invalid_arguments{"run"};
+        static_cast<void>(presentation::CliApp::parse_arguments(invalid_arguments));
+    } catch (const std::invalid_argument&) {
+        missing_selection_rejected = true;
+    }
+    expect(missing_selection_rejected, "CLI accepted run without --all or --sample-id");
 }
 
 }

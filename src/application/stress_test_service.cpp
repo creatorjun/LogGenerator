@@ -335,27 +335,13 @@ void StressTestService::run_supervisor(domain::GeneratorConfig config, const std
 
         std::vector<std::jthread> workers;
         workers.reserve(config.worker_count);
-        if (prepared.size() >= config.worker_count) {
-            for (std::uint32_t worker_index = 0; worker_index < config.worker_count; ++worker_index) {
-                std::vector<PreparedLog> worker_logs;
-                worker_logs.reserve((prepared.size() + config.worker_count - 1 - worker_index) / config.worker_count);
-                for (std::size_t log_index = worker_index; log_index < prepared.size(); log_index += config.worker_count) {
-                    worker_logs.push_back(std::move(prepared[log_index]));
-                }
-                const auto quota = quota_for_worker(config.target_eps, worker_index, config.worker_count);
-                workers.emplace_back([this, endpoint = config.endpoint, timestamp_generation = config.timestamp_generation, logs = std::move(worker_logs), quota, worker_index, worker_count = config.worker_count](const std::stop_token worker_stop_token) mutable {
-                    run_worker(std::move(endpoint), timestamp_generation, std::move(logs), quota, worker_index, worker_count, worker_stop_token);
-                });
-            }
-        } else {
-            for (std::uint32_t worker_index = 0; worker_index < config.worker_count; ++worker_index) {
-                std::vector<PreparedLog> worker_logs;
-                worker_logs.push_back(prepared[worker_index % prepared.size()]);
-                const auto quota = quota_for_worker(config.target_eps, worker_index, config.worker_count);
-                workers.emplace_back([this, endpoint = config.endpoint, timestamp_generation = config.timestamp_generation, logs = std::move(worker_logs), quota, worker_index, worker_count = config.worker_count](const std::stop_token worker_stop_token) mutable {
-                    run_worker(std::move(endpoint), timestamp_generation, std::move(logs), quota, worker_index, worker_count, worker_stop_token);
-                });
-            }
+        auto round_robin = std::make_shared<RoundRobinCursor>(prepared.size());
+        for (std::uint32_t worker_index = 0; worker_index < config.worker_count; ++worker_index) {
+            auto worker_logs = prepared;
+            const auto quota = quota_for_worker(config.target_eps, worker_index, config.worker_count);
+            workers.emplace_back([this, endpoint = config.endpoint, timestamp_generation = config.timestamp_generation, logs = std::move(worker_logs), round_robin, quota, worker_index, worker_count = config.worker_count](const std::stop_token worker_stop_token) mutable {
+                run_worker(std::move(endpoint), timestamp_generation, std::move(logs), round_robin, quota, worker_index, worker_count, worker_stop_token);
+            });
         }
         while (!stop_token.stop_requested()) {
             std::this_thread::sleep_for(std::chrono::milliseconds{1});
@@ -378,7 +364,7 @@ void StressTestService::run_supervisor(domain::GeneratorConfig config, const std
     }
 }
 
-void StressTestService::run_worker(domain::EndpointConfig endpoint, const domain::TimestampGeneration timestamp_generation, std::vector<PreparedLog> logs, const std::uint64_t quota, const std::uint32_t worker_index, const std::uint32_t worker_count, const std::stop_token stop_token) noexcept {
+void StressTestService::run_worker(domain::EndpointConfig endpoint, const domain::TimestampGeneration timestamp_generation, std::vector<PreparedLog> logs, std::shared_ptr<RoundRobinCursor> round_robin, const std::uint64_t quota, const std::uint32_t worker_index, const std::uint32_t worker_count, const std::stop_token stop_token) noexcept {
     execution_runtime_.configure_current_worker();
     std::uint64_t local_messages = 0;
     std::uint64_t local_bytes = 0;
@@ -409,14 +395,13 @@ void StressTestService::run_worker(domain::EndpointConfig endpoint, const domain
         RatePacer pacer{execution_runtime_, quota};
         TimestampCursor clock{timestamp_generation, worker_index, worker_count, quota == 0 || quota >= 10'000};
         const bool calendar_time = clock.calendar_time();
-        std::size_t log_index = 0;
         if (transport->is_datagram()) {
             while (!stop_token.stop_requested()) {
                 pacer.wait(1, stop_token);
                 if (stop_token.stop_requested()) {
                     break;
                 }
-                const auto payload = logs[log_index].render(clock.next(), calendar_time);
+                const auto payload = logs[round_robin->next()].render(clock.next(), calendar_time);
                 const auto send_result = transport->send(payload);
                 if (send_result != SendResult::Sent) {
                     flush();
@@ -425,10 +410,6 @@ void StressTestService::run_worker(domain::EndpointConfig endpoint, const domain
                 }
                 ++local_messages;
                 local_bytes += payload.size();
-                ++log_index;
-                if (log_index == logs.size()) {
-                    log_index = 0;
-                }
                 if (local_messages >= 1024) {
                     flush();
                 }
@@ -444,12 +425,8 @@ void StressTestService::run_worker(domain::EndpointConfig endpoint, const domain
                 const auto batch_timestamp = calendar_time ? std::chrono::system_clock::time_point{} : clock.next();
                 while (events < event_limit && batch.size() < batch_limit) {
                     const auto timestamp = calendar_time ? clock.next() : batch_timestamp;
-                    const auto payload = logs[log_index].render(timestamp, calendar_time);
+                    const auto payload = logs[round_robin->next()].render(timestamp, calendar_time);
                     append_frame(batch, payload, endpoint.framing);
-                    ++log_index;
-                    if (log_index == logs.size()) {
-                        log_index = 0;
-                    }
                     ++events;
                 }
                 pacer.wait(events, stop_token);
