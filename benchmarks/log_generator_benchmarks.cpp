@@ -1,4 +1,5 @@
 #include "application/log_renderer.hpp"
+#include "application/log_preparation_cache.hpp"
 #include "application/ports/execution_runtime.hpp"
 #include "application/ports/logger.hpp"
 #include "application/ports/log_transport.hpp"
@@ -27,8 +28,16 @@ class NullLease final : public loggen::application::IExecutionLease {
 
 class BenchmarkRuntime final : public loggen::application::IExecutionRuntime {
 public:
+    explicit BenchmarkRuntime(const std::uint32_t workers) noexcept
+        : workers_(workers) {
+    }
+
     [[nodiscard]] std::unique_ptr<loggen::application::IExecutionLease> acquire_high_resolution_timer() const override {
         return std::make_unique<NullLease>();
+    }
+
+    [[nodiscard]] std::uint32_t optimal_worker_count(const loggen::domain::TransportProtocol) const noexcept override {
+        return workers_;
     }
 
     void configure_current_worker() const noexcept override {
@@ -37,6 +46,9 @@ public:
     void pause_current_thread() const noexcept override {
         std::this_thread::yield();
     }
+
+private:
+    std::uint32_t workers_{1};
 };
 
 class NullLogger final : public loggen::application::ILogger {
@@ -110,9 +122,10 @@ double renderer_benchmark(const std::uint64_t iterations, const bool advance_tim
 
 double service_benchmark(const std::uint32_t workers, const std::size_t template_count, const bool datagram, const std::chrono::milliseconds duration) {
     NullTransportFactory transport_factory{datagram};
-    BenchmarkRuntime runtime;
+    BenchmarkRuntime runtime{workers};
     NullLogger logger;
-    loggen::application::StressTestService service{transport_factory, runtime, logger};
+    loggen::application::LogPreparationCache preparation_cache;
+    loggen::application::StressTestService service{transport_factory, runtime, preparation_cache, logger};
     loggen::domain::GeneratorConfig config;
     config.endpoint.protocol = datagram ? loggen::domain::TransportProtocol::Udp : loggen::domain::TransportProtocol::Tcp;
     config.templates.reserve(template_count);
@@ -121,7 +134,7 @@ double service_benchmark(const std::uint32_t workers, const std::size_t template
         item.id = std::to_string(index + 1);
         config.templates.push_back(std::move(item));
     }
-    config.worker_count = workers;
+    config.transmission_mode = workers == 1 ? loggen::domain::TransmissionMode::Sequential : loggen::domain::TransmissionMode::Parallel;
     config.target_eps = 0;
     service.start(std::move(config));
     std::this_thread::sleep_for(duration);

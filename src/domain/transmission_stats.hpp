@@ -1,6 +1,8 @@
 // src/domain/transmission_stats.hpp
 #pragma once
 
+#include "domain/protocol.hpp"
+
 #include <cstdint>
 #include <string>
 
@@ -16,6 +18,8 @@ enum class GeneratorState {
 
 struct TransmissionStats {
     GeneratorState state{GeneratorState::Stopped};
+    TransmissionMode transmission_mode{TransmissionMode::Parallel};
+    std::uint32_t active_workers{0};
     std::uint64_t total_messages{0};
     std::uint64_t total_bytes{0};
     std::uint64_t send_errors{0};

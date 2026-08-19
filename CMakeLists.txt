@@ -92,6 +92,7 @@ FetchContent_MakeAvailable(nlohmann_json)
 
 set(LOGGEN_APPLICATION_SOURCES
     src/application/log_catalog_service.cpp
+    src/application/log_preparation_cache.cpp
     src/application/log_renderer.cpp
     src/application/privacy_anonymizer.cpp
     src/application/stress_test_service.cpp
@@ -218,6 +219,7 @@ set(LOGGEN_TEST_SOURCES
     tests/file_transport_tests.cpp
     tests/log_catalog_service_tests.cpp
     tests/log_renderer_tests.cpp
+    tests/log_preparation_cache_tests.cpp
     tests/json_log_catalog_tests.cpp
     tests/stress_test_service_tests.cpp
     tests/udp_transport_tests.cpp

@@ -4,6 +4,7 @@
 #include "application/ports/execution_runtime.hpp"
 #include "application/ports/log_transport.hpp"
 #include "application/ports/logger.hpp"
+#include "application/log_preparation_cache.hpp"
 #include "application/round_robin_cursor.hpp"
 #include "application/stress_test_service.hpp"
 
@@ -110,16 +111,33 @@ class ExecutionLease final : public application::IExecutionLease {
 
 class TestExecutionRuntime final : public application::IExecutionRuntime {
 public:
+    explicit TestExecutionRuntime(const std::uint32_t optimal_workers = 1) noexcept
+        : optimal_workers_(optimal_workers) {
+    }
+
     [[nodiscard]] std::unique_ptr<application::IExecutionLease> acquire_high_resolution_timer() const override {
         return std::make_unique<ExecutionLease>();
     }
 
+    [[nodiscard]] std::uint32_t optimal_worker_count(const domain::TransportProtocol) const noexcept override {
+        return optimal_workers_;
+    }
+
     void configure_current_worker() const noexcept override {
+        configured_workers_.fetch_add(1, std::memory_order_relaxed);
     }
 
     void pause_current_thread() const noexcept override {
         std::this_thread::yield();
     }
+
+    [[nodiscard]] std::uint32_t configured_workers() const noexcept {
+        return configured_workers_.load(std::memory_order_relaxed);
+    }
+
+private:
+    std::uint32_t optimal_workers_{1};
+    mutable std::atomic<std::uint32_t> configured_workers_{0};
 };
 
 }
@@ -155,14 +173,15 @@ void run_stress_test_service_tests() {
 
     auto state = std::make_shared<TransportState>();
     BlockingTransportFactory factory{state};
-    TestExecutionRuntime execution_runtime;
+    TestExecutionRuntime sequential_runtime{8};
     NullLogger logger;
-    application::StressTestService service{factory, execution_runtime, logger};
+    application::LogPreparationCache preparation_cache;
+    application::StressTestService service{factory, sequential_runtime, preparation_cache, logger};
     domain::GeneratorConfig config;
     config.endpoint.host = "127.0.0.1";
     config.endpoint.port = 5514;
     config.templates.push_back({"test", "test", "timestamp=2025-07-05T13:53:53Z src_ip=1.1.1.1 dst_ip=2.2.2.2", "test", {}});
-    config.worker_count = 1;
+    config.transmission_mode = domain::TransmissionMode::Sequential;
     config.target_eps = 0;
     service.start(std::move(config));
 
@@ -185,12 +204,41 @@ void run_stress_test_service_tests() {
     expect(stats.total_messages >= 1, "Stress service did not count the completed datagram");
     expect(stats.total_messages == transport_sends, std::format("Stress service message count is {}, transport count is {}", stats.total_messages, transport_sends));
     expect(stats.send_errors == 0, "Stress service reported an unexpected send error");
+    expect(stats.transmission_mode == domain::TransmissionMode::Sequential && stats.active_workers == 1, "Sequential mode did not force exactly one worker");
+    expect(sequential_runtime.configured_workers() == 1, "Sequential mode configured more than one worker");
+
+    auto parallel_state = std::make_shared<TransportState>();
+    BlockingTransportFactory parallel_factory{parallel_state};
+    TestExecutionRuntime parallel_runtime{3};
+    application::StressTestService parallel_service{parallel_factory, parallel_runtime, preparation_cache, logger};
+    domain::GeneratorConfig parallel_config;
+    parallel_config.endpoint.host = "127.0.0.1";
+    parallel_config.endpoint.port = 5514;
+    parallel_config.transmission_mode = domain::TransmissionMode::Parallel;
+    parallel_config.templates.push_back({"parallel", "parallel", "parallel-event", "test", {}});
+    parallel_service.start(std::move(parallel_config));
+    const auto parallel_deadline = steady_clock::now() + seconds{2};
+    while (parallel_runtime.configured_workers() < 3 && steady_clock::now() < parallel_deadline) {
+        std::this_thread::sleep_for(milliseconds{1});
+    }
+    const auto parallel_stats = parallel_service.snapshot();
+    expect(parallel_runtime.configured_workers() == 3, "Parallel mode did not start the runtime-selected worker count");
+    expect(parallel_stats.transmission_mode == domain::TransmissionMode::Parallel && parallel_stats.active_workers == 3, "Parallel mode did not publish the auto-selected worker count");
+    parallel_service.request_stop();
+    {
+        std::scoped_lock lock(parallel_state->mutex);
+        parallel_state->release_send = true;
+    }
+    parallel_state->condition.notify_all();
+    parallel_service.stop();
+
+    TestExecutionRuntime execution_runtime;
 
     auto meter_state = std::make_shared<TransportState>();
     meter_state->block_after = 2;
     meter_state->datagram = false;
     BlockingTransportFactory meter_factory{meter_state};
-    application::StressTestService meter_service{meter_factory, execution_runtime, logger};
+    application::StressTestService meter_service{meter_factory, execution_runtime, preparation_cache, logger};
     domain::GeneratorConfig meter_config;
     meter_config.endpoint.protocol = domain::TransportProtocol::File;
     meter_config.templates.push_back({"meter", "meter", "meter-event", "test", {}});
@@ -218,7 +266,7 @@ void run_stress_test_service_tests() {
     auto range_state = std::make_shared<TransportState>();
     range_state->block_after = 4;
     BlockingTransportFactory range_factory{range_state};
-    application::StressTestService range_service{range_factory, execution_runtime, logger};
+    application::StressTestService range_service{range_factory, execution_runtime, preparation_cache, logger};
     domain::GeneratorConfig range_config;
     range_config.endpoint.host = "127.0.0.1";
     range_config.endpoint.port = 5514;
@@ -226,7 +274,6 @@ void run_stress_test_service_tests() {
     range_config.timestamp_generation.mode = domain::TimestampGenerationMode::Range;
     range_config.timestamp_generation.range.start = sys_days{year{2026} / January / 1};
     range_config.timestamp_generation.range.end = range_config.timestamp_generation.range.start + seconds{2};
-    range_config.worker_count = 1;
     range_service.start(std::move(range_config));
     {
         std::unique_lock lock(range_state->mutex);
@@ -248,7 +295,7 @@ void run_stress_test_service_tests() {
     auto stream_state = std::make_shared<TransportState>();
     stream_state->datagram = false;
     BlockingTransportFactory stream_factory{stream_state};
-    application::StressTestService stream_service{stream_factory, execution_runtime, logger};
+    application::StressTestService stream_service{stream_factory, execution_runtime, preparation_cache, logger};
     domain::GeneratorConfig stream_config;
     stream_config.endpoint.protocol = domain::TransportProtocol::File;
     stream_config.templates.push_back({"multiline", "multiline", "alpha\r\nbeta", "test", {}});
@@ -275,7 +322,7 @@ void run_stress_test_service_tests() {
     expect(stream_service.snapshot().send_errors == 0, "Stream framing service reported an unexpected error");
 
     LimitingTransportFactory limiting_factory;
-    application::StressTestService limiting_service{limiting_factory, execution_runtime, logger};
+    application::StressTestService limiting_service{limiting_factory, execution_runtime, preparation_cache, logger};
     domain::GeneratorConfig limiting_config;
     limiting_config.endpoint.protocol = domain::TransportProtocol::File;
     limiting_config.templates.push_back({"limit", "limit", "timestamp=2025-07-05T13:53:53Z", "test", {}});

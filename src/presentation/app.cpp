@@ -261,9 +261,17 @@ std::optional<std::chrono::sys_days> parse_iso_date(const std::string_view value
 
 App::App(application::ILogCatalogUseCase& catalog_service, application::ILogger& logger, application::IStressTestUseCase& stress_service, std::filesystem::path catalog_file, std::filesystem::path generated_directory)
     : catalog_service_(catalog_service), logger_(logger), stress_service_(stress_service), catalog_file_(std::move(catalog_file)), generated_directory_(std::move(generated_directory)) {
+    editor_tokenizer_ = std::jthread([this](const std::stop_token stop_token) {
+        run_editor_tokenizer(stop_token);
+    });
 }
 
 App::~App() {
+    if (editor_tokenizer_.joinable()) {
+        editor_tokenizer_.request_stop();
+        editor_tokenization_condition_.notify_all();
+        editor_tokenizer_.join();
+    }
     if (catalog_loader_.joinable()) {
         catalog_loader_.request_stop();
         catalog_loader_.join();
@@ -882,8 +890,10 @@ void App::render_configuration(const domain::TransmissionStats& stats, const Res
         ImGui::TextColored(ImVec4(0.03F, 0.52F, 0.28F, 1.0F), "%s", stats.status_message.c_str());
     } else if (protocol_index_ == static_cast<int>(domain::TransportProtocol::File)) {
         disabled_wrapped_text("FILE은 generated 폴더에 로그 1개당 파일 1개로 저장하며 설정한 안전 제한에 도달하면 정상 종료합니다.");
-    } else {
+    } else if (protocol_index_ == static_cast<int>(domain::TransportProtocol::Udp)) {
         disabled_wrapped_text("UDP 통계는 로컬 소켓 전송 완료를 기준으로 집계하며 비동기 ICMP 포트 거부는 전송 실패로 처리하지 않습니다.");
+    } else {
+        disabled_wrapped_text("TCP/TLS는 여러 로그를 묶어 스트림으로 전송하며 선택한 프레이밍을 적용합니다.");
     }
     ImGui::EndChild();
     ImGui::PopStyleColor();
@@ -902,7 +912,7 @@ void App::render_destination_panel(const float height) {
     ImGui::TextDisabled("프로토콜");
     ImGui::SetNextItemWidth(-1.0F);
     if (ImGui::Combo("##protocol", &protocol_index_, protocols, static_cast<int>(std::size(protocols))) && protocol_index_ == static_cast<int>(domain::TransportProtocol::File)) {
-        worker_count_ = 1;
+        transmission_mode_index_ = static_cast<int>(domain::TransmissionMode::Sequential);
     }
     const bool file_protocol = protocol_index_ == static_cast<int>(domain::TransportProtocol::File);
     if (file_protocol) {
@@ -944,13 +954,20 @@ void App::render_destination_panel(const float height) {
     ImGui::TextUnformatted("성능");
     ImGui::PopFont();
     ImGui::Separator();
-    ImGui::TextDisabled("Worker");
+    ImGui::TextDisabled("전송 방식");
+    const char* transmission_modes[]{"순차 전송", "병렬 전송 (자동 최적화)"};
     ImGui::SetNextItemWidth(-1.0F);
     ImGui::BeginDisabled(file_protocol);
-    ImGui::SliderInt("##worker_count", &worker_count_, 1, 64);
+    ImGui::Combo("##transmission_mode", &transmission_mode_index_, transmission_modes, static_cast<int>(std::size(transmission_modes)));
     ImGui::EndDisabled();
     if (file_protocol) {
-        ImGui::TextDisabled("FILE은 여러 로그를 묶어 순차 기록합니다.");
+        disabled_wrapped_text("FILE은 여러 로그를 묶어 순차 기록하므로 순차 전송으로 고정됩니다.");
+    } else if (transmission_mode_index_ == static_cast<int>(domain::TransmissionMode::Sequential)) {
+        disabled_wrapped_text("1개의 송신 Worker로 로그 순서를 유지해 전송합니다.");
+    } else if (is_active(cached_stats_.state) && cached_stats_.active_workers > 0) {
+        ImGui::TextDisabled("자동 선택 Worker: %u", cached_stats_.active_workers);
+    } else {
+        disabled_wrapped_text("OS, 프로토콜, CPU 특성에 맞는 Worker 수를 실행 시 자동 선택합니다.");
     }
     ImGui::TextDisabled("목표 EPS");
     ImGui::SetNextItemWidth(-1.0F);
@@ -1123,8 +1140,9 @@ void App::render_catalog_selector() {
 }
 
 void App::render_catalog_editor() {
+    apply_editor_tokenization_result();
     if (editor_analysis_pending_ && std::chrono::steady_clock::now() >= editor_analysis_due_) {
-        analyze_editor_sample();
+        queue_editor_tokenization();
     }
     if (editor_popup_requested_) {
         ImGui::OpenPopup("샘플 로그 편집");
@@ -1152,16 +1170,17 @@ void App::render_catalog_editor() {
         ImGui::TextDisabled("샘플 로그");
         const float editor_height = std::max(180.0F * ui_scale_, ImGui::GetContentRegionAvail().y * 0.48F);
         if (ImGui::InputTextMultiline("##editor_sample", &editor_sample_, ImVec2(-1.0F, editor_height), ImGuiInputTextFlags_AllowTabInput)) {
-            editor_analysis_pending_ = true;
-            editor_analysis_due_ = std::chrono::steady_clock::now() + std::chrono::milliseconds{120};
+            mark_editor_sample_changed();
         }
-        ImGui::TextUnformatted("자동 파싱 결과");
+        ImGui::Spacing();
+        ImGui::TextUnformatted("백그라운드 토큰화 및 캐시");
         ImGui::Separator();
         ImGui::Text("시간 토큰 %zu개 | src_ip %zu개 | dst_ip %zu개", editor_analysis_.timestamp_count, editor_analysis_.source_ip_count, editor_analysis_.destination_ip_count);
         ImGui::Text("개인정보 익명화 토큰 %zu개", editor_analysis_.privacy_token_count);
-        if (editor_analysis_pending_) {
-            ImGui::SameLine();
-            ImGui::TextDisabled("분석 대기...");
+        if (editor_analysis_pending_ || editor_tokenizing_.load(std::memory_order_acquire)) {
+            ImGui::TextColored(ImVec4(0.04F, 0.39F, 0.82F, 1.0F), "샘플 로그를 토큰화하고 전송용 캐시를 준비하는 중...");
+        } else if (editor_tokenized_item_) {
+            ImGui::TextColored(ImVec4(0.08F, 0.55F, 0.27F, 1.0F), "토큰화 및 전송용 캐시 준비 완료");
         }
         if (editor_analysis_.timestamp_styles.empty()) {
             ImGui::TextColored(ImVec4(0.78F, 0.43F, 0.02F, 1.0F), "인식된 날짜 포맷이 없습니다.");
@@ -1171,7 +1190,12 @@ void App::render_catalog_editor() {
                 ImGui::BulletText("%.*s", static_cast<int>(name.size()), name.data());
             }
         }
-        ImGui::BeginDisabled(editor_name_.empty() || editor_sample_.empty() || catalog_loading_.load(std::memory_order_acquire));
+        if (!editor_tokenized_preview_.empty()) {
+            ImGui::TextDisabled("변환 미리보기");
+            ImGui::InputTextMultiline("##tokenized_preview", &editor_tokenized_preview_, ImVec2(-1.0F, 92.0F * ui_scale_), ImGuiInputTextFlags_ReadOnly);
+        }
+        const bool tokenization_pending = editor_analysis_pending_ || editor_tokenizing_.load(std::memory_order_acquire) || !editor_tokenized_item_.has_value();
+        ImGui::BeginDisabled(editor_name_.empty() || editor_sample_.empty() || tokenization_pending || catalog_loading_.load(std::memory_order_acquire));
         if (ImGui::Button("저장", ImVec2(140.0F * ui_scale_, 0.0F))) {
             save_catalog_editor();
             ImGui::CloseCurrentPopup();
@@ -1207,7 +1231,7 @@ void App::open_new_catalog_editor() {
     editor_index_ = catalog_items_.size();
     editor_name_.clear();
     editor_sample_.clear();
-    analyze_editor_sample();
+    mark_editor_sample_changed(true);
     editor_popup_requested_ = true;
 }
 
@@ -1219,28 +1243,28 @@ void App::open_selected_catalog_editor() {
     editor_index_ = visible_catalog_index();
     editor_name_ = catalog_items_[editor_index_].name;
     editor_sample_ = catalog_items_[editor_index_].sample;
-    analyze_editor_sample();
+    mark_editor_sample_changed(true);
     editor_popup_requested_ = true;
 }
 
 void App::save_catalog_editor() {
-    if (editor_name_.empty() || editor_sample_.empty()) {
+    if (editor_name_.empty() || editor_sample_.empty() || !editor_tokenized_item_) {
         return;
     }
-    editor_sample_ = catalog_service_.sanitize(editor_sample_);
-    analyze_editor_sample();
+    auto item = *editor_tokenized_item_;
+    item.name = editor_name_;
     if (editor_is_new_) {
-        auto identifier = catalog_service_.next_id(catalog_items_);
-        catalog_items_.push_back(domain::LogTemplate{std::move(identifier), editor_name_, editor_sample_, "사용자 정의", {}});
+        item.id = catalog_service_.next_id(catalog_items_);
+        item.source = "사용자 정의";
+        catalog_items_.push_back(std::move(item));
         catalog_search_names_.push_back(catalog_search_text(catalog_items_.back(), catalog_service_.privacy_search_terms(editor_analysis_)));
-        catalog_previews_.push_back(sample_preview(editor_sample_));
+        catalog_previews_.push_back(sample_preview(catalog_items_.back().sample));
         catalog_analyses_.push_back(editor_analysis_);
         selected_log_ = catalog_items_.size() - 1;
     } else if (editor_index_ < catalog_items_.size()) {
-        catalog_items_[editor_index_].name = editor_name_;
-        catalog_items_[editor_index_].sample = editor_sample_;
+        catalog_items_[editor_index_] = std::move(item);
         catalog_search_names_[editor_index_] = catalog_search_text(catalog_items_[editor_index_], catalog_service_.privacy_search_terms(editor_analysis_));
-        catalog_previews_[editor_index_] = sample_preview(editor_sample_);
+        catalog_previews_[editor_index_] = sample_preview(catalog_items_[editor_index_].sample);
         catalog_analyses_[editor_index_] = editor_analysis_;
         selected_log_ = editor_index_;
     }
@@ -1261,9 +1285,96 @@ void App::delete_selected_catalog_item() {
     request_catalog_save();
 }
 
-void App::analyze_editor_sample() {
-    editor_analysis_ = catalog_service_.analyze(editor_sample_);
+void App::mark_editor_sample_changed(const bool immediate) {
+    ++editor_revision_;
+    editor_tokenized_item_.reset();
+    editor_tokenized_preview_.clear();
+    editor_analysis_ = {};
     editor_analysis_pending_ = false;
+    if (editor_sample_.empty()) {
+        return;
+    }
+    editor_analysis_pending_ = true;
+    editor_analysis_due_ = std::chrono::steady_clock::now() + (immediate ? std::chrono::milliseconds{0} : std::chrono::milliseconds{120});
+}
+
+void App::queue_editor_tokenization() {
+    if (!editor_analysis_pending_ || editor_sample_.empty()) {
+        return;
+    }
+    domain::LogTemplate item;
+    if (!editor_is_new_ && editor_index_ < catalog_items_.size()) {
+        item = catalog_items_[editor_index_];
+    } else {
+        item = domain::LogTemplate{"0000", editor_name_, {}, "사용자 정의", {}};
+    }
+    item.name = editor_name_;
+    item.sample = editor_sample_;
+    {
+        std::scoped_lock lock(editor_tokenization_mutex_);
+        pending_editor_tokenization_ = EditorTokenizationRequest{editor_revision_, editor_sample_, std::move(item)};
+    }
+    editor_analysis_pending_ = false;
+    editor_tokenizing_.store(true, std::memory_order_release);
+    editor_tokenization_condition_.notify_one();
+}
+
+void App::apply_editor_tokenization_result() {
+    if (!editor_tokenization_ready_.exchange(false, std::memory_order_acq_rel)) {
+        return;
+    }
+    std::optional<EditorTokenizationResult> result;
+    {
+        std::scoped_lock lock(editor_tokenization_mutex_);
+        result = std::move(pending_editor_tokenization_result_);
+        pending_editor_tokenization_result_.reset();
+    }
+    if (!result || result->revision != editor_revision_ || result->source_sample != editor_sample_) {
+        return;
+    }
+    if (!result->error.empty()) {
+        ui_error_ = std::move(result->error);
+        return;
+    }
+    editor_analysis_ = std::move(result->tokenized.analysis);
+    editor_tokenized_preview_ = result->tokenized.item.sample;
+    editor_tokenized_item_ = std::move(result->tokenized.item);
+}
+
+void App::run_editor_tokenizer(const std::stop_token stop_token) {
+    while (!stop_token.stop_requested()) {
+        std::optional<EditorTokenizationRequest> request;
+        {
+            std::unique_lock lock(editor_tokenization_mutex_);
+            editor_tokenization_condition_.wait(lock, stop_token, [this] {
+                return pending_editor_tokenization_.has_value();
+            });
+            if (stop_token.stop_requested()) {
+                break;
+            }
+            request = std::move(pending_editor_tokenization_);
+            pending_editor_tokenization_.reset();
+        }
+
+        EditorTokenizationResult result;
+        result.revision = request->revision;
+        result.source_sample = std::move(request->source_sample);
+        try {
+            result.tokenized = catalog_service_.tokenize(std::move(request->item));
+        } catch (const std::exception& error) {
+            result.error = error.what();
+            logger_.error(std::format("Editor tokenization failed: {}", error.what()));
+        }
+
+        bool has_newer_request = false;
+        {
+            std::scoped_lock lock(editor_tokenization_mutex_);
+            pending_editor_tokenization_result_ = std::move(result);
+            has_newer_request = pending_editor_tokenization_.has_value();
+        }
+        editor_tokenization_ready_.store(true, std::memory_order_release);
+        editor_tokenizing_.store(has_newer_request, std::memory_order_release);
+    }
 }
 
 std::size_t App::visible_catalog_index() const noexcept {
@@ -1327,7 +1438,7 @@ void App::start_test() {
             config.timestamp_generation.range.start = std::chrono::time_point_cast<std::chrono::seconds>(*range_start);
             config.timestamp_generation.range.end = std::chrono::time_point_cast<std::chrono::seconds>(*range_end + std::chrono::days{1}) - std::chrono::seconds{1};
         }
-        config.worker_count = static_cast<std::uint32_t>(std::clamp(worker_count_, 1, 64));
+        config.transmission_mode = static_cast<domain::TransmissionMode>(transmission_mode_index_);
         config.target_eps = target_eps_;
         if (rotate_filtered_) {
             config.templates.reserve(filtered_indices_.size());

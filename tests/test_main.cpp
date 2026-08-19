@@ -7,6 +7,7 @@
 int main() {
     try {
         loggen::tests::run_log_renderer_tests();
+        loggen::tests::run_log_preparation_cache_tests();
         loggen::tests::run_cli_app_tests();
         loggen::tests::run_log_catalog_service_tests();
         loggen::tests::run_json_log_catalog_tests();

@@ -6,6 +6,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <array>
 #include <chrono>
 #include <cstdio>
 #include <ctime>
@@ -112,6 +113,32 @@ void run_log_renderer_tests() {
     const std::string delimited_date_result{delimited_date.render(base_time, true)};
     expect(delimited_date_result.find("`20300102`03:04:05`") != std::string::npos, "Delimited date and time replacement failed");
     expect(delimited_date_result.find("decide_time=\"0000-00-00 00:00:00\"") != std::string::npos, "Zero-date sentinel was modified");
+
+    const std::array timestamp_samples{
+        std::string{"timestamp=2025-07-10T07:20:00.123Z"},
+        std::string{"compact=20251203T015908.232+0900"},
+        std::string{"event_time=Jul 05 2025 13:53:53 UTC"},
+        std::string{"event_time=Apr 20 22:23:19 2021"},
+        std::string{"access=10/Oct/2000:13:55:36 -0700"},
+        std::string{"syslog=Apr 20 22:23:19"},
+        std::string{"compact=20251203174030"},
+        std::string{"minute=2025-12-03 1:17"},
+        std::string{"file=20260224__transaction"},
+        std::string{"monthly=202512_archive"},
+        std::string{"access_hms=174130"},
+        std::string{"date=2025/07/05"},
+        std::string{"checkmonth=2025-11"},
+        std::string{"time=13:53:53.123"},
+        std::string{"record`09:45:34`tail"},
+    };
+    for (const auto& raw_timestamp_sample : timestamp_samples) {
+        const auto tokenized_timestamp_sample = application::LogRenderer::tokenize(raw_timestamp_sample);
+        expect(tokenized_timestamp_sample.find("{{TIMESTAMP:") != std::string::npos, "A supported timestamp format was not converted to a persistent token");
+        expect(application::LogRenderer::tokenize(tokenized_timestamp_sample) == tokenized_timestamp_sample, "Persistent timestamp tokenization is not idempotent");
+        auto raw_timestamp_log = application::LogRenderer::prepare_one(raw_timestamp_sample, "10.0.0.1", "10.0.0.2", hours{7});
+        auto persisted_timestamp_log = application::LogRenderer::prepare_one(tokenized_timestamp_sample, "10.0.0.1", "10.0.0.2", hours{7});
+        expect(raw_timestamp_log.render(base_time) == persisted_timestamp_log.render(base_time), "A persisted timestamp token changed its format or offset behavior");
+    }
 
     const auto analysis = application::LogRenderer::analyze(
         "Jul 05 2025 13:53:53 UTC date=2025-07-05 time=13:53:53 srp_ip=1.1.1.1 src-ip=1.1.1.2 clientipaddr=1.1.1.3 dest_ip=2.2.2.1 destination-address=2.2.2.2 dstn_ip=2.2.2.3");

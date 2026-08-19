@@ -19,6 +19,7 @@ struct GLFWwindow;
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <condition_variable>
 #include <filesystem>
 #include <mutex>
 #include <optional>
@@ -51,6 +52,19 @@ private:
         bool replace_items{true};
     };
 
+    struct EditorTokenizationRequest {
+        std::uint64_t revision{0};
+        std::string source_sample;
+        domain::LogTemplate item;
+    };
+
+    struct EditorTokenizationResult {
+        std::uint64_t revision{0};
+        std::string source_sample;
+        application::TokenizedLogTemplate tokenized;
+        std::string error;
+    };
+
 #ifdef _WIN32
     static LRESULT CALLBACK window_procedure(HWND window, UINT message, WPARAM word_parameter, LPARAM long_parameter);
     LRESULT handle_message(HWND window, UINT message, WPARAM word_parameter, LPARAM long_parameter);
@@ -78,7 +92,10 @@ private:
     void open_selected_catalog_editor();
     void save_catalog_editor();
     void delete_selected_catalog_item();
-    void analyze_editor_sample();
+    void mark_editor_sample_changed(bool immediate = false);
+    void queue_editor_tokenization();
+    void apply_editor_tokenization_result();
+    void run_editor_tokenizer(std::stop_token stop_token);
     [[nodiscard]] std::size_t visible_catalog_index() const noexcept;
     void start_test();
 
@@ -110,11 +127,11 @@ private:
     std::size_t selected_log_{0};
     bool rotate_filtered_{true};
     int protocol_index_{0};
+    int transmission_mode_index_{static_cast<int>(domain::TransmissionMode::Parallel)};
     int framing_index_{0};
     int timestamp_mode_index_{0};
     int offset_sign_index_{0};
     int port_{514};
-    int worker_count_{1};
     int offset_days_{0};
     int offset_hours_{0};
     int offset_minutes_{0};
@@ -144,9 +161,19 @@ private:
     std::size_t delete_index_{0};
     std::string editor_name_;
     std::string editor_sample_;
+    std::string editor_tokenized_preview_;
+    std::optional<domain::LogTemplate> editor_tokenized_item_;
     application::LogTemplateAnalysis editor_analysis_;
     bool editor_analysis_pending_{false};
     std::chrono::steady_clock::time_point editor_analysis_due_{};
+    std::uint64_t editor_revision_{0};
+    std::atomic<bool> editor_tokenizing_{false};
+    std::atomic<bool> editor_tokenization_ready_{false};
+    std::mutex editor_tokenization_mutex_;
+    std::condition_variable_any editor_tokenization_condition_;
+    std::optional<EditorTokenizationRequest> pending_editor_tokenization_;
+    std::optional<EditorTokenizationResult> pending_editor_tokenization_result_;
+    std::jthread editor_tokenizer_;
     std::atomic<bool> catalog_loading_{false};
     std::atomic<bool> catalog_result_ready_{false};
     std::mutex catalog_result_mutex_;

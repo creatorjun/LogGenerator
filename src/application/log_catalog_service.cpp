@@ -32,15 +32,15 @@ void validate_ids(const std::span<const loggen::domain::LogTemplate> items) {
 
 namespace loggen::application {
 
-LogCatalogService::LogCatalogService(ILogCatalog& catalog) noexcept
-    : catalog_(catalog) {
+LogCatalogService::LogCatalogService(ILogCatalog& catalog, LogPreparationCache& preparation_cache) noexcept
+    : catalog_(catalog), preparation_cache_(preparation_cache) {
 }
 
 std::vector<domain::LogTemplate> LogCatalogService::load(const std::filesystem::path& file) const {
     auto items = catalog_.load(file);
     validate_ids(items);
     for (auto& item : items) {
-        item.sample = PrivacyAnonymizer::sanitize(item.sample);
+        item = preparation_cache_.tokenize_and_cache(std::move(item)).item;
     }
     return items;
 }
@@ -49,7 +49,7 @@ void LogCatalogService::save(const std::filesystem::path& file, const std::span<
     validate_ids(items);
     std::vector<domain::LogTemplate> sanitized{items.begin(), items.end()};
     for (auto& item : sanitized) {
-        item.sample = PrivacyAnonymizer::sanitize(item.sample);
+        item = preparation_cache_.tokenize_and_cache(std::move(item)).item;
     }
     catalog_.save(file, sanitized);
 }
@@ -76,15 +76,21 @@ std::string LogCatalogService::next_id(const std::span<const domain::LogTemplate
 }
 
 LogTemplateAnalysis LogCatalogService::analyze(const domain::LogTemplate& item) const {
-    return LogRenderer::analyze(item);
+    return preparation_cache_.tokenize_and_cache(item).analysis;
 }
 
 LogTemplateAnalysis LogCatalogService::analyze(const std::string_view sample) const {
-    return LogRenderer::analyze(sample);
+    domain::LogTemplate item;
+    item.sample = std::string(sample);
+    return preparation_cache_.tokenize_and_cache(std::move(item)).analysis;
 }
 
 std::string LogCatalogService::sanitize(const std::string_view sample) const {
-    return PrivacyAnonymizer::sanitize(sample);
+    return LogRenderer::tokenize(sample);
+}
+
+TokenizedLogTemplate LogCatalogService::tokenize(domain::LogTemplate item) const {
+    return preparation_cache_.tokenize_and_cache(std::move(item));
 }
 
 std::string LogCatalogService::privacy_search_terms(const LogTemplateAnalysis& analysis) const {

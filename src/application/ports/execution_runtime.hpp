@@ -1,6 +1,9 @@
 // src/application/ports/execution_runtime.hpp
 #pragma once
 
+#include "domain/protocol.hpp"
+
+#include <cstdint>
 #include <memory>
 
 namespace loggen::application {
@@ -14,6 +17,7 @@ class IExecutionRuntime {
 public:
     virtual ~IExecutionRuntime() = default;
     [[nodiscard]] virtual std::unique_ptr<IExecutionLease> acquire_high_resolution_timer() const = 0;
+    [[nodiscard]] virtual std::uint32_t optimal_worker_count(domain::TransportProtocol protocol) const noexcept = 0;
     virtual void configure_current_worker() const noexcept = 0;
     virtual void pause_current_thread() const noexcept = 0;
 };

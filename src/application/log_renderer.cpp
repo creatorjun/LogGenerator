@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <ctime>
 #include <mutex>
+#include <optional>
 #include <regex>
 #include <stdexcept>
 #include <string_view>
@@ -20,6 +21,7 @@ struct MatchCandidate {
     std::size_t position{0};
     std::size_t length{0};
     int priority{0};
+    RenderSegmentKind kind{RenderSegmentKind::Literal};
     TimestampToken token;
     PrivacyTokenKind privacy{PrivacyTokenKind::None};
 };
@@ -100,14 +102,6 @@ std::string replace_capture(const std::string& input, const std::regex& pattern,
     }
     output.append(input, cursor, std::string::npos);
     return output;
-}
-
-void replace_all(std::string& input, const std::string_view marker, const std::string_view replacement) {
-    std::size_t position = 0;
-    while ((position = input.find(marker, position)) != std::string::npos) {
-        input.replace(position, marker.size(), replacement);
-        position += replacement.size();
-    }
 }
 
 std::size_t count_occurrences(const std::string_view input, const std::string_view marker) {
@@ -225,8 +219,67 @@ TimestampToken make_token(const TimestampStyle style, const std::string_view val
     return token;
 }
 
-std::vector<RenderSegment> compile_segments(const std::string& input) {
+constexpr std::string_view timestamp_marker_prefix{"{{TIMESTAMP:"};
+constexpr std::string_view timestamp_marker_suffix{"}}"};
+
+constexpr std::array<std::pair<TimestampStyle, std::string_view>, 16> timestamp_style_keys{{
+    {TimestampStyle::Iso8601, "ISO8601"},
+    {TimestampStyle::YearFirst, "YEAR_FIRST"},
+    {TimestampStyle::SyslogWithYear, "SYSLOG_YEAR"},
+    {TimestampStyle::SyslogWithoutYear, "SYSLOG"},
+    {TimestampStyle::MonthFirstGmt, "MONTH_FIRST_GMT"},
+    {TimestampStyle::Apache, "APACHE"},
+    {TimestampStyle::Compact, "COMPACT"},
+    {TimestampStyle::CompactWithT, "COMPACT_T"},
+    {TimestampStyle::CompactDate, "COMPACT_DATE"},
+    {TimestampStyle::CompactYearMonth, "COMPACT_MONTH"},
+    {TimestampStyle::CompactTime, "COMPACT_TIME"},
+    {TimestampStyle::YearFirstMinute, "YEAR_FIRST_MINUTE"},
+    {TimestampStyle::MonthDayYear, "MONTH_DAY_YEAR"},
+    {TimestampStyle::DateOnly, "DATE"},
+    {TimestampStyle::YearMonth, "YEAR_MONTH"},
+    {TimestampStyle::TimeOnly, "TIME"},
+}};
+
+std::string_view timestamp_style_key(const TimestampStyle style) noexcept {
+    for (const auto& [candidate, key] : timestamp_style_keys) {
+        if (candidate == style) {
+            return key;
+        }
+    }
+    return "UNKNOWN";
+}
+
+std::optional<TimestampStyle> timestamp_style_from_key(const std::string_view key) noexcept {
+    for (const auto& [style, candidate] : timestamp_style_keys) {
+        if (candidate == key) {
+            return style;
+        }
+    }
+    return std::nullopt;
+}
+
+std::vector<MatchCandidate> timestamp_candidates(const std::string& input) {
     std::vector<MatchCandidate> candidates;
+    std::size_t marker_position = 0;
+    while ((marker_position = input.find(timestamp_marker_prefix, marker_position)) != std::string::npos) {
+        const auto key_begin = marker_position + timestamp_marker_prefix.size();
+        const auto value_separator = input.find(':', key_begin);
+        const auto marker_end = value_separator == std::string::npos ? std::string::npos : input.find(timestamp_marker_suffix, value_separator + 1);
+        if (value_separator == std::string::npos || marker_end == std::string::npos) {
+            marker_position += timestamp_marker_prefix.size();
+            continue;
+        }
+        const auto style = timestamp_style_from_key(std::string_view(input).substr(key_begin, value_separator - key_begin));
+        if (!style) {
+            marker_position = marker_end + timestamp_marker_suffix.size();
+            continue;
+        }
+        const auto value = std::string_view(input).substr(value_separator + 1, marker_end - value_separator - 1);
+        const auto marker_length = marker_end + timestamp_marker_suffix.size() - marker_position;
+        candidates.push_back(MatchCandidate{marker_position, marker_length, -100, RenderSegmentKind::Timestamp, make_token(*style, value), PrivacyTokenKind::None});
+        marker_position += marker_length;
+    }
     for (const auto& pattern : timestamp_patterns()) {
         for (std::sregex_iterator iterator(input.begin(), input.end(), pattern.expression), end; iterator != end; ++iterator) {
             const auto& match = *iterator;
@@ -235,14 +288,63 @@ std::vector<RenderSegment> compile_segments(const std::string& input) {
             }
             const auto position = static_cast<std::size_t>(match[pattern.capture_group].first - input.begin());
             const auto length = static_cast<std::size_t>(match[pattern.capture_group].length());
-            candidates.push_back(MatchCandidate{position, length, pattern.priority, make_token(pattern.style, std::string_view(input).substr(position, length)), PrivacyTokenKind::None});
+            candidates.push_back(MatchCandidate{position, length, pattern.priority, RenderSegmentKind::Timestamp, make_token(pattern.style, std::string_view(input).substr(position, length)), PrivacyTokenKind::None});
         }
     }
+    std::ranges::sort(candidates, [](const MatchCandidate& left, const MatchCandidate& right) {
+        if (left.position != right.position) {
+            return left.position < right.position;
+        }
+        if (left.length != right.length) {
+            return left.length > right.length;
+        }
+        return left.priority < right.priority;
+    });
+    return candidates;
+}
+
+std::string tokenize_timestamps(const std::string& input) {
+    const auto candidates = timestamp_candidates(input);
+    std::string output;
+    output.reserve(input.size() + candidates.size() * 24U);
+    std::size_t cursor = 0;
+    for (const auto& candidate : candidates) {
+        if (candidate.position < cursor) {
+            continue;
+        }
+        output.append(input, cursor, candidate.position - cursor);
+        const auto original = std::string_view(input).substr(candidate.position, candidate.length);
+        if (original.starts_with(timestamp_marker_prefix)) {
+            output.append(original);
+        } else {
+            output.append(timestamp_marker_prefix);
+            output.append(timestamp_style_key(candidate.token.style));
+            output.push_back(':');
+            output.append(original);
+            output.append(timestamp_marker_suffix);
+        }
+        cursor = candidate.position + candidate.length;
+    }
+    output.append(input, cursor, std::string::npos);
+    return output;
+}
+
+std::vector<RenderSegment> compile_segments(const std::string& input) {
+    auto candidates = timestamp_candidates(input);
     for (const auto kind : privacy_token_kinds) {
         const auto marker = PrivacyAnonymizer::marker(kind);
         std::size_t position = 0;
         while ((position = input.find(marker, position)) != std::string::npos) {
-            candidates.push_back(MatchCandidate{position, marker.size(), 100, {}, kind});
+            candidates.push_back(MatchCandidate{position, marker.size(), 100, RenderSegmentKind::Privacy, {}, kind});
+            position += marker.size();
+        }
+    }
+    for (const auto& [marker, kind] : std::array{
+             std::pair<std::string_view, RenderSegmentKind>{"{{SRC_IP}}", RenderSegmentKind::SourceIp},
+             std::pair<std::string_view, RenderSegmentKind>{"{{DST_IP}}", RenderSegmentKind::DestinationIp}}) {
+        std::size_t position = 0;
+        while ((position = input.find(marker, position)) != std::string::npos) {
+            candidates.push_back(MatchCandidate{position, marker.size(), 90, kind, {}, PrivacyTokenKind::None});
             position += marker.size();
         }
     }
@@ -263,32 +365,18 @@ std::vector<RenderSegment> compile_segments(const std::string& input) {
             continue;
         }
         if (candidate.position > cursor) {
-            segments.push_back(RenderSegment{input.substr(cursor, candidate.position - cursor), false, {}});
+            segments.push_back(RenderSegment{input.substr(cursor, candidate.position - cursor), RenderSegmentKind::Literal, {}, PrivacyTokenKind::None});
         }
-        if (candidate.privacy == PrivacyTokenKind::None) {
-            segments.push_back(RenderSegment{{}, true, candidate.token, PrivacyTokenKind::None});
-        } else {
-            segments.push_back(RenderSegment{{}, false, {}, candidate.privacy});
-        }
+        segments.push_back(RenderSegment{{}, candidate.kind, candidate.token, candidate.privacy});
         cursor = candidate.position + candidate.length;
     }
     if (cursor < input.size()) {
-        segments.push_back(RenderSegment{input.substr(cursor), false, {}});
+        segments.push_back(RenderSegment{input.substr(cursor), RenderSegmentKind::Literal, {}, PrivacyTokenKind::None});
     }
     if (segments.empty()) {
-        segments.push_back(RenderSegment{input, false, {}});
+        segments.push_back(RenderSegment{input, RenderSegmentKind::Literal, {}, PrivacyTokenKind::None});
     }
     return segments;
-}
-
-std::size_t count_captures(const std::string& input, const std::regex& pattern) {
-    std::size_t count = 0;
-    for (std::sregex_iterator iterator(input.begin(), input.end(), pattern), end; iterator != end; ++iterator) {
-        if (iterator->size() >= 3 && (*iterator)[2].matched) {
-            ++count;
-        }
-    }
-    return count;
 }
 
 std::tm convert_local_time(const std::time_t value) {
@@ -439,25 +527,46 @@ void append_timestamp(std::string& output, const TimestampToken& token, const st
     }
 }
 
-}
-
-PreparedLog::PreparedLog(std::vector<RenderSegment> segments, const std::chrono::seconds offset)
-    : offset_(offset) {
+std::shared_ptr<const CompiledLog> make_compiled_log(std::vector<RenderSegment> segments) {
     auto compiled = std::make_shared<CompiledLog>();
     compiled->segments = std::move(segments);
     for (const auto& segment : compiled->segments) {
-        compiled->capacity_hint += segment.is_timestamp ? 40 : segment.privacy == PrivacyTokenKind::None ? segment.text.size() : 64;
-        compiled->has_timestamp = compiled->has_timestamp || segment.is_timestamp;
-        compiled->has_privacy = compiled->has_privacy || segment.privacy != PrivacyTokenKind::None;
+        switch (segment.kind) {
+        case RenderSegmentKind::Literal:
+            compiled->capacity_hint += segment.text.size();
+            break;
+        case RenderSegmentKind::Timestamp:
+            compiled->capacity_hint += 40;
+            compiled->has_timestamp = true;
+            break;
+        case RenderSegmentKind::Privacy:
+            compiled->capacity_hint += 64;
+            compiled->has_privacy = true;
+            break;
+        case RenderSegmentKind::SourceIp:
+        case RenderSegmentKind::DestinationIp:
+            compiled->capacity_hint += 64;
+            break;
+        }
     }
     compiled->cache_privacy_profiles = compiled->has_privacy && compiled->capacity_hint <= 64U * 1024U;
-    compiled_ = std::move(compiled);
+    return compiled;
+}
+
+}
+
+PreparedLog::PreparedLog(std::vector<RenderSegment> segments, const std::chrono::seconds offset)
+    : PreparedLog(make_compiled_log(std::move(segments)), {}, {}, offset) {
+}
+
+PreparedLog::PreparedLog(std::shared_ptr<const CompiledLog> compiled, std::string source_ip, std::string destination_ip, const std::chrono::seconds offset)
+    : compiled_(std::move(compiled)), source_ip_(std::move(source_ip)), destination_ip_(std::move(destination_ip)), offset_(offset) {
     initialize_random_state();
     initialize_cache();
 }
 
 PreparedLog::PreparedLog(const PreparedLog& other)
-    : compiled_(other.compiled_), offset_(other.offset_) {
+    : compiled_(other.compiled_), source_ip_(other.source_ip_), destination_ip_(other.destination_ip_), offset_(other.offset_) {
     initialize_random_state();
     initialize_cache();
 }
@@ -465,6 +574,8 @@ PreparedLog::PreparedLog(const PreparedLog& other)
 PreparedLog& PreparedLog::operator=(const PreparedLog& other) {
     if (this != &other) {
         compiled_ = other.compiled_;
+        source_ip_ = other.source_ip_;
+        destination_ip_ = other.destination_ip_;
         offset_ = other.offset_;
         cached_.clear();
         timestamp_cache_.clear();
@@ -492,7 +603,7 @@ void PreparedLog::initialize_cache() {
     cached_.reserve(compiled_->capacity_hint);
     timestamp_cache_.resize(compiled_->segments.size());
     for (std::size_t index = 0; index < compiled_->segments.size(); ++index) {
-        if (compiled_->segments[index].is_timestamp) {
+        if (compiled_->segments[index].kind == RenderSegmentKind::Timestamp) {
             timestamp_cache_[index].reserve(40);
         }
     }
@@ -503,8 +614,27 @@ void PreparedLog::initialize_cache() {
     }
     if (!compiled_->has_timestamp && !compiled_->has_privacy) {
         for (const auto& segment : compiled_->segments) {
-            cached_.append(segment.text);
+            append_non_timestamp_segment(cached_, segment, 0);
         }
+    }
+}
+
+void PreparedLog::append_non_timestamp_segment(std::string& output, const RenderSegment& segment, const std::size_t profile_index) const {
+    switch (segment.kind) {
+    case RenderSegmentKind::Literal:
+        output.append(segment.text);
+        break;
+    case RenderSegmentKind::Privacy:
+        output.append(PrivacyAnonymizer::synthetic_value(segment.privacy, profile_index));
+        break;
+    case RenderSegmentKind::SourceIp:
+        output.append(source_ip_);
+        break;
+    case RenderSegmentKind::DestinationIp:
+        output.append(destination_ip_);
+        break;
+    case RenderSegmentKind::Timestamp:
+        break;
     }
 }
 
@@ -544,7 +674,7 @@ std::string_view PreparedLog::render(const std::chrono::system_clock::time_point
 
     if (compiled_->has_privacy && compiled_->has_timestamp && (second != cached_second_ || calendar_time != cached_calendar_time_)) {
         for (std::size_t index = 0; index < compiled_->segments.size(); ++index) {
-            if (!compiled_->segments[index].is_timestamp) {
+            if (compiled_->segments[index].kind != RenderSegmentKind::Timestamp) {
                 continue;
             }
             timestamp_cache_[index].clear();
@@ -558,16 +688,14 @@ std::string_view PreparedLog::render(const std::chrono::system_clock::time_point
     output.clear();
     for (std::size_t index = 0; index < compiled_->segments.size(); ++index) {
         const auto& segment = compiled_->segments[index];
-        if (segment.is_timestamp) {
+        if (segment.kind == RenderSegmentKind::Timestamp) {
             if (compiled_->has_privacy) {
                 output.append(timestamp_cache_[index]);
             } else {
                 append_timestamp(output, segment.timestamp, adjusted, calendar_time);
             }
-        } else if (segment.privacy != PrivacyTokenKind::None) {
-            output.append(PrivacyAnonymizer::synthetic_value(segment.privacy, profile_index));
         } else {
-            output.append(segment.text);
+            append_non_timestamp_segment(output, segment, profile_index);
         }
     }
     if (compiled_->cache_privacy_profiles) {
@@ -584,24 +712,59 @@ std::size_t PreparedLog::capacity_hint() const noexcept {
     return compiled_ == nullptr ? 0 : compiled_->capacity_hint;
 }
 
+domain::LogTemplate LogRenderer::tokenize(domain::LogTemplate item) {
+    item.sample = tokenize(item.sample);
+    for (auto& [token, values] : item.test_case.values) {
+        static_cast<void>(token);
+        for (auto& value : values) {
+            value = tokenize(value);
+        }
+    }
+    return item;
+}
+
+std::string LogRenderer::tokenize(const std::string_view sample) {
+    auto result = PrivacyAnonymizer::sanitize(sample);
+    result = replace_capture(result, source_field_pattern(), "{{SRC_IP}}");
+    result = replace_capture(result, destination_field_pattern(), "{{DST_IP}}");
+    result = replace_capture(result, arrow_source_pattern(), "{{SRC_IP}}");
+    result = replace_capture(result, arrow_destination_pattern(), "{{DST_IP}}");
+    return tokenize_timestamps(result);
+}
+
+std::shared_ptr<const CompiledLog> LogRenderer::compile(const domain::LogTemplate& item) {
+    const auto tokenized = tokenize(item);
+    return make_compiled_log(compile_segments(expand_test_case(tokenized)));
+}
+
+PreparedLog LogRenderer::bind(std::shared_ptr<const CompiledLog> compiled, std::string source_ip, std::string destination_ip, const std::chrono::seconds offset) {
+    return PreparedLog{std::move(compiled), std::move(source_ip), std::move(destination_ip), offset};
+}
+
 LogTemplateAnalysis LogRenderer::analyze(const std::string_view sample) {
-    const std::string input{sample};
+    domain::LogTemplate item;
+    item.sample = tokenize(sample);
+    return analyze(*compile(item));
+}
+
+LogTemplateAnalysis LogRenderer::analyze(const CompiledLog& compiled) {
     LogTemplateAnalysis result;
-    const auto segments = compile_segments(PrivacyAnonymizer::sanitize(input));
-    for (const auto& segment : segments) {
-        if (segment.privacy != PrivacyTokenKind::None) {
+    for (const auto& segment : compiled.segments) {
+        if (segment.kind == RenderSegmentKind::Privacy) {
             ++result.privacy_token_count;
             result.privacy_token_mask |= privacy_token_bit(segment.privacy);
         }
-        if (segment.is_timestamp) {
+        if (segment.kind == RenderSegmentKind::Timestamp) {
             ++result.timestamp_count;
             if (std::ranges::find(result.timestamp_styles, segment.timestamp.style) == result.timestamp_styles.end()) {
                 result.timestamp_styles.push_back(segment.timestamp.style);
             }
+        } else if (segment.kind == RenderSegmentKind::SourceIp) {
+            ++result.source_ip_count;
+        } else if (segment.kind == RenderSegmentKind::DestinationIp) {
+            ++result.destination_ip_count;
         }
     }
-    result.source_ip_count = count_captures(input, source_field_pattern()) + count_captures(input, arrow_source_pattern()) + count_occurrences(input, "{{SRC_IP}}");
-    result.destination_ip_count = count_captures(input, destination_field_pattern()) + count_captures(input, arrow_destination_pattern()) + count_occurrences(input, "{{DST_IP}}");
     return result;
 }
 
@@ -610,38 +773,23 @@ std::vector<PreparedLog> LogRenderer::prepare(const domain::GeneratorConfig& con
     result.reserve(config.templates.size());
     for (const auto& item : config.templates) {
         const auto offset = config.timestamp_generation.mode == domain::TimestampGenerationMode::Offset ? config.timestamp_generation.offset.value() : std::chrono::seconds{0};
-        result.push_back(prepare_one(item, config.source_ip, config.destination_ip, offset));
+        result.push_back(bind(compile(item), config.source_ip, config.destination_ip, offset));
     }
     return result;
 }
 
 LogTemplateAnalysis LogRenderer::analyze(const domain::LogTemplate& item) {
-    auto materialized = item;
-    materialized.sample = PrivacyAnonymizer::sanitize(materialized.sample);
-    return analyze(expand_test_case(materialized));
+    return analyze(*compile(item));
 }
 
 PreparedLog LogRenderer::prepare_one(const domain::LogTemplate& item, const std::string& source_ip, const std::string& destination_ip, const std::chrono::seconds offset) {
-    auto sanitized = item;
-    replace_all(sanitized.sample, "{{SRC_IP}}", source_ip);
-    replace_all(sanitized.sample, "{{DST_IP}}", destination_ip);
-    sanitized.sample = replace_capture(sanitized.sample, source_field_pattern(), source_ip);
-    sanitized.sample = replace_capture(sanitized.sample, destination_field_pattern(), destination_ip);
-    sanitized.sample = replace_capture(sanitized.sample, arrow_source_pattern(), source_ip);
-    sanitized.sample = replace_capture(sanitized.sample, arrow_destination_pattern(), destination_ip);
-    sanitized.sample = PrivacyAnonymizer::sanitize(sanitized.sample);
-    return PreparedLog{compile_segments(expand_test_case(sanitized)), offset};
+    return bind(compile(item), source_ip, destination_ip, offset);
 }
 
 PreparedLog LogRenderer::prepare_one(std::string sample, const std::string& source_ip, const std::string& destination_ip, const std::chrono::seconds offset) {
-    replace_all(sample, "{{SRC_IP}}", source_ip);
-    replace_all(sample, "{{DST_IP}}", destination_ip);
-    sample = replace_capture(sample, source_field_pattern(), source_ip);
-    sample = replace_capture(sample, destination_field_pattern(), destination_ip);
-    sample = replace_capture(sample, arrow_source_pattern(), source_ip);
-    sample = replace_capture(sample, arrow_destination_pattern(), destination_ip);
-    sample = PrivacyAnonymizer::sanitize(sample);
-    return PreparedLog{compile_segments(sample), offset};
+    domain::LogTemplate item;
+    item.sample = std::move(sample);
+    return bind(compile(item), source_ip, destination_ip, offset);
 }
 
 }

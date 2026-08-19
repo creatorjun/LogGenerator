@@ -2,6 +2,7 @@
 #include "test_support.hpp"
 
 #include "application/log_catalog_service.hpp"
+#include "application/log_preparation_cache.hpp"
 
 #include <filesystem>
 #include <span>
@@ -28,13 +29,16 @@ public:
 
 void run_log_catalog_service_tests() {
     MemoryLogCatalog catalog;
-    catalog.loaded.push_back({"0001", "Sample", "email=test@example.com", "test", {}});
-    application::LogCatalogService service{catalog};
+    catalog.loaded.push_back({"0001", "Sample", "timestamp=2025-07-10T07:20:00Z src_ip=10.0.0.10 dst_ip=10.0.0.20 email=test@example.com", "test", {}});
+    application::LogPreparationCache preparation_cache;
+    application::LogCatalogService service{catalog, preparation_cache};
 
     const auto loaded = service.load(std::filesystem::path{"catalog.json"});
     expect(loaded.size() == 1, "Catalog service changed the loaded item count");
     expect(loaded.front().sample.find("test@example.com") == std::string::npos, "Catalog service exposed unsanitized personal data");
     expect(loaded.front().sample.find("{{EMAIL}}") != std::string::npos, "Catalog service did not apply the privacy boundary");
+    expect(loaded.front().sample.find("{{TIMESTAMP:ISO8601:2025-07-10T07:20:00Z}}") != std::string::npos, "Catalog service did not persist timestamp metadata");
+    expect(loaded.front().sample.find("{{SRC_IP}}") != std::string::npos && loaded.front().sample.find("{{DST_IP}}") != std::string::npos, "Catalog service did not persist source or destination IP tokens");
 
     service.save(std::filesystem::path{"catalog.json"}, catalog.loaded);
     expect(catalog.saved.size() == catalog.loaded.size(), "Catalog service did not delegate persistence");
@@ -43,8 +47,10 @@ void run_log_catalog_service_tests() {
 
     const auto analysis = service.analyze(catalog.saved.front());
     expect(analysis.privacy_token_count == 1, "Catalog use-case boundary did not expose template analysis");
+    expect(analysis.timestamp_count == 1 && analysis.source_ip_count == 1 && analysis.destination_ip_count == 1, "Catalog use-case boundary lost a persisted runtime token");
     expect(service.privacy_search_terms(analysis).find("email") != std::string::npos, "Catalog use-case boundary did not expose privacy search terms");
     expect(service.sanitize("phone=010-1234-5678").find("{{PHONE}}") != std::string::npos, "Catalog use-case boundary did not sanitize editor input");
+    expect(service.sanitize("timestamp=2025-07-10T07:20:00Z src_ip=10.0.0.10").find("{{TIMESTAMP:ISO8601:") != std::string::npos, "Catalog editor sanitization did not tokenize a timestamp");
 
     expect(service.next_id(catalog.loaded) == "0002", "Catalog service did not create the next numeric sample id");
     catalog.loaded.push_back({"0010", "Later sample", "message=ok", "test", {}});

@@ -70,7 +70,7 @@ struct GeneratorConfig {
     std::string source_ip{"10.0.0.10"};
     std::string destination_ip{"10.0.0.20"};
     TimestampGeneration timestamp_generation;
-    std::uint32_t worker_count{1};
+    TransmissionMode transmission_mode{TransmissionMode::Parallel};
     std::uint64_t target_eps{0};
 };
 

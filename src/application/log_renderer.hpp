@@ -27,16 +27,33 @@ struct TimestampToken {
     std::string zone_suffix;
 };
 
+enum class RenderSegmentKind : std::uint8_t {
+    Literal,
+    Timestamp,
+    Privacy,
+    SourceIp,
+    DestinationIp
+};
+
 struct RenderSegment {
     std::string text;
-    bool is_timestamp{false};
+    RenderSegmentKind kind{RenderSegmentKind::Literal};
     TimestampToken timestamp;
     PrivacyTokenKind privacy{PrivacyTokenKind::None};
+};
+
+struct CompiledLog {
+    std::vector<RenderSegment> segments;
+    std::size_t capacity_hint{0};
+    bool has_timestamp{false};
+    bool has_privacy{false};
+    bool cache_privacy_profiles{false};
 };
 
 class PreparedLog {
 public:
     PreparedLog(std::vector<RenderSegment> segments, std::chrono::seconds offset);
+    PreparedLog(std::shared_ptr<const CompiledLog> compiled, std::string source_ip, std::string destination_ip, std::chrono::seconds offset);
     PreparedLog(const PreparedLog& other);
     PreparedLog& operator=(const PreparedLog& other);
     PreparedLog(PreparedLog&& other) noexcept = default;
@@ -45,19 +62,14 @@ public:
     [[nodiscard]] std::size_t capacity_hint() const noexcept;
 
 private:
-    struct CompiledLog {
-        std::vector<RenderSegment> segments;
-        std::size_t capacity_hint{0};
-        bool has_timestamp{false};
-        bool has_privacy{false};
-        bool cache_privacy_profiles{false};
-    };
-
     void initialize_cache();
     void initialize_random_state() noexcept;
     [[nodiscard]] std::size_t next_profile_index() noexcept;
+    void append_non_timestamp_segment(std::string& output, const RenderSegment& segment, std::size_t profile_index) const;
 
     std::shared_ptr<const CompiledLog> compiled_;
+    std::string source_ip_;
+    std::string destination_ip_;
     std::string cached_;
     std::vector<std::string> timestamp_cache_;
     std::array<std::string, PrivacyAnonymizer::synthetic_profile_count> privacy_cache_;
@@ -72,6 +84,11 @@ private:
 
 class LogRenderer {
 public:
+    [[nodiscard]] static domain::LogTemplate tokenize(domain::LogTemplate item);
+    [[nodiscard]] static std::string tokenize(std::string_view sample);
+    [[nodiscard]] static std::shared_ptr<const CompiledLog> compile(const domain::LogTemplate& item);
+    [[nodiscard]] static PreparedLog bind(std::shared_ptr<const CompiledLog> compiled, std::string source_ip, std::string destination_ip, std::chrono::seconds offset);
+    [[nodiscard]] static LogTemplateAnalysis analyze(const CompiledLog& compiled);
     [[nodiscard]] static LogTemplateAnalysis analyze(const domain::LogTemplate& item);
     [[nodiscard]] static LogTemplateAnalysis analyze(std::string_view sample);
     [[nodiscard]] static std::vector<PreparedLog> prepare(const domain::GeneratorConfig& config);

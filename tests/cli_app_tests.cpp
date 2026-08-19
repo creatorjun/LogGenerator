@@ -22,7 +22,7 @@ void run_cli_app_tests() {
         "--framing", "octet",
         "--sample-id", "0001",
         "--sample-id", "0002",
-        "--workers", "4",
+        "--mode", "sequential",
         "--eps", "1000",
         "--duration", "5",
         "--offset-minutes", "-90",
@@ -35,7 +35,7 @@ void run_cli_app_tests() {
     expect(run.config.endpoint.tls_server_name == "siem.example.test" && !run.config.endpoint.verify_certificate, "CLI TLS options were not parsed");
     expect(run.config.endpoint.framing == domain::StreamFraming::OctetCounting, "CLI stream framing was not parsed");
     expect(run.sample_ids.size() == 2 && !run.all_samples, "CLI repeated sample identifiers were not parsed");
-    expect(run.config.worker_count == 4 && run.config.target_eps == 1000, "CLI worker or EPS option was not parsed");
+    expect(run.config.transmission_mode == domain::TransmissionMode::Sequential && run.config.target_eps == 1000, "CLI transmission mode or EPS option was not parsed");
     expect(run.duration == seconds{5} && run.quiet, "CLI duration or quiet option was not parsed");
     expect(run.config.timestamp_generation.offset.negative, "CLI negative offset sign was not parsed");
     expect(run.config.timestamp_generation.offset.hours == 1 && run.config.timestamp_generation.offset.minutes == 30, "CLI offset magnitude was not parsed");
@@ -52,12 +52,21 @@ void run_cli_app_tests() {
 
     bool invalid_rejected = false;
     try {
-        constexpr std::array<std::string_view, 3> invalid_arguments{"run", "--workers", "0"};
+        constexpr std::array<std::string_view, 3> invalid_arguments{"run", "--mode", "turbo"};
         static_cast<void>(presentation::CliApp::parse_arguments(invalid_arguments));
     } catch (const std::invalid_argument&) {
         invalid_rejected = true;
     }
-    expect(invalid_rejected, "CLI accepted an invalid worker count");
+    expect(invalid_rejected, "CLI accepted an invalid transmission mode");
+
+    bool legacy_workers_rejected = false;
+    try {
+        constexpr std::array<std::string_view, 3> invalid_arguments{"run", "--workers", "4"};
+        static_cast<void>(presentation::CliApp::parse_arguments(invalid_arguments));
+    } catch (const std::invalid_argument&) {
+        legacy_workers_rejected = true;
+    }
+    expect(legacy_workers_rejected, "CLI still accepted direct worker-count control");
 
     bool invalid_sample_id_rejected = false;
     try {

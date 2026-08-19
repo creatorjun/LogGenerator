@@ -199,8 +199,8 @@ std::string_view completion_message(const SendResult result) {
 
 }
 
-StressTestService::StressTestService(const ITransportFactory& transport_factory, const IExecutionRuntime& execution_runtime, ILogger& logger)
-    : transport_factory_(transport_factory), execution_runtime_(execution_runtime), logger_(logger) {
+StressTestService::StressTestService(const ITransportFactory& transport_factory, const IExecutionRuntime& execution_runtime, LogPreparationCache& preparation_cache, ILogger& logger)
+    : transport_factory_(transport_factory), execution_runtime_(execution_runtime), preparation_cache_(preparation_cache), logger_(logger) {
 }
 
 StressTestService::~StressTestService() {
@@ -218,20 +218,24 @@ void StressTestService::start(domain::GeneratorConfig config) {
     if (config.timestamp_generation.mode == domain::TimestampGenerationMode::Range && !config.timestamp_generation.range.valid()) {
         throw std::invalid_argument("A valid timestamp range is required");
     }
-    config.worker_count = std::clamp<std::uint32_t>(config.worker_count, 1, 64);
     if (config.endpoint.protocol == domain::TransportProtocol::File) {
-        config.worker_count = 1;
+        config.transmission_mode = domain::TransmissionMode::Sequential;
         config.endpoint.framing = domain::StreamFraming::Newline;
     }
+    std::uint32_t worker_count = 1;
+    if (config.transmission_mode == domain::TransmissionMode::Parallel && config.endpoint.protocol != domain::TransportProtocol::File) {
+        worker_count = std::clamp(execution_runtime_.optimal_worker_count(config.endpoint.protocol), 1U, 64U);
+    }
     if (config.target_eps > 0) {
-        config.worker_count = static_cast<std::uint32_t>(std::min<std::uint64_t>(config.worker_count, config.target_eps));
+        worker_count = static_cast<std::uint32_t>(std::min<std::uint64_t>(worker_count, config.target_eps));
     }
     const auto endpoint = config.endpoint.protocol == domain::TransportProtocol::File ? std::string{"generated directory"} : std::format("{}:{}", config.endpoint.host, config.endpoint.port);
     logger_.info(std::format(
-        "Stress test starting: protocol={}, endpoint={}, workers={}, templates={}, target_eps={}",
+        "Stress test starting: protocol={}, endpoint={}, mode={}, workers={}, templates={}, target_eps={}",
         domain::protocol_name(config.endpoint.protocol),
         endpoint,
-        config.worker_count,
+        domain::transmission_mode_name(config.transmission_mode),
+        worker_count,
         config.templates.size(),
         config.target_eps == 0 ? std::string("unlimited") : std::to_string(config.target_eps)));
 
@@ -241,6 +245,8 @@ void StressTestService::start(domain::GeneratorConfig config) {
         total_bytes_.store(0, std::memory_order_relaxed);
         send_errors_.store(0, std::memory_order_relaxed);
         connected_workers_.store(0, std::memory_order_relaxed);
+        active_workers_.store(worker_count, std::memory_order_relaxed);
+        transmission_mode_.store(config.transmission_mode, std::memory_order_relaxed);
         {
             std::scoped_lock error_lock(error_mutex_);
             last_error_.clear();
@@ -258,8 +264,8 @@ void StressTestService::start(domain::GeneratorConfig config) {
         }
         state_.store(domain::GeneratorState::Connecting, std::memory_order_release);
         const auto stop_token = stop_source_.get_token();
-        supervisor_ = std::jthread([this, config = std::move(config), stop_token](std::stop_token) mutable {
-            run_supervisor(std::move(config), stop_token);
+        supervisor_ = std::jthread([this, config = std::move(config), worker_count, stop_token](std::stop_token) mutable {
+            run_supervisor(std::move(config), worker_count, stop_token);
         });
     }
 }
@@ -313,6 +319,8 @@ void StressTestService::stop() noexcept {
 domain::TransmissionStats StressTestService::snapshot() {
     domain::TransmissionStats result;
     result.state = state_.load(std::memory_order_acquire);
+    result.transmission_mode = transmission_mode_.load(std::memory_order_relaxed);
+    result.active_workers = active_workers_.load(std::memory_order_relaxed);
     result.total_messages = total_messages_.load(std::memory_order_relaxed);
     result.total_bytes = total_bytes_.load(std::memory_order_relaxed);
     result.send_errors = send_errors_.load(std::memory_order_relaxed);
@@ -357,23 +365,23 @@ domain::TransmissionStats StressTestService::snapshot() {
     return result;
 }
 
-void StressTestService::run_supervisor(domain::GeneratorConfig config, const std::stop_token stop_token) noexcept {
+void StressTestService::run_supervisor(domain::GeneratorConfig config, const std::uint32_t worker_count, const std::stop_token stop_token) noexcept {
     try {
         const auto timer_resolution = execution_runtime_.acquire_high_resolution_timer();
         static_cast<void>(timer_resolution);
-        auto prepared = LogRenderer::prepare(config);
+        auto prepared = preparation_cache_.prepare(config);
         if (stop_token.stop_requested()) {
             state_.store(domain::GeneratorState::Stopped, std::memory_order_release);
             return;
         }
 
         std::vector<std::jthread> workers;
-        workers.reserve(config.worker_count);
+        workers.reserve(worker_count);
         auto round_robin = std::make_shared<RoundRobinCursor>(prepared.size());
-        for (std::uint32_t worker_index = 0; worker_index < config.worker_count; ++worker_index) {
+        for (std::uint32_t worker_index = 0; worker_index < worker_count; ++worker_index) {
             auto worker_logs = prepared;
-            const auto quota = quota_for_worker(config.target_eps, worker_index, config.worker_count);
-            workers.emplace_back([this, endpoint = config.endpoint, timestamp_generation = config.timestamp_generation, logs = std::move(worker_logs), round_robin, quota, worker_index, worker_count = config.worker_count](const std::stop_token worker_stop_token) mutable {
+            const auto quota = quota_for_worker(config.target_eps, worker_index, worker_count);
+            workers.emplace_back([this, endpoint = config.endpoint, timestamp_generation = config.timestamp_generation, logs = std::move(worker_logs), round_robin, quota, worker_index, worker_count](const std::stop_token worker_stop_token) mutable {
                 run_worker(std::move(endpoint), timestamp_generation, std::move(logs), round_robin, quota, worker_index, worker_count, worker_stop_token);
             });
         }

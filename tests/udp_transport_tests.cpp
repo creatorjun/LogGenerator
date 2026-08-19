@@ -3,6 +3,11 @@
 #include "domain/generator_config.hpp"
 #include "infrastructure/socket_support.hpp"
 #include "infrastructure/udp_transport.hpp"
+#ifdef _WIN32
+#include "infrastructure/windows_execution_runtime.hpp"
+#else
+#include "infrastructure/posix_execution_runtime.hpp"
+#endif
 
 #ifdef _WIN32
 #include <WS2tcpip.h>
@@ -13,6 +18,7 @@
 #endif
 
 #include <array>
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <stdexcept>
@@ -94,6 +100,21 @@ void configure_receive_timeout(const NativeSocket socket) {
 }
 
 void run_udp_transport_tests() {
+#ifdef _WIN32
+    infrastructure::WindowsExecutionRuntime execution_runtime;
+#else
+    infrastructure::PosixExecutionRuntime execution_runtime;
+#endif
+    const auto detected_processors = std::max(1U, std::thread::hardware_concurrency());
+    expect(execution_runtime.optimal_worker_count(domain::TransportProtocol::File) == 1, "FILE automatic worker policy must remain sequential");
+    const auto udp_workers = execution_runtime.optimal_worker_count(domain::TransportProtocol::Udp);
+    expect(udp_workers >= 1 && udp_workers <= std::min(8U, detected_processors), "UDP automatic worker policy exceeded its processor-aware bounds");
+#ifdef __APPLE__
+    expect(udp_workers == std::min(2U, detected_processors), "macOS UDP automatic worker policy must use the profiled two-sender optimum");
+#endif
+    const auto stream_workers = execution_runtime.optimal_worker_count(domain::TransportProtocol::Tcp);
+    expect(stream_workers >= 1 && stream_workers <= std::min(16U, detected_processors), "Stream automatic worker policy exceeded its processor-aware bounds");
+
     infrastructure::SocketRuntime runtime;
 
     auto receiver = bind_loopback_udp_socket();

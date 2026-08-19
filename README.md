@@ -31,6 +31,7 @@ LogGenerator/
 │  │  ├─ ports/
 │  │  ├─ use_cases/
 │  │  ├─ log_catalog_service.cpp
+│  │  ├─ log_preparation_cache.cpp
 │  │  ├─ log_renderer.cpp
 │  │  ├─ privacy_anonymizer.cpp
 │  │  └─ stress_test_service.cpp
@@ -65,6 +66,7 @@ LogGenerator/
    ├─ file_transport_tests.cpp
    ├─ json_log_catalog_tests.cpp
    ├─ log_catalog_service_tests.cpp
+   ├─ log_preparation_cache_tests.cpp
    ├─ log_renderer_tests.cpp
    ├─ responsive_layout_tests.cpp
    ├─ stress_test_service_tests.cpp
@@ -215,12 +217,14 @@ bash scripts/build.sh Release --headless
 4. TLS 인증서 이름이 대상 Host와 다르면 TLS 서버 이름을 입력합니다.
 5. 샘플을 검색하거나 전체 순환·단일 샘플 생성을 선택합니다.
 6. `src_ip`, `dst_ip`, 날짜 범위 또는 현재 시각 오프셋을 설정합니다.
-7. Worker 수와 목표 EPS를 설정합니다. 목표 EPS가 0이면 최대 처리량 모드입니다.
+7. 순차 전송 또는 병렬 전송을 선택하고 목표 EPS를 설정합니다. 목표 EPS가 0이면 최대 처리량 모드입니다.
 8. `전송 시작`을 누르고 현재 EPS, 평균 EPS, 총 로그 수, 총 바이트를 확인합니다.
 
 FILE 방식은 네트워크 객체를 생성하지 않으며 실행 파일 옆 `generated` 디렉터리에 로그 이벤트 하나당 파일 하나를 기록합니다. 총 바이트, 파일 수, 실행 시간 제한을 0으로 두면 해당 제한은 비활성화됩니다.
 
 UDP 통계는 원격 수신 확인이 아닌 로컬 소켓의 전송 완료를 기준으로 집계합니다. 수신 포트가 없을 때 나중에 도착하는 ICMP Port Unreachable은 UDP 송신을 중단시키지 않으며, 권한 거부·라우팅 실패·버퍼 오류 등 실제 로컬 송신 오류는 계속 실패로 보고합니다.
+
+순차 전송은 항상 Worker 1개를 사용합니다. 병렬 전송은 Worker 수를 직접 입력받지 않고 실행 시 OS, 프로토콜 및 CPU 수에 따라 자동 결정합니다. macOS UDP는 커널 송신 경합 실측 결과에 따라 Worker 2개를 사용하고, Windows/Linux UDP는 CPU 수에 따라 2~8개, TCP/TLS는 UI 응답성을 위한 코어를 남기면서 최대 16개를 사용합니다. FILE은 순차 전송으로 고정됩니다.
 
 ## CLI 사용 방법
 
@@ -261,6 +265,7 @@ FILE 로그 100개를 생성합니다.
   --protocol udp `
   --host 192.0.2.10 `
   --port 514 `
+  --mode parallel `
   --eps 1000 `
   --duration 60
 ```
@@ -304,11 +309,12 @@ FILE 로그 100개를 생성합니다.
   --protocol udp \
   --host 192.0.2.10 \
   --port 514 \
+  --mode parallel \
   --eps 1000 \
   --duration 60
 ```
 
-샘플 ID는 `0001`처럼 숫자로만 지정합니다. 전체 샘플은 `--all`, 일부 샘플은 반복 가능한 `--sample-id`로 선택하며 두 옵션은 함께 사용할 수 없습니다. 실행 시간을 생략하거나 0으로 설정하면 `Ctrl+C` 또는 FILE 제한에 도달할 때까지 실행합니다. 여러 Worker는 하나의 전역 Round-Robin 커서를 공유하므로 샘플 선택이 Worker별로 분리되지 않습니다. TCP/TLS는 `--framing newline|octet`, TLS는 `--tls-server-name`을 지원합니다. 전체 옵션은 `--help`에서 확인할 수 있습니다.
+샘플 ID는 `0001`처럼 숫자로만 지정합니다. 전체 샘플은 `--all`, 일부 샘플은 반복 가능한 `--sample-id`로 선택하며 두 옵션은 함께 사용할 수 없습니다. 실행 시간을 생략하거나 0으로 설정하면 `Ctrl+C` 또는 FILE 제한에 도달할 때까지 실행합니다. 전송 방식은 `--mode sequential|parallel`로 선택하며 병렬 모드의 Worker 수는 자동 결정됩니다. 병렬 Worker는 하나의 전역 Round-Robin 커서를 공유하므로 샘플 선택이 Worker별로 분리되지 않습니다. TCP/TLS는 `--framing newline|octet`, TLS는 `--tls-server-name`을 지원합니다. 전체 옵션은 `--help`에서 확인할 수 있습니다.
 
 ## 데이터와 로그
 
@@ -333,6 +339,10 @@ generated/yyyyMMdd_HHmmss_SSS_0002.log
 카탈로그 저장 시 필드명과 보조 패턴을 기준으로 사람, 점포, 계정, 사번, 부서, 조직, 이메일, 전화번호, 주소, IP, MAC, 호스트, 식별자, 비밀값, 파일 경로를 토큰으로 치환합니다. 생성 시 50개의 사전 생성 합성 프로필 중 하나를 이벤트마다 선택해 관련 필드 간 일관성을 유지합니다.
 
 `{{SRC_IP}}`와 `{{DST_IP}}`는 UI 또는 CLI 입력값으로 치환되며 일반 개인정보 IP와 구분됩니다. 이메일, 전화번호, 주민등록번호 형태, MAC 주소, Windows 사용자 경로는 필드명이 없어도 보조 패턴으로 처리됩니다.
+
+샘플 편집 중에는 120ms 디바운스 뒤 전용 백그라운드 스레드가 샘플과 테스트 케이스 값을 자동 토큰화하고, 변경된 최신 버전만 UI에 반영합니다. 편집 창의 변환 미리보기와 `캐시 준비 완료` 상태를 확인한 뒤 저장할 수 있습니다. 원본 날짜는 `{{TIMESTAMP:포맷:원본값}}` 형태의 자체 설명 토큰으로 저장되므로 JSON을 다시 불러와도 날짜 포맷과 오프셋 기능이 유지됩니다.
+
+토큰화와 동시에 불변 렌더 청사진을 미리 컴파일합니다. 원본·토큰화 샘플은 동일한 캐시 항목을 공유하며, 전송 또는 FILE 생성을 시작할 때는 정규식 분석을 다시 수행하지 않고 실행 시각 오프셋과 `src_ip`/`dst_ip`만 바인딩합니다. 각 worker는 이 청사진을 공유하고 worker별 렌더 캐시만 가지므로 병렬 실행에서도 컴파일 비용과 잠금 경합이 hot path에 들어가지 않습니다.
 
 ## 아키텍처 검증
 

@@ -136,6 +136,8 @@ std::string_view state_name(const domain::GeneratorState state) noexcept {
 void print_stats(const domain::TransmissionStats& stats, const bool final) {
     std::cout << (final ? "result" : "status")
               << " state=" << state_name(stats.state)
+              << " mode=" << domain::transmission_mode_name(stats.transmission_mode)
+              << " workers=" << stats.active_workers
               << " messages=" << stats.total_messages
               << " bytes=" << stats.total_bytes
               << " errors=" << stats.send_errors
@@ -262,10 +264,14 @@ CliOptions CliApp::parse_arguments(const std::span<const std::string_view> argum
             options.config.source_ip = value();
         } else if (option == "--destination-ip") {
             options.config.destination_ip = value();
-        } else if (option == "--workers") {
-            options.config.worker_count = parse_unsigned<std::uint32_t>(value(), option);
-            if (options.config.worker_count < 1 || options.config.worker_count > 64) {
-                throw std::invalid_argument("--workers 값은 1부터 64까지 허용됩니다");
+        } else if (option == "--mode") {
+            const auto mode = lowercase(value());
+            if (mode == "sequential") {
+                options.config.transmission_mode = domain::TransmissionMode::Sequential;
+            } else if (mode == "parallel") {
+                options.config.transmission_mode = domain::TransmissionMode::Parallel;
+            } else {
+                throw std::invalid_argument("--mode 값은 sequential 또는 parallel이어야 합니다");
             }
         } else if (option == "--eps") {
             options.config.target_eps = parse_unsigned<std::uint64_t>(value(), option);
@@ -359,7 +365,8 @@ void CliApp::print_help(const std::string_view executable_name) {
         << "  --all                         전체 샘플을 전역 Round-Robin으로 순환\n"
         << "  --sample-id ID                반복 지정 가능, --all과 동시 사용 불가\n"
         << "  --host HOST --port PORT       네트워크 목적지\n"
-        << "  --workers N --eps N           Worker 수와 목표 EPS, EPS 0은 무제한\n"
+        << "  --mode sequential|parallel    순차 또는 자동 최적화 병렬 전송, 기본값: parallel\n"
+        << "  --eps N                       목표 EPS, 0은 무제한\n"
         << "  --duration SECONDS            실행 시간, 0은 Ctrl+C까지 실행\n"
         << "  --output-dir PATH             FILE 출력 디렉터리\n"
         << "  --file-max-count N            FILE 생성 개수 제한\n"
@@ -375,7 +382,7 @@ void CliApp::print_help(const std::string_view executable_name) {
         << "예시:\n"
         << "  " << executable_name << " list\n"
         << "  " << executable_name << " run --protocol file --sample-id 0001 --file-max-count 100 --output-dir ./generated\n"
-        << "  " << executable_name << " run --all --protocol udp --host 192.0.2.10 --port 514 --eps 1000 --duration 60\n";
+        << "  " << executable_name << " run --all --protocol udp --host 192.0.2.10 --port 514 --mode parallel --eps 1000 --duration 60\n";
 }
 
 int CliApp::list_catalog(const CliOptions& options) {

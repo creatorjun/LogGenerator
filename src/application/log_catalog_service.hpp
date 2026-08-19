@@ -2,6 +2,7 @@
 #pragma once
 
 #include "application/ports/log_catalog.hpp"
+#include "application/log_preparation_cache.hpp"
 #include "application/use_cases/log_catalog.hpp"
 
 #include <filesystem>
@@ -14,17 +15,19 @@ namespace loggen::application {
 
 class LogCatalogService final : public ILogCatalogUseCase {
 public:
-    explicit LogCatalogService(ILogCatalog& catalog) noexcept;
+    LogCatalogService(ILogCatalog& catalog, LogPreparationCache& preparation_cache) noexcept;
     [[nodiscard]] std::vector<domain::LogTemplate> load(const std::filesystem::path& file) const override;
     void save(const std::filesystem::path& file, std::span<const domain::LogTemplate> items) const override;
     [[nodiscard]] std::string next_id(std::span<const domain::LogTemplate> items) const override;
     [[nodiscard]] LogTemplateAnalysis analyze(const domain::LogTemplate& item) const override;
     [[nodiscard]] LogTemplateAnalysis analyze(std::string_view sample) const override;
     [[nodiscard]] std::string sanitize(std::string_view sample) const override;
+    [[nodiscard]] TokenizedLogTemplate tokenize(domain::LogTemplate item) const override;
     [[nodiscard]] std::string privacy_search_terms(const LogTemplateAnalysis& analysis) const override;
 
 private:
     ILogCatalog& catalog_;
+    LogPreparationCache& preparation_cache_;
 };
 
 }

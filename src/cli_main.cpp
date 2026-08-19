@@ -1,5 +1,6 @@
 // src/cli_main.cpp
 #include "application/log_catalog_service.hpp"
+#include "application/log_preparation_cache.hpp"
 #include "application/stress_test_service.hpp"
 #include "infrastructure/async_file_logger.hpp"
 #include "infrastructure/json_log_catalog.hpp"
@@ -110,7 +111,8 @@ int main(const int argument_count, char** argument_values) {
         const auto application_directory = executable_directory();
         loggen::infrastructure::AsyncFileLogger logger{application_directory / "logs", "LogGeneratorCli"};
         loggen::infrastructure::JsonLogCatalog catalog;
-        loggen::application::LogCatalogService catalog_service{catalog};
+        loggen::application::LogPreparationCache preparation_cache;
+        loggen::application::LogCatalogService catalog_service{catalog, preparation_cache};
         const auto generated_directory = application_directory / "generated";
         loggen::infrastructure::TransportFactory transport_factory{generated_directory};
 #ifdef _WIN32
@@ -118,7 +120,7 @@ int main(const int argument_count, char** argument_values) {
 #else
         loggen::infrastructure::PosixExecutionRuntime execution_runtime;
 #endif
-        loggen::application::StressTestService stress_service{transport_factory, execution_runtime, logger};
+        loggen::application::StressTestService stress_service{transport_factory, execution_runtime, preparation_cache, logger};
         auto catalog_file = application_directory / "Sample Logs" / "sample_logs.json";
         if (!std::filesystem::exists(catalog_file)) {
             catalog_file = std::filesystem::current_path() / "Sample Logs" / "sample_logs.json";
