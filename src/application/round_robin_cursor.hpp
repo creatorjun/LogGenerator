@@ -33,7 +33,7 @@ public:
 
 private:
     std::size_t item_count_{0};
-    alignas(64) std::atomic<std::size_t> next_{0};
+    std::atomic<std::size_t> next_{0};
 };
 
 }

@@ -11,6 +11,7 @@ execute_process(
     RESULT_VARIABLE cli_result
     OUTPUT_VARIABLE cli_output
     ERROR_VARIABLE cli_error
+    ENCODING UTF-8
     TIMEOUT 15
 )
 
@@ -40,6 +41,7 @@ execute_process(
     RESULT_VARIABLE all_result
     OUTPUT_VARIABLE all_output
     ERROR_VARIABLE all_error
+    ENCODING UTF-8
     TIMEOUT 15
 )
 
