@@ -1,7 +1,7 @@
 <!-- README.md -->
 # LogGenerator
 
-Windows, Linux 및 macOS 64비트에서 실행되는 C++23 기반 SIEM 로그 생성·전송기입니다. 데스크톱에서는 Dear ImGui 반응형 UI를 사용하고, 디스플레이 서버가 없는 Linux에서는 GUI 의존성이 전혀 없는 CLI 모드로 UDP, TCP, TLS 또는 FILE 전송을 실행할 수 있습니다. macOS Apple Silicon에서는 Cocoa와 OpenGL을 사용하는 arm64 GUI 및 CLI를 빌드할 수 있습니다.
+Windows, Linux 및 macOS 64비트에서 실행되는 C++23 기반 SIEM 로그 생성·전송기입니다. Linux의 기본 빌드 기준은 Oracle Linux 8.10과 9.8입니다. 데스크톱에서는 Dear ImGui 반응형 UI를 사용하고, 디스플레이 서버가 없는 Linux에서는 GUI 의존성이 전혀 없는 CLI 모드로 UDP, TCP, TLS 또는 FILE 전송을 실행할 수 있습니다. macOS Apple Silicon에서는 Cocoa와 OpenGL을 사용하는 arm64 GUI 및 CLI를 빌드할 수 있습니다.
 
 ## 프로젝트 구조
 
@@ -77,7 +77,7 @@ LogGenerator/
 
 공통 Domain과 Application 코드는 운영체제 API를 사용하지 않습니다. `src/main.cpp`와 `src/cli_main.cpp`가 각각 GUI와 CLI Composition Root로서 플랫폼별 Infrastructure와 Presentation 어댑터를 선택합니다.
 
-| 구분 | Windows | Linux | macOS Apple Silicon |
+| 구분 | Windows | Oracle Linux 8.10/9.8 | macOS Apple Silicon |
 |---|---|---|---|
 | 창·입력 | Win32 | GLFW 3.4 / X11 | GLFW 3.4 / Cocoa |
 | 렌더링 | DirectX 11 | OpenGL 3.2 | Apple OpenGL 3.2 |
@@ -98,28 +98,39 @@ Linux UI는 X11 또는 Wayland 데스크톱의 XWayland에서 실행됩니다. `
 - Visual Studio 2026 이상
 - Desktop development with C++ 워크로드
 
-### Linux GUI
+### Oracle Linux 8.10/9.8 GUI
 
-Ubuntu 24.04 기준 의존성 설치 명령은 다음과 같습니다.
-
-```bash
-sudo apt update
-sudo apt install -y \
-  build-essential cmake git pkg-config \
-  libgl1-mesa-dev libx11-dev libxrandr-dev libxinerama-dev \
-  libxcursor-dev libxi-dev libssl-dev fonts-noto-cjk
-```
-
-`fonts-noto-cjk`가 없으면 기본 글꼴로 실행되지만 한글 글리프가 표시되지 않을 수 있습니다.
-
-### Linux 헤드리스
-
-GUI가 없는 Ubuntu 24.04 서버에서는 다음 의존성만 필요합니다. X11, OpenGL, GLFW 패키지는 설치하지 않습니다.
+Oracle Linux 8.10과 9.8의 AppStream 저장소를 기준으로 합니다. `/etc/os-release`에서 실제 버전을 확인한 뒤 root 권한으로 다음 패키지를 설치합니다. 일반 사용자 셸에서는 `dnf` 앞에 `sudo`를 붙입니다.
 
 ```bash
-sudo apt update
-sudo apt install -y build-essential cmake git pkg-config libssl-dev
+cat /etc/os-release
+dnf install -y \
+  cmake git make pkgconf-pkg-config openssl-devel \
+  gcc-toolset-15-gcc gcc-toolset-15-gcc-c++ \
+  mesa-libGL-devel libX11-devel libXrandr-devel libXinerama-devel \
+  libXcursor-devel libXi-devel
 ```
+
+Oracle Linux 8의 기본 GCC 8.5와 Oracle Linux 9의 기본 GCC 11은 이 프로젝트의 C++23 `<format>` 구현 기준을 충족하지 않으므로 GCC Toolset 15를 사용합니다. `scripts/build.sh`는 Oracle Linux 8 또는 9를 감지하면 `/opt/rh/gcc-toolset-15/root/usr/bin/gcc`와 `g++`를 자동 선택합니다. `CC`와 `CXX`를 직접 지정하는 경우에는 두 값을 모두 지정해야 합니다.
+
+```bash
+cmake --version
+/opt/rh/gcc-toolset-15/root/usr/bin/g++ --version
+```
+
+한글 글꼴이 없으면 기본 벡터 글꼴로 실행되지만 일부 한글 글리프가 표시되지 않을 수 있습니다.
+
+### Oracle Linux 8.10/9.8 헤드리스
+
+GUI가 없는 서버에서는 다음 의존성만 필요합니다. X11, OpenGL, GLFW 패키지는 설치하지 않습니다.
+
+```bash
+dnf install -y \
+  cmake git make pkgconf-pkg-config openssl-devel \
+  gcc-toolset-15-gcc gcc-toolset-15-gcc-c++
+```
+
+빌드 도구가 없는 실행 전용 서버에는 `libstdc++`, `openssl-libs`, `zlib`, `ca-certificates`만 설치하면 됩니다.
 
 Python 런타임은 사용하지 않으므로 `requirements.txt`에는 설치할 Python 패키지가 없습니다.
 
@@ -158,10 +169,10 @@ CLI만 간단하게 빌드하려면 다음 명령을 실행합니다.
 
 Debug 빌드는 `.\scripts\build-cli-windows.cmd Debug`으로 실행합니다. CLI 전용 실행 파일은 `build-windows-cli\bin\Release\LogGenerator.exe`에 생성됩니다.
 
-### Linux GUI
+### Oracle Linux 8.10/9.8 GUI
 
 ```bash
-bash scripts/build.sh Release --gui
+bash scripts/build.sh Release --gui --clean
 ```
 
 실행 파일은 `build-linux/bin/LogGenerator`에 생성됩니다.
@@ -173,22 +184,26 @@ bash scripts/build.sh Release --gui
 스크립트는 구성, 병렬 빌드, 전체 CTest를 순서대로 실행합니다. 직접 실행하려면 다음 명령을 사용할 수 있습니다.
 
 ```bash
-cmake -S . -B build-linux -DCMAKE_BUILD_TYPE=Release -DLOGGEN_BUILD_GUI=ON
+export CC=/opt/rh/gcc-toolset-15/root/usr/bin/gcc
+export CXX=/opt/rh/gcc-toolset-15/root/usr/bin/g++
+cmake --fresh -S . -B build-linux -DCMAKE_BUILD_TYPE=Release -DLOGGEN_BUILD_GUI=ON -DCMAKE_C_COMPILER="$CC" -DCMAKE_CXX_COMPILER="$CXX"
 cmake --build build-linux --parallel
 ctest --test-dir build-linux --output-on-failure
 ```
 
-### Linux 헤드리스
+### Oracle Linux 8.10/9.8 헤드리스
 
 ```bash
-bash scripts/build-cli-linux.sh
+bash scripts/build.sh Release --headless --clean
 ./build-linux-headless/bin/LogGenerator --help
 ```
 
-Debug 빌드는 `bash scripts/build-cli-linux.sh Debug`으로 실행합니다. 헤드리스 빌드는 `build-linux-headless/bin/LogGenerator`를 CLI 전용 실행 파일로 만듭니다. 기존 통합 스크립트의 `bash scripts/build.sh Release --headless` 명령도 계속 사용할 수 있습니다. CMake를 직접 실행하려면 다음 명령을 사용합니다.
+Debug 빌드는 `bash scripts/build-cli-linux.sh Debug`으로 실행합니다. 헤드리스 빌드는 `build-linux-headless/bin/LogGenerator`를 CLI 전용 실행 파일로 만듭니다. `bash scripts/build-cli-linux.sh` 명령도 계속 사용할 수 있습니다. CMake를 직접 실행하려면 다음 명령을 사용합니다.
 
 ```bash
-cmake -S . -B build-linux-headless -DCMAKE_BUILD_TYPE=Release -DLOGGEN_BUILD_GUI=OFF
+export CC=/opt/rh/gcc-toolset-15/root/usr/bin/gcc
+export CXX=/opt/rh/gcc-toolset-15/root/usr/bin/g++
+cmake --fresh -S . -B build-linux-headless -DCMAKE_BUILD_TYPE=Release -DLOGGEN_BUILD_GUI=OFF -DCMAKE_C_COMPILER="$CC" -DCMAKE_CXX_COMPILER="$CXX"
 cmake --build build-linux-headless --parallel
 ctest --test-dir build-linux-headless --output-on-failure
 ```
