@@ -7,13 +7,16 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <format>
 #include <iostream>
 #include <memory>
+#include <string>
 #include <string_view>
 #include <thread>
+#include <utility>
 
 namespace {
 
@@ -44,6 +47,10 @@ public:
 
 class NullTransport final : public loggen::application::ILogTransport {
 public:
+    explicit NullTransport(const bool datagram) noexcept
+        : datagram_(datagram) {
+    }
+
     void connect(const loggen::domain::EndpointConfig&) override {
     }
 
@@ -53,18 +60,26 @@ public:
     }
 
     [[nodiscard]] bool is_datagram() const noexcept override {
-        return false;
+        return datagram_;
     }
 
 private:
+    bool datagram_{false};
     std::uint64_t bytes_{0};
 };
 
 class NullTransportFactory final : public loggen::application::ITransportFactory {
 public:
-    [[nodiscard]] std::unique_ptr<loggen::application::ILogTransport> create(loggen::domain::TransportProtocol) const override {
-        return std::make_unique<NullTransport>();
+    explicit NullTransportFactory(const bool datagram) noexcept
+        : datagram_(datagram) {
     }
+
+    [[nodiscard]] std::unique_ptr<loggen::application::ILogTransport> create(loggen::domain::TransportProtocol) const override {
+        return std::make_unique<NullTransport>(datagram_);
+    }
+
+private:
+    bool datagram_{false};
 };
 
 loggen::domain::LogTemplate benchmark_template() {
@@ -93,14 +108,19 @@ double renderer_benchmark(const std::uint64_t iterations, const bool advance_tim
     return static_cast<double>(iterations) / elapsed;
 }
 
-double service_benchmark(const std::uint32_t workers, const std::chrono::milliseconds duration) {
-    NullTransportFactory transport_factory;
+double service_benchmark(const std::uint32_t workers, const std::size_t template_count, const bool datagram, const std::chrono::milliseconds duration) {
+    NullTransportFactory transport_factory{datagram};
     BenchmarkRuntime runtime;
     NullLogger logger;
     loggen::application::StressTestService service{transport_factory, runtime, logger};
     loggen::domain::GeneratorConfig config;
-    config.endpoint.protocol = loggen::domain::TransportProtocol::Tcp;
-    config.templates.push_back(benchmark_template());
+    config.endpoint.protocol = datagram ? loggen::domain::TransportProtocol::Udp : loggen::domain::TransportProtocol::Tcp;
+    config.templates.reserve(template_count);
+    for (std::size_t index = 0; index < template_count; ++index) {
+        auto item = benchmark_template();
+        item.id = std::to_string(index + 1);
+        config.templates.push_back(std::move(item));
+    }
     config.worker_count = workers;
     config.target_eps = 0;
     service.start(std::move(config));
@@ -119,12 +139,16 @@ int main(int argument_count, char** argument_values) {
     const auto cached_eps = renderer_benchmark(iterations, false, checksum);
     const auto calendar_iterations = std::max<std::uint64_t>(100'000, iterations / 20);
     const auto calendar_eps = renderer_benchmark(calendar_iterations, true, checksum);
-    const auto single_worker_eps = service_benchmark(1, 1500ms);
-    const auto multi_worker_eps = service_benchmark(maximum_workers, 1500ms);
+    const auto single_worker_eps = service_benchmark(1, 1, false, 1500ms);
+    const auto multi_worker_eps = service_benchmark(maximum_workers, 1, false, 1500ms);
+    const auto catalog_stream_eps = service_benchmark(maximum_workers, 60, false, 1500ms);
+    const auto catalog_datagram_eps = service_benchmark(maximum_workers, 60, true, 1500ms);
     std::cout
         << std::format("renderer_cached_eps={:.0f}\n", cached_eps)
         << std::format("renderer_calendar_eps={:.0f}\n", calendar_eps)
         << std::format("service_1_worker_eps={:.0f}\n", single_worker_eps)
         << std::format("service_{}_workers_eps={:.0f}\n", maximum_workers, multi_worker_eps)
+        << std::format("service_{}_workers_60_templates_stream_eps={:.0f}\n", maximum_workers, catalog_stream_eps)
+        << std::format("service_{}_workers_60_templates_datagram_eps={:.0f}\n", maximum_workers, catalog_datagram_eps)
         << "checksum=" << checksum << '\n';
 }

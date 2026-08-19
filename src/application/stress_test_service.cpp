@@ -108,6 +108,30 @@ private:
     CachedSystemClock system_clock_;
 };
 
+class WorkerRoundRobinCursor {
+public:
+    WorkerRoundRobinCursor(std::shared_ptr<RoundRobinCursor> shared, const std::size_t reservation_size) noexcept
+        : shared_(std::move(shared)), reservation_size_(reservation_size) {
+    }
+
+    [[nodiscard]] std::size_t next() noexcept {
+        if (remaining_ == 0) {
+            current_ = shared_->reserve(reservation_size_);
+            remaining_ = reservation_size_;
+        }
+        const auto result = current_;
+        current_ = current_ + 1 == shared_->item_count() ? 0 : current_ + 1;
+        --remaining_;
+        return result;
+    }
+
+private:
+    std::shared_ptr<RoundRobinCursor> shared_;
+    std::size_t reservation_size_{1};
+    std::size_t current_{0};
+    std::size_t remaining_{0};
+};
+
 void append_frame(std::string& batch, const std::string_view payload, const domain::StreamFraming framing) {
     if (framing == domain::StreamFraming::OctetCounting) {
         char size_buffer[32]{};
@@ -356,9 +380,7 @@ void StressTestService::run_supervisor(domain::GeneratorConfig config, const std
         std::mutex stop_wait_mutex;
         std::condition_variable stop_wait_condition;
         std::stop_callback stop_callback{stop_token, [&stop_wait_mutex, &stop_wait_condition] {
-            {
-                const std::scoped_lock lock(stop_wait_mutex);
-            }
+            const std::scoped_lock lock(stop_wait_mutex);
             stop_wait_condition.notify_all();
         }};
         std::unique_lock stop_wait_lock(stop_wait_mutex);
@@ -414,6 +436,7 @@ void StressTestService::run_worker(domain::EndpointConfig endpoint, const domain
 
         RatePacer pacer{execution_runtime_, quota};
         TimestampCursor clock{timestamp_generation, worker_index, worker_count, quota == 0 || quota >= 10'000};
+        WorkerRoundRobinCursor selection{std::move(round_robin), quota == 0 || quota >= 10'000 ? 256U : 1U};
         const bool calendar_time = clock.calendar_time();
         if (transport->is_datagram()) {
             while (!stop_token.stop_requested()) {
@@ -421,7 +444,7 @@ void StressTestService::run_worker(domain::EndpointConfig endpoint, const domain
                 if (stop_token.stop_requested()) {
                     break;
                 }
-                const auto payload = logs[round_robin->next()].render(clock.next(), calendar_time);
+                const auto payload = logs[selection.next()].render(clock.next(), calendar_time);
                 const auto send_result = transport->send(payload);
                 if (send_result != SendResult::Sent) {
                     flush();
@@ -445,7 +468,7 @@ void StressTestService::run_worker(domain::EndpointConfig endpoint, const domain
                 const auto batch_timestamp = calendar_time ? std::chrono::system_clock::time_point{} : clock.next();
                 while (events < event_limit && batch.size() < batch_limit) {
                     const auto timestamp = calendar_time ? clock.next() : batch_timestamp;
-                    const auto payload = logs[round_robin->next()].render(timestamp, calendar_time);
+                    const auto payload = logs[selection.next()].render(timestamp, calendar_time);
                     append_frame(batch, payload, endpoint.framing);
                     ++events;
                 }

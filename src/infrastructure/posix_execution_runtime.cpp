@@ -1,6 +1,10 @@
 // src/infrastructure/posix_execution_runtime.cpp
 #include "infrastructure/posix_execution_runtime.hpp"
 
+#ifdef __APPLE__
+#include <pthread/qos.h>
+#endif
+
 #include <memory>
 #include <thread>
 
@@ -17,6 +21,9 @@ std::unique_ptr<application::IExecutionLease> PosixExecutionRuntime::acquire_hig
 }
 
 void PosixExecutionRuntime::configure_current_worker() const noexcept {
+#ifdef __APPLE__
+    static_cast<void>(pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED, 0));
+#endif
 }
 
 void PosixExecutionRuntime::pause_current_thread() const noexcept {

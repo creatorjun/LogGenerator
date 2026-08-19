@@ -9,6 +9,7 @@ Windows, Linux 및 macOS 64비트에서 실행되는 C++23 기반 SIEM 로그 �
 LogGenerator/
 ├─ CMakeLists.txt
 ├─ BUILD.md
+├─ PERFORMANCE.md
 ├─ README.md
 ├─ requirements.txt
 ├─ resources/
@@ -131,6 +132,7 @@ brew install cmake openssl@3
 ```
 
 운영체제별 캐시 없는 원샷 빌드 명령은 [`BUILD.md`](BUILD.md)를 참고합니다.
+성능 벤치마크 실행 방법과 M4 측정 결과는 [`PERFORMANCE.md`](PERFORMANCE.md)를 참고합니다.
 
 ## 빌드와 테스트
 

@@ -14,6 +14,7 @@
 #include <GLFW/glfw3.h>
 #ifdef __APPLE__
 #include <OpenGL/gl3.h>
+#include <pthread/qos.h>
 #else
 #include <GL/gl.h>
 #endif
@@ -31,8 +32,10 @@
 #include <cstdio>
 #include <format>
 #include <limits>
+#include <span>
 #include <stdexcept>
 #include <string_view>
+#include <system_error>
 
 #ifdef _WIN32
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND window, UINT message, WPARAM word_parameter, LPARAM long_parameter);
@@ -40,6 +43,45 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND window, UINT m
 
 namespace loggen::presentation {
 namespace {
+
+std::string path_to_utf8(const std::filesystem::path& path);
+
+struct FontCandidate {
+    std::filesystem::path path;
+    unsigned int face_index{0};
+};
+
+constexpr ImWchar korean_ui_glyph_ranges[]{
+    0x0020, 0x00FF, // Basic Latin + Latin supplement
+    0x2000, 0x206F, // General punctuation
+    0x25CF, 0x25CF, // Status indicator
+    0x3131, 0x3163, // Hangul compatibility jamo
+    0xAC00, 0xD7A3, // Hangul syllables
+    0xFFFD, 0xFFFD,
+    0};
+
+ImFont* load_first_available_font(
+    ImFontAtlas& atlas,
+    const std::span<const FontCandidate> candidates,
+    const float size,
+    const ImWchar* glyph_ranges,
+    std::filesystem::path& loaded_path,
+    unsigned int& loaded_face_index) {
+    for (const auto& candidate : candidates) {
+        std::error_code error;
+        if (!std::filesystem::is_regular_file(candidate.path, error)) {
+            continue;
+        }
+        ImFontConfig config{};
+        config.FontNo = candidate.face_index;
+        if (ImFont* font = atlas.AddFontFromFileTTF(path_to_utf8(candidate.path).c_str(), size, &config, glyph_ranges); font != nullptr) {
+            loaded_path = candidate.path;
+            loaded_face_index = candidate.face_index;
+            return font;
+        }
+    }
+    return nullptr;
+}
 
 bool is_active(const domain::GeneratorState state) {
     return state == domain::GeneratorState::Connecting || state == domain::GeneratorState::Running || state == domain::GeneratorState::Stopping;
@@ -104,9 +146,17 @@ std::string format_bytes(const std::uint64_t bytes) {
 }
 
 void metric_card(const char* id, const char* label, const std::string& value, const ImVec4 accent, ImFont* value_font, const float value_scale) {
-    const float height = ImGui::GetTextLineHeightWithSpacing() * 3.4F;
+    const float height = ImGui::GetTextLineHeightWithSpacing() * 3.5F;
     ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(1.0F, 1.0F, 1.0F, 1.0F));
     ImGui::BeginChild(id, ImVec2(0.0F, height), ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding);
+    const ImVec2 card_min = ImGui::GetWindowPos();
+    const ImVec2 card_max{card_min.x + ImGui::GetWindowSize().x, card_min.y + ImGui::GetWindowSize().y};
+    ImGui::GetWindowDrawList()->AddRectFilled(
+        card_min,
+        ImVec2(card_max.x, card_min.y + 3.0F),
+        ImGui::ColorConvertFloat4ToU32(accent),
+        ImGui::GetStyle().ChildRounding,
+        ImDrawFlags_RoundCornersTop);
     ImGui::TextColored(accent, "%s", label);
     ImGui::PushFont(value_font, ImGui::GetStyle().FontSizeBase * value_scale);
     ImGui::TextUnformatted(value.c_str());
@@ -230,7 +280,7 @@ App::~App() {
 int App::run(const HINSTANCE instance, const int show_command) {
     instance_ = instance;
     logger_.info("UI initialization started");
-    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
+    SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
     ImGui_ImplWin32_EnableDpiAwareness();
     WNDCLASSEXW window_class{};
     window_class.cbSize = sizeof(window_class);
@@ -369,6 +419,9 @@ LRESULT App::handle_message(const HWND window, const UINT message, const WPARAM 
 }
 #else
 int App::run() {
+#ifdef __APPLE__
+    static_cast<void>(pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0));
+#endif
     logger_.info("UI initialization started");
     glfwSetErrorCallback([](const int, const char* description) {
         std::fprintf(stderr, "GLFW: %s\n", description == nullptr ? "unknown error" : description);
@@ -443,6 +496,7 @@ void App::initialize_imgui() {
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+    io.IniFilename = nullptr;
 #ifdef _WIN32
     const UINT detected_dpi = GetDpiForWindow(window_);
     dpi_scale_ = static_cast<float>(detected_dpi == 0 ? 96U : detected_dpi) / 96.0F;
@@ -450,8 +504,8 @@ void App::initialize_imgui() {
     GetClientRect(window_, &client_bounds);
     visual_scale_ = responsive_visual_scale(static_cast<float>(client_bounds.right), static_cast<float>(client_bounds.bottom), dpi_scale_);
     ui_scale_ = dpi_scale_ * visual_scale_;
-    const std::filesystem::path korean_font = L"C:\\Windows\\Fonts\\malgun.ttf";
-    const std::filesystem::path korean_bold_font = L"C:\\Windows\\Fonts\\malgunbd.ttf";
+    const std::array regular_candidates{FontCandidate{L"C:\\Windows\\Fonts\\malgun.ttf", 0}};
+    const std::array bold_candidates{FontCandidate{L"C:\\Windows\\Fonts\\malgunbd.ttf", 0}};
 #else
     float horizontal_scale = 1.0F;
     float vertical_scale = 1.0F;
@@ -461,29 +515,44 @@ void App::initialize_imgui() {
     int framebuffer_height = 0;
     glfwGetFramebufferSize(window_, &framebuffer_width, &framebuffer_height);
     visual_scale_ = responsive_visual_scale(static_cast<float>(framebuffer_width), static_cast<float>(framebuffer_height), dpi_scale_);
+#ifdef __APPLE__
+    // GLFW exposes macOS window sizes in points while the framebuffer is already
+    // Retina-scaled. Applying the framebuffer scale to ImGui geometry again makes
+    // every control twice as large. ImGui 1.92 rasterizes fonts at the framebuffer
+    // density automatically, so only the responsive visual adjustment is needed.
+    ui_scale_ = visual_scale_;
+    const std::array regular_candidates{
+        FontCandidate{"/System/Library/Fonts/AppleSDGothicNeo.ttc", 0},
+        FontCandidate{"/System/Library/Fonts/Supplemental/AppleGothic.ttf", 0}};
+    const std::array bold_candidates{
+        FontCandidate{"/System/Library/Fonts/AppleSDGothicNeo.ttc", 4},
+        FontCandidate{"/System/Library/Fonts/Supplemental/AppleGothic.ttf", 0}};
+#else
     ui_scale_ = dpi_scale_ * visual_scale_;
-    std::filesystem::path korean_font;
-    std::filesystem::path korean_bold_font;
-    for (const std::filesystem::path candidate : {"/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", "/usr/share/fonts/opentype/noto/NotoSansCJKkr-Regular.otf", "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"}) {
-        if (std::filesystem::exists(candidate)) {
-            korean_font = candidate;
-            break;
-        }
-    }
-    for (const std::filesystem::path candidate : {"/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", "/usr/share/fonts/opentype/noto/NotoSansCJKkr-Bold.otf", "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf"}) {
-        if (std::filesystem::exists(candidate)) {
-            korean_bold_font = candidate;
-            break;
-        }
-    }
+    const std::array regular_candidates{
+        FontCandidate{"/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", 0},
+        FontCandidate{"/usr/share/fonts/opentype/noto/NotoSansCJKkr-Regular.otf", 0},
+        FontCandidate{"/usr/share/fonts/truetype/nanum/NanumGothic.ttf", 0}};
+    const std::array bold_candidates{
+        FontCandidate{"/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", 0},
+        FontCandidate{"/usr/share/fonts/opentype/noto/NotoSansCJKkr-Bold.otf", 0},
+        FontCandidate{"/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf", 0}};
 #endif
-    if (std::filesystem::exists(korean_font)) {
-        regular_font_ = io.Fonts->AddFontFromFileTTF(path_to_utf8(korean_font).c_str(), 17.0F, nullptr, io.Fonts->GetGlyphRangesKorean());
-        if (std::filesystem::exists(korean_bold_font)) {
-            bold_font_ = io.Fonts->AddFontFromFileTTF(path_to_utf8(korean_bold_font).c_str(), 17.0F, nullptr, io.Fonts->GetGlyphRangesKorean());
-        }
+#endif
+    std::filesystem::path loaded_regular_path;
+    std::filesystem::path loaded_bold_path;
+    unsigned int loaded_regular_face = 0;
+    unsigned int loaded_bold_face = 0;
+    regular_font_ = load_first_available_font(*io.Fonts, regular_candidates, 16.0F, korean_ui_glyph_ranges, loaded_regular_path, loaded_regular_face);
+    bold_font_ = load_first_available_font(*io.Fonts, bold_candidates, 16.0F, korean_ui_glyph_ranges, loaded_bold_path, loaded_bold_face);
+    if (regular_font_ == nullptr) {
+        regular_font_ = io.Fonts->AddFontDefaultVector();
+        logger_.warning("Korean UI font was not found; using the vector fallback font");
     } else {
-        regular_font_ = io.Fonts->AddFontDefault();
+        logger_.info(std::format("UI Korean font loaded: file={}, face={}", path_to_utf8(loaded_regular_path), loaded_regular_face));
+    }
+    if (bold_font_ != nullptr) {
+        logger_.info(std::format("UI Korean bold font loaded: file={}, face={}", path_to_utf8(loaded_bold_path), loaded_bold_face));
     }
     bold_font_ = bold_font_ == nullptr ? regular_font_ : bold_font_;
     apply_ui_theme(ui_scale_);
@@ -523,7 +592,11 @@ void App::update_ui_scale() {
     const float viewport_height = static_cast<float>(framebuffer_height);
 #endif
     const float next_visual_scale = responsive_visual_scale(viewport_width, viewport_height, next_dpi_scale);
+#ifdef __APPLE__
+    const float next_scale = next_visual_scale;
+#else
     const float next_scale = next_dpi_scale * next_visual_scale;
+#endif
     if (std::abs(next_scale - ui_scale_) < 0.01F) {
         return;
     }
@@ -714,25 +787,34 @@ void App::render() {
 }
 
 void App::render_header(const domain::TransmissionStats& stats, const ResponsiveLayout& layout) {
-    ImGui::PushFont(bold_font_, ImGui::GetStyle().FontSizeBase * layout.title_scale);
-    ImGui::TextUnformatted("LOG GENERATOR");
-    ImGui::PopFont();
-    if (layout.inline_header_subtitle) {
-        ImGui::SameLine();
-    }
-    ImGui::TextDisabled("SIEM STRESS TOOL");
     const auto status = state_text(stats.state);
+    const float header_height = ImGui::GetStyle().WindowPadding.y * 2.0F
+        + ImGui::GetFontSize() * layout.title_scale
+        + ImGui::GetStyle().ItemSpacing.y
+        + ImGui::GetTextLineHeight()
+        + (layout.inline_header_status ? 0.0F : ImGui::GetTextLineHeightWithSpacing());
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.055F, 0.085F, 0.155F, 1.0F));
+    ImGui::BeginChild("application_header", ImVec2(0.0F, header_height), ImGuiChildFlags_AlwaysUseWindowPadding, ImGuiWindowFlags_NoScrollbar);
+    ImGui::PushFont(bold_font_, ImGui::GetStyle().FontSizeBase * layout.title_scale);
+    ImGui::TextColored(ImVec4(0.97F, 0.98F, 1.0F, 1.0F), "LogGenerator");
+    ImGui::PopFont();
     if (layout.inline_header_status) {
         const float status_width = ImGui::CalcTextSize("● ").x + ImGui::CalcTextSize(status.data(), status.data() + status.size()).x;
-        const float right_aligned_x = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - status_width;
-        ImGui::SameLine(std::max(ImGui::GetCursorPosX() + ImGui::GetStyle().ItemSpacing.x, right_aligned_x));
+        ImGui::SameLine();
+        ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x - status_width));
+        ImGui::TextColored(state_color(stats.state), "● %.*s", static_cast<int>(status.size()), status.data());
     }
-    ImGui::TextColored(state_color(stats.state), "● %.*s", static_cast<int>(status.size()), status.data());
+    ImGui::TextColored(ImVec4(0.66F, 0.73F, 0.84F, 1.0F), "고성능 SIEM 로그 생성 · 네트워크 전송 스트레스 도구");
+    if (!layout.inline_header_status) {
+        ImGui::TextColored(state_color(stats.state), "● %.*s", static_cast<int>(status.size()), status.data());
+    }
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
 }
 
 void App::render_metrics(const domain::TransmissionStats& stats, const ResponsiveLayout& layout) {
     static_cast<void>(stats);
-    if (ImGui::BeginTable("metrics", layout.metric_columns, ImGuiTableFlags_SizingStretchSame | ImGuiTableFlags_PadOuterX)) {
+    if (ImGui::BeginTable("metrics", layout.metric_columns, ImGuiTableFlags_SizingStretchSame)) {
         ImGui::TableNextColumn();
         metric_card("eps_card", "현재 EPS", current_eps_text_, {0.04F, 0.39F, 0.82F, 1.0F}, layout.strong_metric_weight ? bold_font_ : regular_font_, layout.metric_value_scale);
         ImGui::TableNextColumn();
@@ -749,7 +831,7 @@ void App::render_configuration(const domain::TransmissionStats& stats, const Res
     const bool active = is_active(stats.state);
     ImGui::BeginDisabled(active);
     if (layout.configuration_columns == 2) {
-        const float reserved_height = ImGui::GetFrameHeight() * 1.5F + ImGui::GetStyle().ItemSpacing.y * 4.0F + ImGui::GetTextLineHeightWithSpacing() * 1.7F;
+        const float reserved_height = ImGui::GetFrameHeight() * 2.5F + ImGui::GetStyle().ItemSpacing.y * 5.0F + ImGui::GetTextLineHeightWithSpacing() * 1.7F;
         const float panel_height = layout.fill_configuration_height ? std::max(280.0F * ui_scale_, ImGui::GetContentRegionAvail().y - reserved_height) : 0.0F;
         if (ImGui::BeginTable("configuration", 2, ImGuiTableFlags_SizingStretchSame | ImGuiTableFlags_PadOuterX)) {
             ImGui::TableNextColumn();
@@ -770,16 +852,28 @@ void App::render_configuration(const domain::TransmissionStats& stats, const Res
     ImGui::Spacing();
     const float button_height = ImGui::GetFrameHeight() * 1.5F;
     if (active) {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0F, 1.0F, 1.0F, 1.0F));
         ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.76F, 0.12F, 0.16F, 1.0F));
         ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.66F, 0.08F, 0.12F, 1.0F));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.58F, 0.055F, 0.09F, 1.0F));
         if (ImGui::Button("전송 중지", ImVec2(-1.0F, button_height))) {
             stress_service_.request_stop();
             next_stats_refresh_ = {};
         }
-        ImGui::PopStyleColor(2);
-    } else if (ImGui::Button("전송 시작", ImVec2(-1.0F, button_height))) {
-        start_test();
+        ImGui::PopStyleColor(4);
+    } else {
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0F, 1.0F, 1.0F, 1.0F));
+        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.08F, 0.39F, 0.86F, 1.0F));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.055F, 0.33F, 0.76F, 1.0F));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.035F, 0.27F, 0.66F, 1.0F));
+        if (ImGui::Button("전송 시작", ImVec2(-1.0F, button_height))) {
+            start_test();
+        }
+        ImGui::PopStyleColor(4);
     }
+    const bool has_error = !stats.last_error.empty() || !ui_error_.empty();
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, has_error ? ImVec4(0.995F, 0.925F, 0.93F, 1.0F) : ImVec4(0.91F, 0.95F, 0.995F, 1.0F));
+    ImGui::BeginChild("configuration_notice", ImVec2(0.0F, 0.0F), ImGuiChildFlags_AutoResizeY | ImGuiChildFlags_AlwaysUseWindowPadding);
     if (!stats.last_error.empty()) {
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.82F, 0.16F, 0.19F, 1.0F));
         ImGui::TextWrapped("%s", stats.last_error.c_str());
@@ -795,13 +889,18 @@ void App::render_configuration(const domain::TransmissionStats& stats, const Res
     } else {
         disabled_wrapped_text("UDP 통계는 로컬 소켓 전송 완료를 기준으로 집계합니다.");
     }
+    ImGui::EndChild();
+    ImGui::PopStyleColor();
 }
 
 void App::render_destination_panel(const float height) {
     const auto child_flags = ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding | (height > 0.0F ? ImGuiChildFlags_None : ImGuiChildFlags_AutoResizeY);
-    const auto window_flags = height > 0.0F ? ImGuiWindowFlags_AlwaysVerticalScrollbar : ImGuiWindowFlags_None;
+    const auto window_flags = ImGuiWindowFlags_None;
     ImGui::BeginChild("destination", ImVec2(0.0F, height), child_flags, window_flags);
+    ImGui::PushFont(bold_font_);
     ImGui::TextUnformatted("전송 설정");
+    ImGui::PopFont();
+    ImGui::TextDisabled("목적지와 전송 성능을 설정합니다.");
     ImGui::Separator();
     const char* protocols[]{"UDP", "TCP", "TLS", "FILE"};
     ImGui::TextDisabled("프로토콜");
@@ -845,7 +944,9 @@ void App::render_destination_panel(const float height) {
         ImGui::Checkbox("서버 인증서 검증", &verify_certificate_);
     }
     ImGui::Spacing();
+    ImGui::PushFont(bold_font_);
     ImGui::TextUnformatted("성능");
+    ImGui::PopFont();
     ImGui::Separator();
     ImGui::TextDisabled("Worker");
     ImGui::SetNextItemWidth(-1.0F);
@@ -866,7 +967,10 @@ void App::render_template_panel(const ResponsiveLayout& layout) {
     ImGui::BeginChild("templates", ImVec2(0.0F, 0.0F), ImGuiChildFlags_Borders | ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_AutoResizeY);
     render_catalog_selector();
     ImGui::Spacing();
+    ImGui::PushFont(bold_font_);
     ImGui::TextUnformatted("로그 치환");
+    ImGui::PopFont();
+    ImGui::TextDisabled("주소와 이벤트 시간을 실행 시점에 맞게 치환합니다.");
     ImGui::Separator();
     ImGui::TextDisabled("src_ip");
     ImGui::SetNextItemWidth(-1.0F);
@@ -932,7 +1036,9 @@ void App::render_catalog_selector() {
         ImGui::TableSetupColumn("catalog_summary", ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupColumn("catalog_reload", ImGuiTableColumnFlags_WidthFixed);
         ImGui::TableNextColumn();
+        ImGui::PushFont(bold_font_);
         ImGui::TextUnformatted("샘플 로그");
+        ImGui::PopFont();
         ImGui::SameLine();
         ImGui::TextDisabled("%zu개", catalog_items_.size());
         ImGui::TableNextColumn();

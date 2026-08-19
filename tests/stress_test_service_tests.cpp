@@ -132,6 +132,10 @@ void run_stress_test_service_tests() {
     expect(sequential_cursor.next() == 2, "Global round-robin did not advance to the third sample");
     expect(sequential_cursor.next() == 0, "Global round-robin did not wrap to the first sample");
 
+    application::RoundRobinCursor reserved_cursor{3};
+    expect(reserved_cursor.reserve(5) == 0, "Global round-robin reservation did not start at the first sample");
+    expect(reserved_cursor.next() == 2, "Global round-robin reservation did not advance by the reserved block");
+
     application::RoundRobinCursor concurrent_cursor{5};
     std::array<std::atomic_size_t, 5> selections{};
     std::vector<std::jthread> cursor_workers;
