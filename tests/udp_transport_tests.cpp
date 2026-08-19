@@ -1,3 +1,4 @@
+// tests/udp_transport_tests.cpp
 #include "test_support.hpp"
 
 #include "domain/generator_config.hpp"
@@ -132,7 +133,7 @@ void run_udp_transport_tests() {
 #else
     const auto received = ::recv(receiver.get(), receive_buffer.data(), receive_buffer.size(), 0);
 #endif
-    expect(received == static_cast<decltype(received)>(payload.size()), "UDP loopback receiver got an unexpected payload size");
+    expect(received >= 0 && static_cast<std::size_t>(received) == payload.size(), "UDP loopback receiver got an unexpected payload size");
     expect(std::string_view(receive_buffer.data(), static_cast<std::size_t>(received)) == payload, "UDP loopback receiver got changed payload data");
 
     constexpr std::size_t batch_count = 32;
@@ -152,7 +153,7 @@ void run_udp_transport_tests() {
 #else
         const auto batch_received = ::recv(receiver.get(), receive_buffer.data(), receive_buffer.size(), 0);
 #endif
-        expect(batch_received == static_cast<decltype(batch_received)>(batch_payloads[index].size()), "UDP batch receiver got an unexpected payload size");
+        expect(batch_received >= 0 && static_cast<std::size_t>(batch_received) == batch_payloads[index].size(), "UDP batch receiver got an unexpected payload size");
         expect(std::string_view(receive_buffer.data(), static_cast<std::size_t>(batch_received)) == batch_payloads[index], "UDP batch changed datagram order or contents");
     }
 
