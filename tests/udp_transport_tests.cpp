@@ -25,6 +25,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <vector>
 
 namespace loggen::tests {
 namespace {
@@ -133,6 +134,27 @@ void run_udp_transport_tests() {
 #endif
     expect(received == static_cast<decltype(received)>(payload.size()), "UDP loopback receiver got an unexpected payload size");
     expect(std::string_view(receive_buffer.data(), static_cast<std::size_t>(received)) == payload, "UDP loopback receiver got changed payload data");
+
+    constexpr std::size_t batch_count = 32;
+    std::vector<std::string> batch_payloads;
+    std::vector<std::string_view> batch_views;
+    batch_payloads.reserve(batch_count);
+    batch_views.reserve(batch_count);
+    for (std::size_t index = 0; index < batch_count; ++index) {
+        batch_payloads.push_back("LogGenerator UDP batch " + std::to_string(index));
+        batch_views.push_back(batch_payloads.back());
+    }
+    expect(sender.preferred_batch_size() >= 1, "UDP transport reported an invalid preferred batch size");
+    expect(sender.send_batch(batch_views) == application::SendResult::Sent, "UDP transport rejected a loopback datagram batch");
+    for (std::size_t index = 0; index < batch_count; ++index) {
+#ifdef _WIN32
+        const int batch_received = ::recv(receiver.get(), receive_buffer.data(), static_cast<int>(receive_buffer.size()), 0);
+#else
+        const auto batch_received = ::recv(receiver.get(), receive_buffer.data(), receive_buffer.size(), 0);
+#endif
+        expect(batch_received == static_cast<decltype(batch_received)>(batch_payloads[index].size()), "UDP batch receiver got an unexpected payload size");
+        expect(std::string_view(receive_buffer.data(), static_cast<std::size_t>(batch_received)) == batch_payloads[index], "UDP batch changed datagram order or contents");
+    }
 
     auto released_receiver = bind_loopback_udp_socket();
     const auto unused_port = bound_port(released_receiver.get());

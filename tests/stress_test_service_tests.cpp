@@ -9,6 +9,7 @@
 #include "application/stress_test_service.hpp"
 
 #include <array>
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -205,6 +206,7 @@ void run_stress_test_service_tests() {
     expect(stats.total_messages == transport_sends, std::format("Stress service message count is {}, transport count is {}", stats.total_messages, transport_sends));
     expect(stats.send_errors == 0, "Stress service reported an unexpected send error");
     expect(stats.transmission_mode == domain::TransmissionMode::Sequential && stats.active_workers == 1, "Sequential mode did not force exactly one worker");
+    expect(stats.udp_packetization == domain::UdpPacketization::OneEventPerDatagram && stats.total_datagrams == stats.total_messages, "Sequential UDP did not preserve one event per datagram");
     expect(sequential_runtime.configured_workers() == 1, "Sequential mode configured more than one worker");
 
     auto parallel_state = std::make_shared<TransportState>();
@@ -231,6 +233,16 @@ void run_stress_test_service_tests() {
     }
     parallel_state->condition.notify_all();
     parallel_service.stop();
+    const auto packed_stats = parallel_service.snapshot();
+    expect(packed_stats.udp_packetization == domain::UdpPacketization::NewlinePacked, "Parallel UDP did not enable high-throughput newline packing");
+    expect(packed_stats.total_datagrams > 0 && packed_stats.total_messages > packed_stats.total_datagrams, "Parallel UDP did not count logical events separately from physical datagrams");
+    expect(packed_stats.total_datagrams == parallel_state->sends.load(std::memory_order_relaxed), "Parallel UDP datagram statistics diverged from transport sends");
+    {
+        std::scoped_lock lock(parallel_state->mutex);
+        expect(!parallel_state->payloads.empty(), "Parallel UDP did not produce a packed payload");
+        expect(std::count(parallel_state->payloads.front().begin(), parallel_state->payloads.front().end(), '\n') > 1, "Parallel UDP payload did not contain multiple newline-framed events");
+        expect(parallel_state->payloads.front().size() <= 65'507, "Parallel UDP produced an oversized datagram");
+    }
 
     TestExecutionRuntime execution_runtime;
 

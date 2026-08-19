@@ -22,6 +22,11 @@ enum class TransmissionMode {
     Parallel
 };
 
+enum class UdpPacketization {
+    OneEventPerDatagram,
+    NewlinePacked
+};
+
 constexpr std::string_view protocol_name(const TransportProtocol protocol) noexcept {
     switch (protocol) {
     case TransportProtocol::Udp:
@@ -42,6 +47,16 @@ constexpr std::string_view transmission_mode_name(const TransmissionMode mode) n
         return "sequential";
     case TransmissionMode::Parallel:
         return "parallel-auto";
+    }
+    return "unknown";
+}
+
+constexpr std::string_view udp_packetization_name(const UdpPacketization packetization) noexcept {
+    switch (packetization) {
+    case UdpPacketization::OneEventPerDatagram:
+        return "one-event";
+    case UdpPacketization::NewlinePacked:
+        return "newline-packed";
     }
     return "unknown";
 }

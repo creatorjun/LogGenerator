@@ -817,7 +817,6 @@ void App::render_header(const domain::TransmissionStats& stats, const Responsive
 }
 
 void App::render_metrics(const domain::TransmissionStats& stats, const ResponsiveLayout& layout) {
-    static_cast<void>(stats);
     if (ImGui::BeginTable("metrics", layout.metric_columns, ImGuiTableFlags_SizingStretchSame)) {
         ImGui::TableNextColumn();
         metric_card("eps_card", "현재 EPS", current_eps_text_, {0.04F, 0.39F, 0.82F, 1.0F}, layout.strong_metric_weight ? bold_font_ : regular_font_, layout.metric_value_scale);
@@ -828,6 +827,14 @@ void App::render_metrics(const domain::TransmissionStats& stats, const Responsiv
         ImGui::TableNextColumn();
         metric_card("bytes_card", "총 전송량", total_bytes_text_, {0.78F, 0.40F, 0.02F, 1.0F}, layout.strong_metric_weight ? bold_font_ : regular_font_, layout.metric_value_scale);
         ImGui::EndTable();
+    }
+    if (protocol_index_ == static_cast<int>(domain::TransportProtocol::Udp) && stats.total_datagrams > 0) {
+        ImGui::TextDisabled(
+            "UDP 패킷화: %.*s | 총 데이터그램 %llu | 평균 %.0f DPS",
+            static_cast<int>(domain::udp_packetization_name(stats.udp_packetization).size()),
+            domain::udp_packetization_name(stats.udp_packetization).data(),
+            static_cast<unsigned long long>(stats.total_datagrams),
+            stats.average_datagrams_per_second);
     }
 }
 
@@ -891,7 +898,11 @@ void App::render_configuration(const domain::TransmissionStats& stats, const Res
     } else if (protocol_index_ == static_cast<int>(domain::TransportProtocol::File)) {
         disabled_wrapped_text("FILE은 generated 폴더에 로그 1개당 파일 1개로 저장하며 설정한 안전 제한에 도달하면 정상 종료합니다.");
     } else if (protocol_index_ == static_cast<int>(domain::TransportProtocol::Udp)) {
-        disabled_wrapped_text("UDP 통계는 로컬 소켓 전송 완료를 기준으로 집계하며 비동기 ICMP 포트 거부는 전송 실패로 처리하지 않습니다.");
+        if (transmission_mode_index_ == static_cast<int>(domain::TransmissionMode::Parallel)) {
+            disabled_wrapped_text("UDP 병렬 전송은 3M+ 로그 EPS를 위해 여러 로그를 개행으로 구분해 최대 60 KiB 데이터그램에 패킹합니다. 수신기가 데이터그램 내부 개행 분리를 지원해야 하며, 화면에는 로그 EPS와 실제 데이터그램 DPS를 별도로 표시합니다. 일반 MTU 네트워크에서는 IP 단편화가 발생하므로 loopback, jumbo frame 또는 충분한 대역폭의 전용망에서 사용하세요.");
+        } else {
+            disabled_wrapped_text("UDP 순차 전송은 로그 1개를 데이터그램 1개로 보냅니다. 통계는 로컬 소켓 전송 완료 기준이며 비동기 ICMP 포트 거부는 실패로 처리하지 않습니다.");
+        }
     } else {
         disabled_wrapped_text("TCP/TLS는 여러 로그를 묶어 스트림으로 전송하며 선택한 프레이밍을 적용합니다.");
     }
@@ -964,6 +975,8 @@ void App::render_destination_panel(const float height) {
         disabled_wrapped_text("FILE은 여러 로그를 묶어 순차 기록하므로 순차 전송으로 고정됩니다.");
     } else if (transmission_mode_index_ == static_cast<int>(domain::TransmissionMode::Sequential)) {
         disabled_wrapped_text("1개의 송신 Worker로 로그 순서를 유지해 전송합니다.");
+    } else if (protocol_index_ == static_cast<int>(domain::TransportProtocol::Udp)) {
+        disabled_wrapped_text("Worker 수와 UDP 개행 패킹 크기를 자동 최적화해 최대 로그 EPS로 전송합니다.");
     } else if (is_active(cached_stats_.state) && cached_stats_.active_workers > 0) {
         ImGui::TextDisabled("자동 선택 Worker: %u", cached_stats_.active_workers);
     } else {

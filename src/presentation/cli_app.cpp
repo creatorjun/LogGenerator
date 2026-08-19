@@ -138,10 +138,12 @@ void print_stats(const domain::TransmissionStats& stats, const bool final) {
               << " state=" << state_name(stats.state)
               << " mode=" << domain::transmission_mode_name(stats.transmission_mode)
               << " workers=" << stats.active_workers
+              << " udp_packetization=" << domain::udp_packetization_name(stats.udp_packetization)
               << " messages=" << stats.total_messages
+              << " datagrams=" << stats.total_datagrams
               << " bytes=" << stats.total_bytes
               << " errors=" << stats.send_errors
-              << std::format(" elapsed={:.2f}s current_eps={:.2f} average_eps={:.2f}", stats.elapsed_seconds, stats.current_eps, stats.average_eps);
+              << std::format(" elapsed={:.2f}s current_eps={:.2f} average_eps={:.2f} average_dps={:.2f}", stats.elapsed_seconds, stats.current_eps, stats.average_eps, stats.average_datagrams_per_second);
     if (!stats.status_message.empty()) {
         std::cout << " message=\"" << stats.status_message << '"';
     }
@@ -366,6 +368,7 @@ void CliApp::print_help(const std::string_view executable_name) {
         << "  --sample-id ID                반복 지정 가능, --all과 동시 사용 불가\n"
         << "  --host HOST --port PORT       네트워크 목적지\n"
         << "  --mode sequential|parallel    순차 또는 자동 최적화 병렬 전송, 기본값: parallel\n"
+        << "                                 UDP parallel은 개행 패킹, sequential은 로그당 데이터그램 1개\n"
         << "  --eps N                       목표 EPS, 0은 무제한\n"
         << "  --duration SECONDS            실행 시간, 0은 Ctrl+C까지 실행\n"
         << "  --output-dir PATH             FILE 출력 디렉터리\n"

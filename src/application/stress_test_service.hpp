@@ -52,12 +52,15 @@ private:
     std::stop_source stop_source_;
     std::atomic<domain::GeneratorState> state_{domain::GeneratorState::Stopped};
     std::atomic<std::uint64_t> total_messages_{0};
+    std::atomic<std::uint64_t> total_datagrams_{0};
     std::atomic<std::uint64_t> total_bytes_{0};
     std::atomic<std::uint64_t> send_errors_{0};
     std::atomic<std::uint32_t> connected_workers_{0};
     std::atomic<std::uint32_t> active_workers_{0};
     std::atomic<domain::TransmissionMode> transmission_mode_{domain::TransmissionMode::Parallel};
+    std::atomic<domain::UdpPacketization> udp_packetization_{domain::UdpPacketization::OneEventPerDatagram};
     std::chrono::steady_clock::time_point started_at_{};
+    std::chrono::steady_clock::time_point finished_at_{};
     std::chrono::steady_clock::time_point meter_at_{};
     std::chrono::steady_clock::time_point meter_progress_at_{};
     std::uint64_t meter_messages_{0};

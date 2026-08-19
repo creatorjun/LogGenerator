@@ -29,8 +29,8 @@ std::uint32_t PosixExecutionRuntime::optimal_worker_count(const domain::Transpor
     }
     if (protocol == domain::TransportProtocol::Udp) {
 #ifdef __APPLE__
-        // Connected UDP on macOS converges on the same kernel output path.
-        // M4 Max profiling peaks at two senders and regresses beyond that point.
+        // XNU's connected UDP output path peaks at two independent sockets.
+        // Parallel mode raises logical EPS through newline-packed datagrams.
         return std::min(2U, detected);
 #else
         return std::min(detected, std::clamp((detected + 3U) / 4U, 2U, 8U));

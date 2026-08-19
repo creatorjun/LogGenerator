@@ -11,6 +11,8 @@ public:
     explicit UdpTransport(const SocketRuntime& runtime) noexcept;
     void connect(const domain::EndpointConfig& endpoint) override;
     [[nodiscard]] application::SendResult send(std::string_view payload) override;
+    [[nodiscard]] application::SendResult send_batch(std::span<const std::string_view> payloads) override;
+    [[nodiscard]] std::size_t preferred_batch_size() const noexcept override;
     [[nodiscard]] bool is_datagram() const noexcept override;
 
 private:
