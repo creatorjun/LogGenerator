@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <charconv>
 #include <cmath>
+#include <condition_variable>
 #include <format>
 #include <limits>
 #include <stdexcept>
@@ -79,6 +80,7 @@ public:
                 throw std::invalid_argument("Timestamp range is invalid");
             }
             position_ %= span_;
+            step_ %= span_;
         }
     }
 
@@ -87,7 +89,10 @@ public:
             return system_clock_.now();
         }
         const auto result = generation_.range.start + std::chrono::seconds{position_};
-        position_ = (position_ + step_) % span_;
+        position_ += step_;
+        if (position_ >= span_) {
+            position_ -= span_;
+        }
         return result;
     }
 
@@ -112,6 +117,11 @@ void append_frame(std::string& batch, const std::string_view payload, const doma
         batch.append(payload);
         return;
     }
+    if (payload.find_first_of("\r\n") == std::string_view::npos) {
+        batch.append(payload);
+        batch.push_back('\n');
+        return;
+    }
     for (const auto value : payload) {
         if (value == '\r') {
             batch.append("\\r");
@@ -134,9 +144,9 @@ std::uint64_t quota_for_worker(const std::uint64_t target_eps, const std::uint32
 
 std::size_t stream_batch_events(const std::uint64_t quota) {
     if (quota == 0) {
-        return 256;
+        return 1024;
     }
-    return static_cast<std::size_t>(std::clamp<std::uint64_t>(quota / 200, 1, 128));
+    return static_cast<std::size_t>(std::clamp<std::uint64_t>(quota / 200, 1, 1024));
 }
 
 std::size_t file_batch_events(const std::uint64_t quota, const domain::EndpointConfig& endpoint) {
@@ -343,9 +353,19 @@ void StressTestService::run_supervisor(domain::GeneratorConfig config, const std
                 run_worker(std::move(endpoint), timestamp_generation, std::move(logs), round_robin, quota, worker_index, worker_count, worker_stop_token);
             });
         }
-        while (!stop_token.stop_requested()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds{1});
-        }
+        std::mutex stop_wait_mutex;
+        std::condition_variable stop_wait_condition;
+        std::stop_callback stop_callback{stop_token, [&stop_wait_mutex, &stop_wait_condition] {
+            {
+                const std::scoped_lock lock(stop_wait_mutex);
+            }
+            stop_wait_condition.notify_all();
+        }};
+        std::unique_lock stop_wait_lock(stop_wait_mutex);
+        stop_wait_condition.wait(stop_wait_lock, [stop_token] {
+            return stop_token.stop_requested();
+        });
+        stop_wait_lock.unlock();
         for (auto& worker : workers) {
             worker.request_stop();
         }
@@ -417,7 +437,7 @@ void StressTestService::run_worker(domain::EndpointConfig endpoint, const domain
         } else {
             const auto event_limit = endpoint.protocol == domain::TransportProtocol::File ? file_batch_events(quota, endpoint) : stream_batch_events(quota);
             std::string batch;
-            const std::size_t batch_limit = endpoint.protocol == domain::TransportProtocol::File ? 65'536 : 262'144;
+            const std::size_t batch_limit = endpoint.protocol == domain::TransportProtocol::File ? 65'536 : 1'048'576;
             batch.reserve(batch_limit);
             while (!stop_token.stop_requested()) {
                 batch.clear();

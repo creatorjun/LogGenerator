@@ -291,24 +291,43 @@ std::size_t count_captures(const std::string& input, const std::regex& pattern) 
     return count;
 }
 
-std::tm convert_time(const std::time_t value, const bool utc) {
+std::tm convert_local_time(const std::time_t value) {
     static std::mutex conversion_mutex;
     const std::scoped_lock lock(conversion_mutex);
-    const std::tm* converted = utc ? std::gmtime(&value) : std::localtime(&value);
+    const std::tm* converted = std::localtime(&value);
     return converted == nullptr ? std::tm{} : *converted;
 }
 
+std::tm convert_utc_time(const std::chrono::system_clock::time_point point) noexcept {
+    const auto seconds = std::chrono::floor<std::chrono::seconds>(point);
+    const auto day_point = std::chrono::floor<std::chrono::days>(seconds);
+    const std::chrono::year_month_day date{day_point};
+    const std::chrono::hh_mm_ss time{seconds - day_point};
+    const std::chrono::weekday weekday{day_point};
+    std::tm result{};
+    result.tm_year = static_cast<int>(date.year()) - 1900;
+    result.tm_mon = static_cast<int>(static_cast<unsigned int>(date.month())) - 1;
+    result.tm_mday = static_cast<int>(static_cast<unsigned int>(date.day()));
+    result.tm_hour = static_cast<int>(time.hours().count());
+    result.tm_min = static_cast<int>(time.minutes().count());
+    result.tm_sec = static_cast<int>(time.seconds().count());
+    result.tm_wday = static_cast<int>(weekday.c_encoding());
+    result.tm_isdst = 0;
+    return result;
+}
+
 std::tm make_time(std::chrono::system_clock::time_point point, const TimestampToken& token, const bool calendar_time) {
-    const auto value = std::chrono::system_clock::to_time_t(point);
     if (calendar_time) {
-        return convert_time(value, true);
+        return convert_utc_time(point);
     }
     const bool utc = token.zone_suffix == "Z" || token.zone_suffix == "GMT" || !token.zone_suffix.empty();
     if (utc && token.zone_offset_minutes != 0) {
         point += std::chrono::minutes{token.zone_offset_minutes};
     }
-    const auto adjusted_value = std::chrono::system_clock::to_time_t(point);
-    return convert_time(adjusted_value, utc);
+    if (utc) {
+        return convert_utc_time(point);
+    }
+    return convert_local_time(std::chrono::system_clock::to_time_t(point));
 }
 
 void append_fraction(std::string& output, const std::chrono::system_clock::time_point point, const std::uint8_t digits) {
@@ -431,6 +450,7 @@ PreparedLog::PreparedLog(std::vector<RenderSegment> segments, const std::chrono:
         compiled->has_timestamp = compiled->has_timestamp || segment.is_timestamp;
         compiled->has_privacy = compiled->has_privacy || segment.privacy != PrivacyTokenKind::None;
     }
+    compiled->cache_privacy_profiles = compiled->has_privacy && compiled->capacity_hint <= 64U * 1024U;
     compiled_ = std::move(compiled);
     initialize_random_state();
     initialize_cache();
@@ -448,7 +468,6 @@ PreparedLog& PreparedLog::operator=(const PreparedLog& other) {
         offset_ = other.offset_;
         cached_.clear();
         timestamp_cache_.clear();
-        cached_second_ = -1;
         initialize_random_state();
         initialize_cache();
     }
@@ -456,6 +475,14 @@ PreparedLog& PreparedLog::operator=(const PreparedLog& other) {
 }
 
 void PreparedLog::initialize_cache() {
+    cached_second_ = -1;
+    cached_calendar_time_ = false;
+    privacy_cache_valid_.fill(false);
+    privacy_cache_seconds_.fill(-1);
+    privacy_cache_calendar_time_.fill(false);
+    for (auto& output : privacy_cache_) {
+        output.clear();
+    }
     if (!compiled_) {
         return;
     }
@@ -467,6 +494,11 @@ void PreparedLog::initialize_cache() {
     for (std::size_t index = 0; index < compiled_->segments.size(); ++index) {
         if (compiled_->segments[index].is_timestamp) {
             timestamp_cache_[index].reserve(40);
+        }
+    }
+    if (compiled_->cache_privacy_profiles) {
+        for (auto& output : privacy_cache_) {
+            output.reserve(compiled_->capacity_hint);
         }
     }
     if (!compiled_->has_timestamp && !compiled_->has_privacy) {
@@ -503,6 +535,13 @@ std::string_view PreparedLog::render(const std::chrono::system_clock::time_point
     if (!compiled_->has_privacy && second == cached_second_ && calendar_time == cached_calendar_time_) {
         return cached_;
     }
+
+    const auto profile_index = compiled_->has_privacy ? next_profile_index() : std::size_t{0};
+    if (compiled_->cache_privacy_profiles && privacy_cache_valid_[profile_index]
+        && (!compiled_->has_timestamp || (privacy_cache_seconds_[profile_index] == second && privacy_cache_calendar_time_[profile_index] == calendar_time))) {
+        return privacy_cache_[profile_index];
+    }
+
     if (compiled_->has_privacy && compiled_->has_timestamp && (second != cached_second_ || calendar_time != cached_calendar_time_)) {
         for (std::size_t index = 0; index < compiled_->segments.size(); ++index) {
             if (!compiled_->segments[index].is_timestamp) {
@@ -511,26 +550,34 @@ std::string_view PreparedLog::render(const std::chrono::system_clock::time_point
             timestamp_cache_[index].clear();
             append_timestamp(timestamp_cache_[index], compiled_->segments[index].timestamp, adjusted, calendar_time);
         }
+        cached_second_ = second;
+        cached_calendar_time_ = calendar_time;
     }
-    cached_.clear();
-    const auto profile_index = compiled_->has_privacy ? next_profile_index() : std::size_t{0};
+
+    auto& output = compiled_->cache_privacy_profiles ? privacy_cache_[profile_index] : cached_;
+    output.clear();
     for (std::size_t index = 0; index < compiled_->segments.size(); ++index) {
         const auto& segment = compiled_->segments[index];
         if (segment.is_timestamp) {
             if (compiled_->has_privacy) {
-                cached_.append(timestamp_cache_[index]);
+                output.append(timestamp_cache_[index]);
             } else {
-                append_timestamp(cached_, segment.timestamp, adjusted, calendar_time);
+                append_timestamp(output, segment.timestamp, adjusted, calendar_time);
             }
         } else if (segment.privacy != PrivacyTokenKind::None) {
-            cached_.append(PrivacyAnonymizer::synthetic_value(segment.privacy, profile_index));
+            output.append(PrivacyAnonymizer::synthetic_value(segment.privacy, profile_index));
         } else {
-            cached_.append(segment.text);
+            output.append(segment.text);
         }
+    }
+    if (compiled_->cache_privacy_profiles) {
+        privacy_cache_valid_[profile_index] = true;
+        privacy_cache_seconds_[profile_index] = second;
+        privacy_cache_calendar_time_[profile_index] = calendar_time;
     }
     cached_second_ = second;
     cached_calendar_time_ = calendar_time;
-    return cached_;
+    return output;
 }
 
 std::size_t PreparedLog::capacity_hint() const noexcept {

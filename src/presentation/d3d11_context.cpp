@@ -45,8 +45,8 @@ void D3d11Context::clear(const float red, const float green, const float blue, c
     context_->ClearRenderTargetView(render_target_.Get(), color);
 }
 
-void D3d11Context::present() {
-    swap_chain_->Present(1, 0);
+void D3d11Context::present(const unsigned int sync_interval) {
+    swap_chain_->Present(sync_interval, 0);
 }
 
 ID3D11Device* D3d11Context::device() const noexcept {

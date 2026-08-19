@@ -4,6 +4,7 @@
 #include "application/privacy_anonymizer.hpp"
 #include "domain/generator_config.hpp"
 
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -114,6 +115,7 @@ private:
         std::size_t capacity_hint{0};
         bool has_timestamp{false};
         bool has_privacy{false};
+        bool cache_privacy_profiles{false};
     };
 
     void initialize_cache();
@@ -123,6 +125,10 @@ private:
     std::shared_ptr<const CompiledLog> compiled_;
     std::string cached_;
     std::vector<std::string> timestamp_cache_;
+    std::array<std::string, PrivacyAnonymizer::synthetic_profile_count> privacy_cache_;
+    std::array<std::int64_t, PrivacyAnonymizer::synthetic_profile_count> privacy_cache_seconds_{};
+    std::array<bool, PrivacyAnonymizer::synthetic_profile_count> privacy_cache_calendar_time_{};
+    std::array<bool, PrivacyAnonymizer::synthetic_profile_count> privacy_cache_valid_{};
     std::int64_t cached_second_{-1};
     bool cached_calendar_time_{false};
     std::chrono::seconds offset_{0};

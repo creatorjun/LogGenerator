@@ -1,13 +1,14 @@
 <!-- README.md -->
 # LogGenerator
 
-Windows와 Linux 64비트에서 실행되는 C++23 기반 SIEM 로그 생성·전송기입니다. 데스크톱에서는 Dear ImGui 반응형 UI를 사용하고, 디스플레이 서버가 없는 Linux에서는 GUI 의존성이 전혀 없는 CLI 모드로 UDP, TCP, TLS 또는 FILE 전송을 실행할 수 있습니다.
+Windows, Linux 및 macOS 64비트에서 실행되는 C++23 기반 SIEM 로그 생성·전송기입니다. 데스크톱에서는 Dear ImGui 반응형 UI를 사용하고, 디스플레이 서버가 없는 Linux에서는 GUI 의존성이 전혀 없는 CLI 모드로 UDP, TCP, TLS 또는 FILE 전송을 실행할 수 있습니다. macOS Apple Silicon에서는 Cocoa와 OpenGL을 사용하는 arm64 GUI 및 CLI를 빌드할 수 있습니다.
 
 ## 프로젝트 구조
 
 ```text
 LogGenerator/
 ├─ CMakeLists.txt
+├─ BUILD.md
 ├─ README.md
 ├─ requirements.txt
 ├─ resources/
@@ -71,16 +72,16 @@ LogGenerator/
 
 공통 Domain과 Application 코드는 운영체제 API를 사용하지 않습니다. `src/main.cpp`와 `src/cli_main.cpp`가 각각 GUI와 CLI Composition Root로서 플랫폼별 Infrastructure와 Presentation 어댑터를 선택합니다.
 
-| 구분 | Windows | Linux |
-|---|---|---|
-| 창·입력 | Win32 | GLFW 3.4 |
-| 렌더링 | DirectX 11 | OpenGL 3.2 |
-| 소켓 | Winsock2 | POSIX socket |
-| TLS | Schannel | OpenSSL |
-| 실행 환경 | Win32 고해상도 타이머 | POSIX 스레드 실행 환경 |
-| CLI 전용 빌드 | `LogGenerator.exe` | `LogGenerator` |
+| 구분 | Windows | Linux | macOS Apple Silicon |
+|---|---|---|---|
+| 창·입력 | Win32 | GLFW 3.4 / X11 | GLFW 3.4 / Cocoa |
+| 렌더링 | DirectX 11 | OpenGL 3.2 | Apple OpenGL 3.2 |
+| 소켓 | Winsock2 | POSIX socket | POSIX socket |
+| TLS | Schannel | OpenSSL | Homebrew OpenSSL 3 |
+| 실행 환경 | Win32 고해상도 타이머 | POSIX 스레드 실행 환경 | POSIX 스레드 실행 환경 |
+| CLI 전용 빌드 | `LogGenerator.exe` | `LogGenerator` | `LogGenerator` |
 
-Linux UI는 X11 또는 Wayland 데스크톱의 XWayland에서 실행됩니다. `LOGGEN_BUILD_GUI=OFF`에서는 Dear ImGui, GLFW, OpenGL, X11을 구성하거나 링크하지 않습니다. TLS 인증서 검증은 기본으로 활성화되며 Windows는 운영체제 인증서 저장소, Linux는 OpenSSL 시스템 CA 저장소를 사용합니다.
+Linux UI는 X11 또는 Wayland 데스크톱의 XWayland에서 실행됩니다. `LOGGEN_BUILD_GUI=OFF`에서는 Dear ImGui, GLFW, OpenGL, X11을 구성하거나 링크하지 않습니다. TLS 인증서 검증은 기본으로 활성화되며 Windows는 운영체제 인증서 저장소, Linux와 macOS는 OpenSSL 시스템 CA 저장소를 사용합니다.
 
 ## 요구 환경
 
@@ -116,6 +117,20 @@ sudo apt install -y build-essential cmake git pkg-config libssl-dev
 ```
 
 Python 런타임은 사용하지 않으므로 `requirements.txt`에는 설치할 Python 패키지가 없습니다.
+
+### macOS Apple Silicon
+
+- M1, M2, M3 또는 M4 Mac
+- Xcode Command Line Tools
+- Homebrew
+- CMake 3.26 이상과 OpenSSL 3
+
+```bash
+xcode-select --install
+brew install cmake openssl@3
+```
+
+운영체제별 캐시 없는 원샷 빌드 명령은 [`BUILD.md`](BUILD.md)를 참고합니다.
 
 ## 빌드와 테스트
 
@@ -172,7 +187,21 @@ cmake --build build-linux-headless --parallel
 ctest --test-dir build-linux-headless --output-on-failure
 ```
 
-두 플랫폼 모두 빌드 후 실행 파일 옆에 `Sample Logs/sample_logs.json`이 자동 복사됩니다.
+### macOS Apple Silicon GUI와 CLI
+
+```bash
+bash scripts/build.sh Release --gui
+./build-macos/bin/LogGenerator
+```
+
+헤드리스 CLI만 빌드하려면 다음 명령을 사용합니다.
+
+```bash
+bash scripts/build.sh Release --headless
+./build-macos-headless/bin/LogGenerator --help
+```
+
+모든 플랫폼에서 빌드 후 실행 파일 옆에 `Sample Logs/sample_logs.json`이 자동 복사됩니다.
 
 ## 사용 방법
 

@@ -3,7 +3,8 @@ param(
     [ValidateSet('Debug', 'Release')]
     [string]$Configuration = 'Release',
     [ValidateSet('Desktop', 'Cli')]
-    [string]$Mode = 'Desktop'
+    [string]$Mode = 'Desktop',
+    [switch]$Clean
 )
 
 $ErrorActionPreference = 'Stop'
@@ -11,6 +12,10 @@ $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $BuildName = if ($Mode -eq 'Cli') { 'build-windows-cli' } else { 'build' }
 $BuildGui = if ($Mode -eq 'Cli') { 'OFF' } else { 'ON' }
 $BuildDirectory = Join-Path $ProjectRoot $BuildName
+
+if ($Clean -and (Test-Path -LiteralPath $BuildDirectory)) {
+    Remove-Item -LiteralPath $BuildDirectory -Recurse -Force -Confirm:$false
+}
 
 function Invoke-Checked {
     param(

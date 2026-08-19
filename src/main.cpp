@@ -11,13 +11,18 @@
 #include <Windows.h>
 #else
 #include "infrastructure/posix_execution_runtime.hpp"
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#endif
 #endif
 
 #include <array>
+#include <cstdint>
 #include <cstdio>
 #include <exception>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -29,6 +34,18 @@ std::filesystem::path executable_directory() {
         return std::filesystem::current_path();
     }
     return std::filesystem::path(std::wstring(buffer.data(), length)).parent_path();
+#elif defined(__APPLE__)
+    std::uint32_t buffer_size = 1024;
+    std::vector<char> buffer(buffer_size);
+    if (_NSGetExecutablePath(buffer.data(), &buffer_size) != 0) {
+        buffer.resize(buffer_size);
+        if (_NSGetExecutablePath(buffer.data(), &buffer_size) != 0) {
+            return std::filesystem::current_path();
+        }
+    }
+    std::error_code error;
+    const auto executable = std::filesystem::weakly_canonical(std::filesystem::path(buffer.data()), error);
+    return (error ? std::filesystem::path(buffer.data()) : executable).parent_path();
 #else
     std::error_code error;
     const auto executable = std::filesystem::read_symlink("/proc/self/exe", error);

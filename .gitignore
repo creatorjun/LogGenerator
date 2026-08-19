@@ -3,6 +3,8 @@
 /build-windows-cli/
 /build-linux/
 /build-linux-headless/
+/build-macos/
+/build-macos-headless/
 /out/
 /.vs/
 /.codex_xlsx_inspect/

@@ -12,7 +12,7 @@ public:
     void create(HWND window);
     void resize(unsigned int width, unsigned int height);
     void clear(float red, float green, float blue, float alpha);
-    void present();
+    void present(unsigned int sync_interval = 1);
 
     [[nodiscard]] ID3D11Device* device() const noexcept;
     [[nodiscard]] ID3D11DeviceContext* context() const noexcept;

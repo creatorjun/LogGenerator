@@ -95,6 +95,7 @@ private:
     bool window_class_registered_{false};
 #else
     GLFWwindow* window_{nullptr};
+    int swap_interval_{1};
 #endif
     bool imgui_ready_{false};
     float ui_scale_{1.0F};

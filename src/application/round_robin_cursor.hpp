@@ -17,13 +17,10 @@ public:
     }
 
     [[nodiscard]] std::size_t next() noexcept {
-        auto current = next_.load(std::memory_order_relaxed);
-        while (true) {
-            const auto following = current + 1 == item_count_ ? 0 : current + 1;
-            if (next_.compare_exchange_weak(current, following, std::memory_order_relaxed, std::memory_order_relaxed)) {
-                return current;
-            }
+        if (item_count_ == 1) {
+            return 0;
         }
+        return next_.fetch_add(1, std::memory_order_relaxed) % item_count_;
     }
 
 private:

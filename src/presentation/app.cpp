@@ -10,8 +10,13 @@
 #include <imgui_impl_dx11.h>
 #include <imgui_impl_win32.h>
 #else
+#define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
+#ifdef __APPLE__
+#include <OpenGL/gl3.h>
+#else
 #include <GL/gl.h>
+#endif
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
 #endif
@@ -289,7 +294,7 @@ int App::run(const HINSTANCE instance, const int show_command) {
         ImGui::Render();
         d3d_.clear(0.955F, 0.966F, 0.982F, 1.0F);
         ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-        d3d_.present();
+        d3d_.present(is_active(cached_stats_.state) ? 2U : 1U);
     }
     stress_service_.stop();
     release_window_resources();
@@ -419,6 +424,11 @@ int App::run() {
         glClearColor(0.955F, 0.966F, 0.982F, 1.0F);
         glClear(GL_COLOR_BUFFER_BIT);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        const int next_swap_interval = is_active(cached_stats_.state) ? 2 : 1;
+        if (next_swap_interval != swap_interval_) {
+            glfwSwapInterval(next_swap_interval);
+            swap_interval_ = next_swap_interval;
+        }
         glfwSwapBuffers(window_);
     }
     stress_service_.stop();
