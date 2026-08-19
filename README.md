@@ -351,11 +351,3 @@ generated/yyyyMMdd_HHmmss_SSS_0002.log
 `LogGeneratorArchitecture` CTest는 금지된 역방향 include, Presentation의 구체 유스케이스 결합, Application 계층의 플랫폼·프레임워크 API 유입, 조립용 Infrastructure 헤더의 OS 타입 노출과 어댑터 타깃의 역방향 링크를 검사합니다.
 
 네트워크 소켓, TLS 세션, 파일 핸들, 백그라운드 스레드, 창과 렌더링 컨텍스트는 RAII 수명으로 관리됩니다. Presentation은 Infrastructure를 직접 참조하지 않으며 Composition Root에서 필요한 포트를 주입받습니다. Windows 전용 소스는 Windows 빌드에만, OpenSSL·POSIX 소스는 Linux와 macOS 빌드에만 포함됩니다.
-
-## GitHub 게시
-
-GitHub 원격 저장소와 권한이 구성된 Windows 환경에서는 검증 후 다음 스크립트로 현재 브랜치를 커밋하고 push할 수 있습니다.
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\publish.ps1 -Message "feat: update log generator"
-```
