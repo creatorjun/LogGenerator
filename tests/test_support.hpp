@@ -27,6 +27,7 @@ void run_cli_app_tests();
 void run_log_catalog_service_tests();
 void run_json_log_catalog_tests();
 void run_file_transport_tests();
+void run_udp_transport_tests();
 void run_stress_test_service_tests();
 void run_async_file_logger_tests();
 #ifdef LOGGEN_HAS_WINDOWS_ICON_TESTS

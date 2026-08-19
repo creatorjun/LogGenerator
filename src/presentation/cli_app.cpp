@@ -151,7 +151,7 @@ void print_stats(const domain::TransmissionStats& stats, const bool final) {
 
 }
 
-CliApp::CliApp(application::LogCatalogService& catalog_service, application::StressTestService& stress_service, application::ILogger& logger, std::filesystem::path default_catalog_file)
+CliApp::CliApp(application::ILogCatalogUseCase& catalog_service, application::IStressTestUseCase& stress_service, application::ILogger& logger, std::filesystem::path default_catalog_file)
     : catalog_service_(catalog_service), stress_service_(stress_service), logger_(logger), default_catalog_file_(std::move(default_catalog_file)) {
 }
 

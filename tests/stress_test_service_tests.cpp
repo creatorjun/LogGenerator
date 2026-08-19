@@ -101,7 +101,7 @@ public:
 
 class NullLogger final : public application::ILogger {
 public:
-    void log(const domain::LogLevel, const std::string_view) noexcept override {
+    void log(const application::LogLevel, const std::string_view) noexcept override {
     }
 };
 

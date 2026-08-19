@@ -73,7 +73,7 @@ AsyncFileLogger::~AsyncFileLogger() {
     output_.close();
 }
 
-void AsyncFileLogger::log(const domain::LogLevel level, const std::string_view message) noexcept {
+void AsyncFileLogger::log(const application::LogLevel level, const std::string_view message) noexcept {
     if (!accepting_.load(std::memory_order_acquire)) {
         return;
     }
@@ -126,7 +126,7 @@ void AsyncFileLogger::run(const std::stop_token stop_token) noexcept {
             for (const auto& entry : pending) {
                 open_for(entry.timestamp);
                 write_entry(entry);
-                urgent = urgent || entry.level == domain::LogLevel::Error || entry.level == domain::LogLevel::Critical;
+                urgent = urgent || entry.level == application::LogLevel::Error || entry.level == application::LogLevel::Critical;
             }
             pending.clear();
             const auto dropped = dropped_pending_.exchange(0, std::memory_order_relaxed);
@@ -180,7 +180,7 @@ void AsyncFileLogger::write_entry(const Entry& entry) {
 }
 
 void AsyncFileLogger::write_dropped_notice(const std::uint64_t count) {
-    const Entry entry{std::chrono::system_clock::now(), domain::LogLevel::Warning, current_thread_id(), std::format("Logger queue discarded {} entries", count)};
+    const Entry entry{std::chrono::system_clock::now(), application::LogLevel::Warning, current_thread_id(), std::format("Logger queue discarded {} entries", count)};
     open_for(entry.timestamp);
     write_entry(entry);
 }
@@ -197,7 +197,7 @@ std::string AsyncFileLogger::format_entry(const Entry& entry) {
     const auto milliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(entry.timestamp.time_since_epoch()).count() % 1000;
     std::array<char, 64> timestamp{};
     std::snprintf(timestamp.data(), timestamp.size(), "%04d-%02d-%02d %02d:%02d:%02d.%03lld", value.tm_year + 1900, value.tm_mon + 1, value.tm_mday, value.tm_hour, value.tm_min, value.tm_sec, static_cast<long long>(milliseconds));
-    return std::format("[{}] [{}] [T{}] {}\n", timestamp.data(), domain::log_level_name(entry.level), entry.thread_id, sanitize(entry.message));
+    return std::format("[{}] [{}] [T{}] {}\n", timestamp.data(), application::log_level_name(entry.level), entry.thread_id, sanitize(entry.message));
 }
 
 }

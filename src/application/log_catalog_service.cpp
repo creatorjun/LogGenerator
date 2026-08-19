@@ -1,6 +1,7 @@
 // src/application/log_catalog_service.cpp
 #include "application/log_catalog_service.hpp"
 
+#include "application/log_renderer.hpp"
 #include "application/privacy_anonymizer.hpp"
 #include "domain/sample_id.hpp"
 
@@ -53,7 +54,7 @@ void LogCatalogService::save(const std::filesystem::path& file, const std::span<
     catalog_.save(file, sanitized);
 }
 
-std::string LogCatalogService::next_id(const std::span<const domain::LogTemplate> items) {
+std::string LogCatalogService::next_id(const std::span<const domain::LogTemplate> items) const {
     validate_ids(items);
     std::uint64_t maximum = 0;
     for (const auto& item : items) {
@@ -70,6 +71,32 @@ std::string LogCatalogService::next_id(const std::span<const domain::LogTemplate
     auto result = std::to_string(maximum + 1);
     if (result.size() < 4) {
         result.insert(0, 4 - result.size(), '0');
+    }
+    return result;
+}
+
+LogTemplateAnalysis LogCatalogService::analyze(const domain::LogTemplate& item) const {
+    return LogRenderer::analyze(item);
+}
+
+LogTemplateAnalysis LogCatalogService::analyze(const std::string_view sample) const {
+    return LogRenderer::analyze(sample);
+}
+
+std::string LogCatalogService::sanitize(const std::string_view sample) const {
+    return PrivacyAnonymizer::sanitize(sample);
+}
+
+std::string LogCatalogService::privacy_search_terms(const LogTemplateAnalysis& analysis) const {
+    std::string result;
+    for (const auto kind : privacy_token_kinds) {
+        if ((analysis.privacy_token_mask & privacy_token_bit(kind)) == 0) {
+            continue;
+        }
+        if (!result.empty()) {
+            result.push_back(' ');
+        }
+        result.append(PrivacyAnonymizer::search_terms(kind));
     }
     return result;
 }

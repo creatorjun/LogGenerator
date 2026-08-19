@@ -296,6 +296,16 @@ void send_datagram(const NativeSocket socket, const std::string_view payload) {
     const auto sent = ::send(socket, payload.data(), payload.size(), MSG_NOSIGNAL);
 #endif
     if (sent < 0) {
+#ifndef _WIN32
+        // A connected POSIX UDP socket reports a delayed ICMP "Port Unreachable"
+        // as ECONNREFUSED on a later send. UDP has no delivery acknowledgement,
+        // and the Windows path already suppresses the equivalent reset through
+        // SIO_UDP_CONNRESET. Keep sender semantics consistent across platforms;
+        // permission, routing, buffer and all other socket errors remain fatal.
+        if (last_socket_error() == ECONNREFUSED) {
+            return;
+        }
+#endif
         throw std::runtime_error(socket_error_message("UDP send"));
     }
     if (static_cast<std::size_t>(sent) != payload.size()) {

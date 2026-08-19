@@ -1,10 +1,9 @@
 // src/presentation/app.hpp
 #pragma once
 
-#include "application/log_catalog_service.hpp"
-#include "application/log_renderer.hpp"
 #include "application/ports/logger.hpp"
-#include "application/stress_test_service.hpp"
+#include "application/use_cases/log_catalog.hpp"
+#include "application/use_cases/stress_test.hpp"
 #include "domain/log_template.hpp"
 #include "presentation/responsive_layout.hpp"
 
@@ -33,7 +32,7 @@ namespace loggen::presentation {
 
 class App {
 public:
-    App(application::LogCatalogService& catalog_service, application::ILogger& logger, application::StressTestService& stress_service, std::filesystem::path catalog_file, std::filesystem::path generated_directory);
+    App(application::ILogCatalogUseCase& catalog_service, application::ILogger& logger, application::IStressTestUseCase& stress_service, std::filesystem::path catalog_file, std::filesystem::path generated_directory);
     ~App();
 
 #ifdef _WIN32
@@ -83,9 +82,9 @@ private:
     [[nodiscard]] std::size_t visible_catalog_index() const noexcept;
     void start_test();
 
-    application::LogCatalogService& catalog_service_;
+    application::ILogCatalogUseCase& catalog_service_;
     application::ILogger& logger_;
-    application::StressTestService& stress_service_;
+    application::IStressTestUseCase& stress_service_;
     std::filesystem::path catalog_file_;
     std::filesystem::path generated_directory_;
 #ifdef _WIN32

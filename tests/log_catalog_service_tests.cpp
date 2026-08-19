@@ -41,9 +41,14 @@ void run_log_catalog_service_tests() {
     expect(catalog.saved.front().sample.find("test@example.com") == std::string::npos, "Catalog service persisted unsanitized personal data");
     expect(catalog.saved.front().sample.find("{{EMAIL}}") != std::string::npos, "Catalog service changed the privacy marker while saving");
 
-    expect(application::LogCatalogService::next_id(catalog.loaded) == "0002", "Catalog service did not create the next numeric sample id");
+    const auto analysis = service.analyze(catalog.saved.front());
+    expect(analysis.privacy_token_count == 1, "Catalog use-case boundary did not expose template analysis");
+    expect(service.privacy_search_terms(analysis).find("email") != std::string::npos, "Catalog use-case boundary did not expose privacy search terms");
+    expect(service.sanitize("phone=010-1234-5678").find("{{PHONE}}") != std::string::npos, "Catalog use-case boundary did not sanitize editor input");
+
+    expect(service.next_id(catalog.loaded) == "0002", "Catalog service did not create the next numeric sample id");
     catalog.loaded.push_back({"0010", "Later sample", "message=ok", "test", {}});
-    expect(application::LogCatalogService::next_id(catalog.loaded) == "0011", "Catalog service did not advance from the maximum numeric sample id");
+    expect(service.next_id(catalog.loaded) == "0011", "Catalog service did not advance from the maximum numeric sample id");
 
     catalog.loaded.front().id = "sample-0001";
     bool invalid_load_rejected = false;

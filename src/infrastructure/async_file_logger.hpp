@@ -27,14 +27,14 @@ public:
     AsyncFileLogger(const AsyncFileLogger&) = delete;
     AsyncFileLogger& operator=(const AsyncFileLogger&) = delete;
 
-    void log(domain::LogLevel level, std::string_view message) noexcept override;
+    void log(application::LogLevel level, std::string_view message) noexcept override;
     [[nodiscard]] const std::filesystem::path& directory() const noexcept;
     [[nodiscard]] std::uint64_t dropped_entries() const noexcept;
 
 private:
     struct Entry {
         std::chrono::system_clock::time_point timestamp;
-        domain::LogLevel level;
+        application::LogLevel level;
         std::uint32_t thread_id;
         std::string message;
     };

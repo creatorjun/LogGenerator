@@ -173,32 +173,39 @@ add_custom_target(loggen_copy_sample_logs
 add_dependencies(LogGeneratorCli loggen_copy_sample_logs)
 
 if(LOGGEN_BUILD_GUI)
-set(LOGGEN_PRESENTATION_SOURCES
-    src/main.cpp
+set(LOGGEN_GUI_PRESENTATION_SOURCES
     src/presentation/app.cpp
     src/presentation/ui_theme.cpp
 )
 
 if(WIN32)
-    add_executable(LogGenerator WIN32
-        ${LOGGEN_PRESENTATION_SOURCES}
-        resources/windows/log_generator.rc
+    list(APPEND LOGGEN_GUI_PRESENTATION_SOURCES
         src/presentation/d3d11_context.cpp
         src/presentation/windows_icon.cpp
     )
+endif()
+
+add_library(loggen_gui_presentation STATIC ${LOGGEN_GUI_PRESENTATION_SOURCES})
+target_include_directories(loggen_gui_presentation PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(loggen_gui_presentation PUBLIC loggen_application PRIVATE imgui)
+if(WIN32)
+    target_compile_definitions(loggen_gui_presentation PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _WIN32_WINNT=0x0A00)
+    target_link_libraries(loggen_gui_presentation PRIVATE d3d11 dxgi dwmapi shell32)
+elseif(APPLE)
+    target_compile_definitions(loggen_gui_presentation PRIVATE GL_SILENCE_DEPRECATION)
+endif()
+
+if(WIN32)
+    add_executable(LogGenerator WIN32 src/main.cpp resources/windows/log_generator.rc)
 else()
-    add_executable(LogGenerator ${LOGGEN_PRESENTATION_SOURCES})
+    add_executable(LogGenerator src/main.cpp)
 endif()
 target_include_directories(LogGenerator PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
-target_link_libraries(LogGenerator PRIVATE loggen_application loggen_infrastructure imgui)
+target_link_libraries(LogGenerator PRIVATE loggen_application loggen_infrastructure loggen_gui_presentation)
 if(WIN32)
     target_compile_definitions(LogGenerator PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _WIN32_WINNT=0x0A00)
-    target_link_libraries(LogGenerator PRIVATE d3d11 dxgi dwmapi shell32)
 else()
     target_link_libraries(LogGenerator PRIVATE Threads::Threads)
-    if(APPLE)
-        target_compile_definitions(LogGenerator PRIVATE GL_SILENCE_DEPRECATION)
-    endif()
 endif()
 add_dependencies(LogGenerator LogGeneratorCli)
 endif()
@@ -213,6 +220,7 @@ set(LOGGEN_TEST_SOURCES
     tests/log_renderer_tests.cpp
     tests/json_log_catalog_tests.cpp
     tests/stress_test_service_tests.cpp
+    tests/udp_transport_tests.cpp
     tests/responsive_layout_tests.cpp
 )
 if(WIN32 AND LOGGEN_BUILD_GUI)
@@ -261,6 +269,7 @@ loggen_configure_target(loggen_infrastructure)
 loggen_configure_target(loggen_cli_presentation)
 loggen_configure_target(LogGeneratorCli)
 if(LOGGEN_BUILD_GUI)
+    loggen_configure_target(loggen_gui_presentation)
     loggen_configure_target(LogGenerator)
 endif()
 loggen_configure_target(LogGeneratorTests)

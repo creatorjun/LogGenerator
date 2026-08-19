@@ -6,6 +6,7 @@
 #include "application/ports/logger.hpp"
 #include "application/ports/log_transport.hpp"
 #include "application/round_robin_cursor.hpp"
+#include "application/use_cases/stress_test.hpp"
 #include "domain/transmission_stats.hpp"
 
 #include <atomic>
@@ -20,18 +21,18 @@
 
 namespace loggen::application {
 
-class StressTestService {
+class StressTestService final : public IStressTestUseCase {
 public:
     StressTestService(const ITransportFactory& transport_factory, const IExecutionRuntime& execution_runtime, ILogger& logger);
-    ~StressTestService();
+    ~StressTestService() override;
 
     StressTestService(const StressTestService&) = delete;
     StressTestService& operator=(const StressTestService&) = delete;
 
-    void start(domain::GeneratorConfig config);
-    void request_stop() noexcept;
-    void stop() noexcept;
-    [[nodiscard]] domain::TransmissionStats snapshot();
+    void start(domain::GeneratorConfig config) override;
+    void request_stop() noexcept override;
+    void stop() noexcept override;
+    [[nodiscard]] domain::TransmissionStats snapshot() override;
 
 private:
     void run_supervisor(domain::GeneratorConfig config, std::stop_token stop_token) noexcept;

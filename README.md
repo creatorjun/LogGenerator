@@ -27,7 +27,9 @@ LogGenerator/
 ├─ src/
 │  ├─ domain/
 │  ├─ application/
+│  │  ├─ models/
 │  │  ├─ ports/
+│  │  ├─ use_cases/
 │  │  ├─ log_catalog_service.cpp
 │  │  ├─ log_renderer.cpp
 │  │  ├─ privacy_anonymizer.cpp
@@ -218,6 +220,8 @@ bash scripts/build.sh Release --headless
 
 FILE 방식은 네트워크 객체를 생성하지 않으며 실행 파일 옆 `generated` 디렉터리에 로그 이벤트 하나당 파일 하나를 기록합니다. 총 바이트, 파일 수, 실행 시간 제한을 0으로 두면 해당 제한은 비활성화됩니다.
 
+UDP 통계는 원격 수신 확인이 아닌 로컬 소켓의 전송 완료를 기준으로 집계합니다. 수신 포트가 없을 때 나중에 도착하는 ICMP Port Unreachable은 UDP 송신을 중단시키지 않으며, 권한 거부·라우팅 실패·버퍼 오류 등 실제 로컬 송신 오류는 계속 실패로 보고합니다.
+
 ## CLI 사용 방법
 
 ### Windows CLI
@@ -332,9 +336,11 @@ generated/yyyyMMdd_HHmmss_SSS_0002.log
 
 ## 아키텍처 검증
 
-의존성 방향은 `Presentation/Infrastructure → Application → Domain`입니다. `LogGeneratorArchitecture` CTest가 금지된 역방향 include와 Application 계층의 플랫폼·프레임워크 API 유입을 검사합니다.
+의존성 방향은 `Presentation/Infrastructure → Application → Domain`입니다. GUI와 CLI Presentation은 Application의 입력 경계(`use_cases`)와 출력 포트만 참조하고, 구체 서비스와 Infrastructure 구현은 각 Composition Root에서 조립합니다. GUI Presentation도 독립 정적 라이브러리 타깃으로 분리되어 Infrastructure에 링크할 수 없습니다.
 
-네트워크 소켓, TLS 세션, 파일 핸들, 백그라운드 스레드, 창과 렌더링 컨텍스트는 RAII 수명으로 관리됩니다. CLI Presentation은 Infrastructure를 직접 참조하지 않으며 Composition Root에서 필요한 포트를 주입받습니다. Windows 전용 소스는 Windows 빌드에만, OpenSSL·POSIX 소스는 Linux 빌드에만 포함됩니다.
+`LogGeneratorArchitecture` CTest는 금지된 역방향 include, Presentation의 구체 유스케이스 결합, Application 계층의 플랫폼·프레임워크 API 유입, 조립용 Infrastructure 헤더의 OS 타입 노출과 어댑터 타깃의 역방향 링크를 검사합니다.
+
+네트워크 소켓, TLS 세션, 파일 핸들, 백그라운드 스레드, 창과 렌더링 컨텍스트는 RAII 수명으로 관리됩니다. Presentation은 Infrastructure를 직접 참조하지 않으며 Composition Root에서 필요한 포트를 주입받습니다. Windows 전용 소스는 Windows 빌드에만, OpenSSL·POSIX 소스는 Linux와 macOS 빌드에만 포함됩니다.
 
 ## GitHub 게시
 

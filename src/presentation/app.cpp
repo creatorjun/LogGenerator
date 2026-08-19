@@ -1,7 +1,6 @@
 // src/presentation/app.cpp
 #include "presentation/app.hpp"
 
-#include "application/privacy_anonymizer.hpp"
 #include "domain/generator_config.hpp"
 #include "presentation/ui_theme.hpp"
 #ifdef _WIN32
@@ -210,7 +209,7 @@ std::string sample_preview(const std::string_view sample) {
     return result;
 }
 
-std::string catalog_search_text(const domain::LogTemplate& item, const application::LogTemplateAnalysis& analysis) {
+std::string catalog_search_text(const domain::LogTemplate& item, const std::string_view privacy_search_terms) {
     std::string result;
     result.reserve(item.name.size() + item.source.size() + item.sample.size() + 256);
     result.append(item.name);
@@ -226,12 +225,9 @@ std::string catalog_search_text(const domain::LogTemplate& item, const applicati
             result.append(value);
         }
     }
-    for (const auto kind : application::privacy_token_kinds) {
-        if ((analysis.privacy_token_mask & application::privacy_token_bit(kind)) == 0) {
-            continue;
-        }
+    if (!privacy_search_terms.empty()) {
         result.push_back(' ');
-        result.append(application::PrivacyAnonymizer::search_terms(kind));
+        result.append(privacy_search_terms);
     }
     return lowercase(std::move(result));
 }
@@ -263,7 +259,7 @@ std::optional<std::chrono::sys_days> parse_iso_date(const std::string_view value
 
 }
 
-App::App(application::LogCatalogService& catalog_service, application::ILogger& logger, application::StressTestService& stress_service, std::filesystem::path catalog_file, std::filesystem::path generated_directory)
+App::App(application::ILogCatalogUseCase& catalog_service, application::ILogger& logger, application::IStressTestUseCase& stress_service, std::filesystem::path catalog_file, std::filesystem::path generated_directory)
     : catalog_service_(catalog_service), logger_(logger), stress_service_(stress_service), catalog_file_(std::move(catalog_file)), generated_directory_(std::move(generated_directory)) {
 }
 
@@ -661,8 +657,8 @@ void App::request_catalog_load() {
             result.previews.reserve(result.items.size());
             result.analyses.reserve(result.items.size());
             for (auto& item : result.items) {
-                auto analysis = application::LogRenderer::analyze(item);
-                result.search_names.push_back(catalog_search_text(item, analysis));
+                auto analysis = catalog_service_.analyze(item);
+                result.search_names.push_back(catalog_search_text(item, catalog_service_.privacy_search_terms(analysis)));
                 result.previews.push_back(sample_preview(item.sample));
                 result.analyses.push_back(std::move(analysis));
             }
@@ -887,7 +883,7 @@ void App::render_configuration(const domain::TransmissionStats& stats, const Res
     } else if (protocol_index_ == static_cast<int>(domain::TransportProtocol::File)) {
         disabled_wrapped_text("FILE은 generated 폴더에 로그 1개당 파일 1개로 저장하며 설정한 안전 제한에 도달하면 정상 종료합니다.");
     } else {
-        disabled_wrapped_text("UDP 통계는 로컬 소켓 전송 완료를 기준으로 집계합니다.");
+        disabled_wrapped_text("UDP 통계는 로컬 소켓 전송 완료를 기준으로 집계하며 비동기 ICMP 포트 거부는 전송 실패로 처리하지 않습니다.");
     }
     ImGui::EndChild();
     ImGui::PopStyleColor();
@@ -1231,19 +1227,19 @@ void App::save_catalog_editor() {
     if (editor_name_.empty() || editor_sample_.empty()) {
         return;
     }
-    editor_sample_ = application::PrivacyAnonymizer::sanitize(editor_sample_);
+    editor_sample_ = catalog_service_.sanitize(editor_sample_);
     analyze_editor_sample();
     if (editor_is_new_) {
-        auto identifier = application::LogCatalogService::next_id(catalog_items_);
+        auto identifier = catalog_service_.next_id(catalog_items_);
         catalog_items_.push_back(domain::LogTemplate{std::move(identifier), editor_name_, editor_sample_, "사용자 정의", {}});
-        catalog_search_names_.push_back(catalog_search_text(catalog_items_.back(), editor_analysis_));
+        catalog_search_names_.push_back(catalog_search_text(catalog_items_.back(), catalog_service_.privacy_search_terms(editor_analysis_)));
         catalog_previews_.push_back(sample_preview(editor_sample_));
         catalog_analyses_.push_back(editor_analysis_);
         selected_log_ = catalog_items_.size() - 1;
     } else if (editor_index_ < catalog_items_.size()) {
         catalog_items_[editor_index_].name = editor_name_;
         catalog_items_[editor_index_].sample = editor_sample_;
-        catalog_search_names_[editor_index_] = catalog_search_text(catalog_items_[editor_index_], editor_analysis_);
+        catalog_search_names_[editor_index_] = catalog_search_text(catalog_items_[editor_index_], catalog_service_.privacy_search_terms(editor_analysis_));
         catalog_previews_[editor_index_] = sample_preview(editor_sample_);
         catalog_analyses_[editor_index_] = editor_analysis_;
         selected_log_ = editor_index_;
@@ -1266,7 +1262,7 @@ void App::delete_selected_catalog_item() {
 }
 
 void App::analyze_editor_sample() {
-    editor_analysis_ = application::LogRenderer::analyze(editor_sample_);
+    editor_analysis_ = catalog_service_.analyze(editor_sample_);
     editor_analysis_pending_ = false;
 }
 

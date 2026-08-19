@@ -41,7 +41,7 @@ public:
 
 class NullLogger final : public loggen::application::ILogger {
 public:
-    void log(loggen::domain::LogLevel, std::string_view) noexcept override {
+    void log(loggen::application::LogLevel, std::string_view) noexcept override {
     }
 };
 
