@@ -37,7 +37,38 @@ dnf install -y \
 bash scripts/build.sh Release --gui --clean
 ```
 
-완료 후 GUI는 `build-linux/bin/LogGenerator`, CLI는 `build-linux/bin/LogGeneratorCli`입니다.
+완료 후 GUI는 `build-linux/bin/LogGenerator`, CLI는 `build-linux/bin/LogGeneratorCli`입니다. Noto Sans KR Regular/Bold 글꼴과 OFL 라이선스는 고정 커밋에서 내려받아 SHA-256 검증 후 `build-linux/bin/fonts`에 복사됩니다.
+
+GUI 빌드는 다음 단일 배포 ZIP을 자동 생성합니다.
+
+```text
+build-linux/dist/LogGenerator-1.0.0-oracle-linux-x86_64.zip
+```
+
+aarch64에서는 파일명이 `LogGenerator-1.0.0-oracle-linux-aarch64.zip`입니다. ZIP에는 GUI, CLI, `Sample Logs`, 한글 글꼴, OFL 라이선스, 아이콘, 실행 스크립트와 바로가기 설치기가 포함됩니다. OpenSSL, X11, OpenGL과 C++ 런타임은 Oracle Linux 시스템 패키지를 사용합니다.
+
+다른 Oracle Linux GUI PC에서 ZIP을 실행할 때 필요한 런타임은 다음과 같습니다.
+
+```bash
+dnf install -y \
+  libstdc++ openssl-libs zlib ca-certificates \
+  libglvnd-glx libglvnd-opengl mesa-dri-drivers \
+  libX11 libXcursor libXi libXinerama libXrandr
+```
+
+빌드가 끝나면 현재 사용자의 `${XDG_DATA_HOME:-$HOME/.local/share}/loggenerator`에 앱을 복사하고 앱 서랍 항목을 등록합니다. XDG Desktop 디렉터리가 있으면 `LogGenerator.desktop`도 생성합니다. root로 빌드하면 `/root`에 등록되므로 실제 데스크톱 로그인 계정의 바로가기가 필요하면 해당 계정으로 빌드합니다.
+
+자동 바로가기 설치를 끄고 ZIP만 생성하려면 다음 명령을 사용합니다.
+
+```bash
+LOGGEN_INSTALL_LINUX_SHORTCUTS=OFF bash scripts/build.sh Release --gui --clean
+```
+
+ZIP을 다른 Oracle Linux PC에서 압축 해제한 후 바로가기를 등록하려면 다음 명령을 실행합니다.
+
+```bash
+bash LogGenerator/install-shortcuts.sh
+```
 
 디스플레이 서버가 없는 Oracle Linux에서 CLI만 빌드하려면 GUI 패키지를 제외한 다음 의존성만 설치합니다.
 

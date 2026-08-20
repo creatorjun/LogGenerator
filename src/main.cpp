@@ -82,7 +82,7 @@ int main() {
             if (!std::filesystem::exists(catalog_file)) {
                 catalog_file = std::filesystem::current_path() / "Sample Logs" / "sample_logs.json";
             }
-            loggen::presentation::App app{catalog_service, logger, stress_service, std::move(catalog_file), generated_directory};
+            loggen::presentation::App app{catalog_service, logger, stress_service, std::move(catalog_file), generated_directory, application_directory / "fonts"};
 #ifdef _WIN32
             const int result = app.run(instance, show_command);
 #else

@@ -12,6 +12,10 @@ LogGenerator/
 ├─ PERFORMANCE.md
 ├─ README.md
 ├─ requirements.txt
+├─ packaging/
+│  └─ linux/
+│     ├─ install-shortcuts.sh
+│     └─ run-loggenerator.sh
 ├─ resources/
 │  └─ windows/
 │     ├─ log.ico
@@ -23,6 +27,7 @@ LogGenerator/
 │  ├─ build-cli-windows.cmd
 │  ├─ build.ps1
 │  ├─ build.sh
+│  ├─ package-linux.cmake
 │  └─ publish.ps1
 ├─ src/
 │  ├─ domain/
@@ -68,6 +73,7 @@ LogGenerator/
    ├─ log_catalog_service_tests.cpp
    ├─ log_preparation_cache_tests.cpp
    ├─ log_renderer_tests.cpp
+   ├─ linux_package_tests.cmake
    ├─ responsive_layout_tests.cpp
    ├─ stress_test_service_tests.cpp
    └─ windows_icon_tests.cpp
@@ -118,7 +124,7 @@ cmake --version
 /opt/rh/gcc-toolset-15/root/usr/bin/g++ --version
 ```
 
-한글 글꼴이 없으면 기본 벡터 글꼴로 실행되지만 일부 한글 글리프가 표시되지 않을 수 있습니다.
+Linux GUI 구성 단계는 Noto Sans KR Regular/Bold와 OFL 라이선스를 고정 커밋에서 내려받아 SHA-256으로 검증합니다. 실행 파일 옆 `fonts` 디렉터리에 함께 배치되며 Oracle Linux의 시스템 글꼴보다 먼저 로드되므로 별도 한글 글꼴 패키지가 없어도 UI 한글을 표시합니다.
 
 ### Oracle Linux 8.10/9.8 헤드리스
 
@@ -175,7 +181,22 @@ Debug 빌드는 `.\scripts\build-cli-windows.cmd Debug`으로 실행합니다. C
 bash scripts/build.sh Release --gui --clean
 ```
 
-실행 파일은 `build-linux/bin/LogGenerator`에 생성됩니다.
+실행 파일은 `build-linux/bin/LogGenerator`와 `build-linux/bin/LogGeneratorCli`에 생성됩니다. 빌드가 끝나면 GUI, CLI, 샘플 로그, 한글 글꼴, OFL 라이선스, 아이콘과 바로가기 설치기를 포함한 단일 ZIP 파일이 자동 생성됩니다.
+
+```text
+build-linux/dist/LogGenerator-1.0.0-oracle-linux-x86_64.zip
+```
+
+aarch64 빌드에서는 파일명의 아키텍처가 `aarch64`로 생성됩니다. 같은 빌드 과정에서 현재 사용자의 `${XDG_DATA_HOME:-$HOME/.local/share}/loggenerator`에 앱을 설치하고 앱 서랍 항목을 생성합니다. XDG Desktop 디렉터리가 존재하면 `LogGenerator.desktop` 바로가기도 복사합니다. root로 빌드하면 `/root`에 등록되므로 실제 데스크톱 로그인 계정의 앱 서랍에 표시하려면 해당 계정으로 빌드합니다.
+
+ZIP을 빌드 PC와 다른 Oracle Linux GUI 환경에서 실행할 때는 다음 시스템 런타임이 필요합니다. 애플리케이션 실행 파일, 샘플 로그, 한글 글꼴과 아이콘은 ZIP에 포함되지만 glibc, OpenSSL, X11과 OpenGL은 운영체제 패키지를 사용합니다.
+
+```bash
+dnf install -y \
+  libstdc++ openssl-libs zlib ca-certificates \
+  libglvnd-glx libglvnd-opengl mesa-dri-drivers \
+  libX11 libXcursor libXi libXinerama libXrandr
+```
 
 ```bash
 ./build-linux/bin/LogGenerator
@@ -189,6 +210,18 @@ export CXX=/opt/rh/gcc-toolset-15/root/usr/bin/g++
 cmake --fresh -S . -B build-linux -DCMAKE_BUILD_TYPE=Release -DLOGGEN_BUILD_GUI=ON -DCMAKE_C_COMPILER="$CC" -DCMAKE_CXX_COMPILER="$CXX"
 cmake --build build-linux --parallel
 ctest --test-dir build-linux --output-on-failure
+```
+
+ZIP만 생성하고 현재 사용자에게 바로가기를 자동 설치하지 않으려면 다음과 같이 실행합니다.
+
+```bash
+LOGGEN_INSTALL_LINUX_SHORTCUTS=OFF bash scripts/build.sh Release --gui --clean
+```
+
+ZIP을 다른 PC에서 푼 뒤 해당 PC의 앱 서랍과 Desktop에 등록하려면 압축 해제 디렉터리에서 다음 명령을 실행합니다.
+
+```bash
+bash LogGenerator/install-shortcuts.sh
 ```
 
 ### Oracle Linux 8.10/9.8 헤드리스
@@ -222,22 +255,23 @@ bash scripts/build.sh Release --headless
 ./build-macos-headless/bin/LogGenerator --help
 ```
 
-모든 플랫폼에서 빌드 후 실행 파일 옆에 `Sample Logs/sample_logs.json`이 자동 복사됩니다.
+모든 플랫폼에서 빌드 후 실행 파일 옆에 `Sample Logs/sample_logs.json`이 자동 복사됩니다. Linux GUI 빌드는 검증된 Noto Sans KR 글꼴도 `fonts` 디렉터리에 복사합니다.
 
 ## 사용 방법
 
 1. UDP, TCP, TLS, FILE 중 전송 방식을 선택합니다.
-2. 네트워크 방식에서는 대상 Host와 Port를 입력합니다.
-3. TCP/TLS에서는 Newline 또는 RFC 6587 Octet Counting 프레이밍을 선택합니다.
-4. TLS 인증서 이름이 대상 Host와 다르면 TLS 서버 이름을 입력합니다.
-5. 샘플을 검색하거나 전체 순환·단일 샘플 생성을 선택합니다.
-6. `src_ip`, `dst_ip`, 날짜 범위 또는 현재 시각 오프셋을 설정합니다.
-7. 순차 전송 또는 병렬 전송을 선택하고 목표 EPS를 설정합니다. 목표 EPS가 0이면 최대 처리량 모드입니다.
-8. `전송 시작`을 누르고 현재 EPS, 평균 EPS, 총 로그 수, 총 바이트를 확인합니다.
+2. UDP에서는 프로토콜과 대상 IP 사이의 `통합 전송 허용 여부`를 선택합니다. 기본값은 `불가`입니다.
+3. 네트워크 방식에서는 대상 Host와 Port를 입력합니다.
+4. TCP/TLS에서는 Newline 또는 RFC 6587 Octet Counting 프레이밍을 선택합니다.
+5. TLS 인증서 이름이 대상 Host와 다르면 TLS 서버 이름을 입력합니다.
+6. 샘플을 검색하거나 전체 순환·단일 샘플 생성을 선택합니다.
+7. `src_ip`, `dst_ip`, 날짜 범위 또는 현재 시각 오프셋을 설정합니다.
+8. 순차 전송 또는 병렬 전송을 선택하고 목표 EPS를 설정합니다. 목표 EPS가 0이면 최대 처리량 모드입니다.
+9. `전송 시작`을 누르고 현재 EPS, 평균 EPS, 총 로그 수, 총 바이트를 확인합니다.
 
 FILE 방식은 네트워크 객체를 생성하지 않으며 실행 파일 옆 `generated` 디렉터리에 로그 이벤트 하나당 파일 하나를 기록합니다. 총 바이트, 파일 수, 실행 시간 제한을 0으로 두면 해당 제한은 비활성화됩니다.
 
-UDP 통계는 로그 이벤트 EPS와 실제 데이터그램 DPS를 분리해 표시합니다. 순차 전송은 기존 호환성을 위해 로그 1개를 데이터그램 1개로 전송합니다. 병렬 전송은 3M+ 로그 EPS를 위해 로그를 개행으로 구분하고 최대 60 KiB 데이터그램에 자동 패킹하므로 수신기가 데이터그램 내부의 개행 단위 이벤트 분리를 지원해야 합니다. 로그 내부의 실제 CR/LF는 `\\r`, `\\n`으로 이스케이프됩니다. 60 KiB UDP는 일반 MTU에서 IP 단편화되므로 loopback, jumbo frame 또는 충분한 대역폭의 전용망을 권장합니다. 수신 포트가 없을 때 나중에 도착하는 ICMP Port Unreachable은 UDP 송신을 중단시키지 않으며, 권한 거부·라우팅 실패·버퍼 오류 등 실제 로컬 송신 오류는 계속 실패로 보고합니다.
+UDP 통계는 로그 이벤트 EPS와 실제 데이터그램 DPS를 분리해 표시합니다. `통합 전송 허용 여부`의 기본값인 `불가`는 순차·병렬 모드와 관계없이 로그 1개를 데이터그램 1개로 전송합니다. `허용`은 로그를 개행으로 구분해 최대 60 KiB 데이터그램에 패킹하고 여러 데이터그램을 최대 600 KiB 작업 단위로 벡터 전송하므로 수신기가 데이터그램 내부의 개행 단위 이벤트 분리를 지원해야 합니다. 단일 UDP payload의 프로토콜 상한은 65,507바이트이므로 600 KiB를 하나의 데이터그램으로 만들지 않습니다. 로그 내부의 실제 CR/LF는 `\\r`, `\\n`으로 이스케이프됩니다. 60 KiB UDP는 일반 MTU에서 IP 단편화되므로 loopback, jumbo frame 또는 충분한 대역폭의 전용망을 권장합니다. 수신 포트가 없을 때 나중에 도착하는 ICMP Port Unreachable은 UDP 송신을 중단시키지 않으며, 권한 거부·라우팅 실패·버퍼 오류 등 실제 로컬 송신 오류는 계속 실패로 보고합니다.
 
 순차 전송은 항상 Worker 1개를 사용합니다. 병렬 전송은 Worker 수를 직접 입력받지 않고 실행 시 OS, 프로토콜 및 CPU 수에 따라 자동 결정합니다. macOS UDP는 XNU 출력 경합 실측 결과에 따라 Worker 2개와 `sendmsg_x` 데이터그램 벡터 송신을 사용하고, Windows/Linux UDP는 CPU 수에 따라 2~8개를 사용합니다. Linux는 `sendmmsg`, TCP/TLS는 최대 16개의 자동 Worker를 사용합니다. FILE은 순차 전송으로 고정됩니다.
 
@@ -280,6 +314,7 @@ FILE 로그 100개를 생성합니다.
   --protocol udp `
   --host 192.0.2.10 `
   --port 514 `
+  --udp-integration allow `
   --mode parallel `
   --eps 1000 `
   --duration 60
@@ -324,12 +359,13 @@ FILE 로그 100개를 생성합니다.
   --protocol udp \
   --host 192.0.2.10 \
   --port 514 \
+  --udp-integration allow \
   --mode parallel \
   --eps 1000 \
   --duration 60
 ```
 
-샘플 ID는 `0001`처럼 숫자로만 지정합니다. 전체 샘플은 `--all`, 일부 샘플은 반복 가능한 `--sample-id`로 선택하며 두 옵션은 함께 사용할 수 없습니다. 실행 시간을 생략하거나 0으로 설정하면 `Ctrl+C` 또는 FILE 제한에 도달할 때까지 실행합니다. 전송 방식은 `--mode sequential|parallel`로 선택하며 병렬 모드의 Worker 수는 자동 결정됩니다. 병렬 Worker는 하나의 전역 Round-Robin 커서를 공유하므로 샘플 선택이 Worker별로 분리되지 않습니다. TCP/TLS는 `--framing newline|octet`, TLS는 `--tls-server-name`을 지원합니다. 전체 옵션은 `--help`에서 확인할 수 있습니다.
+샘플 ID는 `0001`처럼 숫자로만 지정합니다. 전체 샘플은 `--all`, 일부 샘플은 반복 가능한 `--sample-id`로 선택하며 두 옵션은 함께 사용할 수 없습니다. 실행 시간을 생략하거나 0으로 설정하면 `Ctrl+C` 또는 FILE 제한에 도달할 때까지 실행합니다. 전송 방식은 `--mode sequential|parallel`로 선택하며 병렬 모드의 Worker 수는 자동 결정됩니다. UDP 통합 전송은 `--udp-integration deny|allow`로 선택하며 기본값은 `deny`입니다. 병렬 Worker는 하나의 전역 Round-Robin 커서를 공유하므로 샘플 선택이 Worker별로 분리되지 않습니다. TCP/TLS는 `--framing newline|octet`, TLS는 `--tls-server-name`을 지원합니다. 전체 옵션은 `--help`에서 확인할 수 있습니다.
 
 ## 데이터와 로그
 

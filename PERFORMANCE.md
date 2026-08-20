@@ -30,7 +30,7 @@ AppleClang 21, Release, 14 worker에서 측정한 대표값입니다.
 
 ### macOS UDP 3M end-to-end 검증
 
-UDP 엔진은 XNU `sendmsg_x` 벡터 송신을 지원하며, 3M 병렬 경로는 최대 60 KiB 개행 패킹으로 물리 데이터그램 수를 추가로 줄입니다. 2026-08-19 M4에서 목표 3,000,000 EPS, 5초, loopback C++ 수신기로 측정한 결과입니다.
+UDP 엔진은 XNU `sendmsg_x` 벡터 송신을 지원하며, 사용자가 통합 전송을 허용한 3M 병렬 경로는 최대 60 KiB 개행 패킹과 최대 600 KiB 벡터 전송 단위로 물리 데이터그램 수와 시스템 호출 수를 줄입니다. 2026-08-19 M4에서 목표 3,000,000 EPS, 5초, loopback C++ 수신기로 측정한 결과입니다.
 
 | 항목 | 결과 |
 |---|---:|
@@ -54,13 +54,13 @@ cmake --build build-macos --target LogGeneratorMacosUdpBenchmark --parallel
 ./build-macos/bin/LogGeneratorMacosUdpBenchmark 3000000 5
 ```
 
-이 결과의 EPS는 개행으로 분리되는 로그 이벤트 수입니다. 표준 호환 모드인 순차 UDP는 로그당 데이터그램 1개를 유지하며 동일 장비에서 약 0.74M PPS, `sendmsg_x`와 Worker 2개를 사용하는 비패킹 데이터그램 경로의 상한은 약 1.21M PPS였습니다. 전체 샘플의 평균 크기에서는 3M EPS가 약 22.8 Gbit/s의 UDP payload이므로 원격 전송에는 프로토콜 오버헤드를 포함해 최소 25GbE급 링크와 동급 수신기가 필요합니다. 60 KiB 데이터그램은 1,500-byte MTU에서 IP 단편화되므로 loopback, jumbo frame 또는 신뢰할 수 있는 전용망이 아니면 손실률이 커질 수 있습니다.
+이 결과의 EPS는 개행으로 분리되는 로그 이벤트 수입니다. 기본값인 통합 전송 불가는 순차·병렬 모드 모두 로그당 데이터그램 1개를 유지합니다. 동일 장비에서 순차 경로는 약 0.74M PPS, `sendmsg_x`와 Worker 2개를 사용하는 비패킹 병렬 경로의 상한은 약 1.21M PPS였습니다. 전체 샘플의 평균 크기에서는 3M EPS가 약 22.8 Gbit/s의 UDP payload이므로 원격 전송에는 프로토콜 오버헤드를 포함해 최소 25GbE급 링크와 동급 수신기가 필요합니다. 60 KiB 데이터그램은 1,500-byte MTU에서 IP 단편화되므로 loopback, jumbo frame 또는 신뢰할 수 있는 전용망이 아니면 손실률이 커질 수 있습니다.
 
 ## 적용된 hot-path 최적화
 
 - macOS 연결형 UDP에서 최대 256개 데이터그램을 한 syscall로 넘기는 XNU `sendmsg_x` 경로 추가
 - Linux UDP에서 최대 256개 데이터그램을 묶는 `sendmmsg` 경로 추가
-- 병렬 UDP에서 개행 이벤트를 최대 60 KiB로 패킹하고 로그 EPS와 데이터그램 DPS를 분리 집계
+- 명시적으로 허용된 UDP 통합 전송에서 개행 이벤트를 최대 60 KiB 데이터그램과 최대 600 KiB 전송 단위로 패킹하고 로그 EPS와 데이터그램 DPS를 분리 집계
 - 모든 Worker 연결 후 동시에 전송을 시작해 초기 단일 Worker 구간과 연결 시간을 EPS에서 제외
 - 카탈로그 로드·편집 시 토큰화된 불변 렌더 청사진을 미리 컴파일하고 원본/토큰 샘플 키로 공유
 - 전송 및 FILE 생성 시작 시 정규식 재분석 없이 시각 오프셋과 송수신 IP만 캐시 청사진에 바인딩

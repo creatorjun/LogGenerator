@@ -12,6 +12,7 @@ fi
 case "$(uname -s)" in
     Linux)
         build_prefix="build-linux"
+        cmake_platform_arguments+=("-DLOGGEN_INSTALL_LINUX_SHORTCUTS=${LOGGEN_INSTALL_LINUX_SHORTCUTS:-ON}")
         oracle_linux_id=""
         oracle_linux_version=""
         if [ -r /etc/os-release ]; then

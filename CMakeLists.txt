@@ -20,9 +20,43 @@ set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 option(LOGGEN_BUILD_GUI "Build the desktop GUI" ON)
 option(LOGGEN_BUILD_BENCHMARKS "Build performance benchmark executables" OFF)
+option(LOGGEN_INSTALL_LINUX_SHORTCUTS "Install the Linux application menu and desktop shortcuts after a GUI build" ON)
 
 include(FetchContent)
 find_package(Threads REQUIRED)
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND LOGGEN_BUILD_GUI)
+    set(LOGGEN_LINUX_FONT_DIRECTORY "${CMAKE_BINARY_DIR}/linux-fonts")
+    file(MAKE_DIRECTORY "${LOGGEN_LINUX_FONT_DIRECTORY}")
+
+    function(loggen_download_verified_file url destination expected_sha256)
+        set(download_required TRUE)
+        if(EXISTS "${destination}")
+            file(SHA256 "${destination}" existing_sha256)
+            if(existing_sha256 STREQUAL expected_sha256)
+                set(download_required FALSE)
+            endif()
+        endif()
+        if(download_required)
+            set(download_path "${destination}.download")
+            file(REMOVE "${download_path}")
+            file(DOWNLOAD "${url}" "${download_path}" EXPECTED_HASH "SHA256=${expected_sha256}" TLS_VERIFY ON INACTIVITY_TIMEOUT 60 TIMEOUT 300 STATUS download_status)
+            list(GET download_status 0 download_result)
+            list(GET download_status 1 download_error)
+            if(NOT download_result EQUAL 0)
+                file(REMOVE "${download_path}")
+                message(FATAL_ERROR "Download failed for ${url}: ${download_error}")
+            endif()
+            file(RENAME "${download_path}" "${destination}")
+        endif()
+    endfunction()
+
+    set(LOGGEN_NOTO_CJK_COMMIT "f8d157532fbfaeda587e826d4cd5b21a49186f7c")
+    set(LOGGEN_NOTO_CJK_BASE_URL "https://raw.githubusercontent.com/notofonts/noto-cjk/${LOGGEN_NOTO_CJK_COMMIT}/Sans")
+    loggen_download_verified_file("${LOGGEN_NOTO_CJK_BASE_URL}/SubsetOTF/KR/NotoSansKR-Regular.otf" "${LOGGEN_LINUX_FONT_DIRECTORY}/NotoSansKR-Regular.otf" "69975a0ac8472717870aefeab0a4d52739308d90856b9955313b2ad5e0148d68")
+    loggen_download_verified_file("${LOGGEN_NOTO_CJK_BASE_URL}/SubsetOTF/KR/NotoSansKR-Bold.otf" "${LOGGEN_LINUX_FONT_DIRECTORY}/NotoSansKR-Bold.otf" "5a6ceb287ed2fc6cfc6213144ebea68cbd94b20fc9eb873d8486493bf02d9bda")
+    loggen_download_verified_file("${LOGGEN_NOTO_CJK_BASE_URL}/LICENSE" "${LOGGEN_LINUX_FONT_DIRECTORY}/OFL.txt" "6a73f9541c2de74158c0e7cf6b0a58ef774f5a780bf191f2d7ec9cc53efe2bf2")
+endif()
 
 if(LOGGEN_BUILD_GUI)
 FetchContent_Declare(
@@ -212,6 +246,44 @@ else()
     target_link_libraries(LogGenerator PRIVATE Threads::Threads)
 endif()
 add_dependencies(LogGenerator LogGeneratorCli)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    add_custom_target(loggen_copy_linux_fonts
+        COMMAND ${CMAKE_COMMAND} -E remove_directory "$<TARGET_FILE_DIR:LogGenerator>/fonts"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${LOGGEN_LINUX_FONT_DIRECTORY}" "$<TARGET_FILE_DIR:LogGenerator>/fonts"
+        VERBATIM
+    )
+    add_dependencies(LogGenerator loggen_copy_linux_fonts)
+
+    string(TOLOWER "${CMAKE_SYSTEM_PROCESSOR}" LOGGEN_LINUX_PACKAGE_ARCHITECTURE)
+    if(LOGGEN_LINUX_PACKAGE_ARCHITECTURE MATCHES "^(amd64|x86_64)$")
+        set(LOGGEN_LINUX_PACKAGE_ARCHITECTURE "x86_64")
+    elseif(LOGGEN_LINUX_PACKAGE_ARCHITECTURE MATCHES "^(aarch64|arm64)$")
+        set(LOGGEN_LINUX_PACKAGE_ARCHITECTURE "aarch64")
+    endif()
+    set(LOGGEN_LINUX_PACKAGE_ROOT "${CMAKE_BINARY_DIR}/package/LogGenerator")
+    set(LOGGEN_LINUX_PACKAGE_ARCHIVE "${CMAKE_BINARY_DIR}/dist/LogGenerator-${PROJECT_VERSION}-oracle-linux-${LOGGEN_LINUX_PACKAGE_ARCHITECTURE}.zip")
+    set(LOGGEN_LINUX_PACKAGE_COMMAND
+        COMMAND ${CMAKE_COMMAND}
+            "-DPACKAGE_ROOT=${LOGGEN_LINUX_PACKAGE_ROOT}"
+            "-DARCHIVE_PATH=${LOGGEN_LINUX_PACKAGE_ARCHIVE}"
+            "-DGUI_EXECUTABLE=$<TARGET_FILE:LogGenerator>"
+            "-DCLI_EXECUTABLE=$<TARGET_FILE:LogGeneratorCli>"
+            "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+            "-DFONT_DIRECTORY=${LOGGEN_LINUX_FONT_DIRECTORY}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/scripts/package-linux.cmake"
+    )
+    if(LOGGEN_INSTALL_LINUX_SHORTCUTS)
+        find_program(LOGGEN_BASH_EXECUTABLE bash REQUIRED)
+        list(APPEND LOGGEN_LINUX_PACKAGE_COMMAND COMMAND "${LOGGEN_BASH_EXECUTABLE}" "${LOGGEN_LINUX_PACKAGE_ROOT}/install-shortcuts.sh")
+    endif()
+    add_custom_target(LogGeneratorLinuxPackage ALL
+        ${LOGGEN_LINUX_PACKAGE_COMMAND}
+        BYPRODUCTS "${LOGGEN_LINUX_PACKAGE_ARCHIVE}"
+        DEPENDS LogGenerator LogGeneratorCli loggen_copy_linux_fonts
+        VERBATIM
+        USES_TERMINAL
+    )
+endif()
 endif()
 
 enable_testing()
@@ -247,11 +319,16 @@ endif()
 add_dependencies(LogGeneratorTests LogGeneratorCli)
 if(WIN32 AND LOGGEN_BUILD_GUI)
     add_dependencies(LogGeneratorTests LogGenerator)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND LOGGEN_BUILD_GUI)
+    add_dependencies(LogGeneratorTests LogGeneratorLinuxPackage)
 endif()
 add_test(NAME LogGeneratorTests COMMAND LogGeneratorTests)
 add_test(NAME LogGeneratorArchitecture COMMAND ${CMAKE_COMMAND} "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}" -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/architecture_tests.cmake")
 add_test(NAME LogGeneratorCliHelp COMMAND LogGeneratorCli --help)
 add_test(NAME LogGeneratorCliSmoke COMMAND ${CMAKE_COMMAND} "-DCLI_PATH=$<TARGET_FILE:LogGeneratorCli>" "-DSOURCE_ROOT=${CMAKE_CURRENT_SOURCE_DIR}" "-DBUILD_ROOT=${CMAKE_BINARY_DIR}" -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/cli_smoke.cmake")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND LOGGEN_BUILD_GUI)
+    add_test(NAME LogGeneratorLinuxPackage COMMAND ${CMAKE_COMMAND} "-DPACKAGE_ROOT=${LOGGEN_LINUX_PACKAGE_ROOT}" "-DARCHIVE_PATH=${LOGGEN_LINUX_PACKAGE_ARCHIVE}" -P "${CMAKE_CURRENT_SOURCE_DIR}/tests/linux_package_tests.cmake")
+endif()
 
 if(LOGGEN_BUILD_BENCHMARKS)
     add_executable(LogGeneratorBenchmarks benchmarks/log_generator_benchmarks.cpp)
@@ -272,6 +349,9 @@ function(loggen_configure_target target_name)
         target_link_options(${target_name} PRIVATE "$<$<CONFIG:Release>:/LTCG>" "$<$<CONFIG:Release>:/OPT:REF>" "$<$<CONFIG:Release>:/OPT:ICF>")
     elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(${target_name} PRIVATE -Wall -Wextra -Wpedantic -Werror "$<$<CONFIG:Release>:-O3>")
+        if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            target_compile_options(${target_name} PRIVATE -finput-charset=UTF-8 -fexec-charset=UTF-8)
+        endif()
     endif()
 endfunction()
 
@@ -296,3 +376,8 @@ if(LOGGEN_BUILD_GUI)
     install(TARGETS LogGenerator RUNTIME DESTINATION .)
 endif()
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/Sample Logs" DESTINATION .)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND LOGGEN_BUILD_GUI)
+    install(DIRECTORY "${LOGGEN_LINUX_FONT_DIRECTORY}/" DESTINATION fonts)
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/resources/windows/log.ico" DESTINATION resources)
+    install(PROGRAMS "${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux/run-loggenerator.sh" "${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux/install-shortcuts.sh" DESTINATION .)
+endif()

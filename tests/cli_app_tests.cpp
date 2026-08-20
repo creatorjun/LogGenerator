@@ -39,6 +39,11 @@ void run_cli_app_tests() {
     expect(run.duration == seconds{5} && run.quiet, "CLI duration or quiet option was not parsed");
     expect(run.config.timestamp_generation.offset.negative, "CLI negative offset sign was not parsed");
     expect(run.config.timestamp_generation.offset.hours == 1 && run.config.timestamp_generation.offset.minutes == 30, "CLI offset magnitude was not parsed");
+    expect(run.config.endpoint.udp_packetization == domain::UdpPacketization::OneEventPerDatagram, "CLI integration default was not deny");
+
+    constexpr std::array<std::string_view, 10> udp_arguments{"run", "--all", "--protocol", "udp", "--host", "127.0.0.1", "--port", "5514", "--udp-integration", "allow"};
+    const auto udp = presentation::CliApp::parse_arguments(udp_arguments);
+    expect(udp.config.endpoint.udp_packetization == domain::UdpPacketization::NewlinePacked, "CLI UDP integration permission was not parsed");
 
     constexpr std::array<std::string_view, 8> range_arguments{"run", "--all", "--from", "2026-01-01", "--to", "2026-01-31", "--file-max-count", "10"};
     const auto range = presentation::CliApp::parse_arguments(range_arguments);

@@ -130,6 +130,7 @@ int main(const int argument_count, char** argument_values) {
         config.endpoint.protocol = loggen::domain::TransportProtocol::Udp;
         config.endpoint.host = "127.0.0.1";
         config.endpoint.port = receiver_port;
+        config.endpoint.udp_packetization = loggen::domain::UdpPacketization::NewlinePacked;
         config.transmission_mode = loggen::domain::TransmissionMode::Parallel;
         config.target_eps = target_eps;
         config.templates = catalog_service.load(std::filesystem::path{LOGGEN_SOURCE_DIR} / "Sample Logs" / "sample_logs.json");

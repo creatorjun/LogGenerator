@@ -181,8 +181,6 @@ std::size_t datagram_batch_events(const std::uint64_t quota, const std::size_t p
     if (quota == 0) {
         return maximum;
     }
-    // Keep rate-limited traffic responsive by targeting roughly 1 ms worth
-    // of datagrams per syscall, while high-rate runs use the platform maximum.
     return static_cast<std::size_t>(std::clamp<std::uint64_t>(quota / 1'000, 1, maximum));
 }
 
@@ -241,10 +239,8 @@ void StressTestService::start(domain::GeneratorConfig config) {
         config.transmission_mode = domain::TransmissionMode::Sequential;
         config.endpoint.framing = domain::StreamFraming::Newline;
     }
-    if (config.endpoint.protocol == domain::TransportProtocol::Udp) {
-        config.endpoint.udp_packetization = config.transmission_mode == domain::TransmissionMode::Parallel
-            ? domain::UdpPacketization::NewlinePacked
-            : domain::UdpPacketization::OneEventPerDatagram;
+    if (config.endpoint.protocol != domain::TransportProtocol::Udp) {
+        config.endpoint.udp_packetization = domain::UdpPacketization::OneEventPerDatagram;
     }
     std::uint32_t worker_count = 1;
     if (config.transmission_mode == domain::TransmissionMode::Parallel && config.endpoint.protocol != domain::TransportProtocol::File) {
@@ -515,48 +511,78 @@ void StressTestService::run_worker(domain::EndpointConfig endpoint, const domain
         if (transport->is_datagram()) {
             if (endpoint.udp_packetization == domain::UdpPacketization::NewlinePacked) {
                 constexpr std::size_t packed_event_limit = 256;
-                constexpr std::size_t packed_payload_target = 60U * 1024U;
+                constexpr std::size_t packed_datagram_target = 60U * 1024U;
+                constexpr std::size_t integrated_batch_target = 600U * 1024U;
                 constexpr std::size_t maximum_udp_payload = 65'507;
-                std::string packet;
                 std::string pending_payload;
+                std::string pending_packet;
+                std::size_t pending_packet_events = 0;
                 bool has_pending_payload = false;
-                packet.reserve(packed_payload_target);
                 while (!stop_token.stop_requested()) {
-                    packet.clear();
+                    std::vector<std::string> packet_storage;
+                    std::vector<std::string_view> packet_views;
+                    packet_storage.reserve(integrated_batch_target / packed_datagram_target);
+                    std::size_t batch_bytes = 0;
                     std::size_t events = 0;
-                    if (has_pending_payload) {
-                        append_frame(packet, pending_payload, domain::StreamFraming::Newline);
-                        pending_payload.clear();
-                        has_pending_payload = false;
-                        ++events;
-                    }
-                    while (events < packed_event_limit) {
-                        const auto payload = logs[selection.next()].render(clock.next(), calendar_time);
-                        const auto framed_size = newline_frame_size(payload);
-                        if (framed_size > maximum_udp_payload) {
-                            throw std::runtime_error("A newline-framed log exceeds the maximum UDP payload");
+                    const auto rate_limited_event_target = quota == 0
+                        ? std::numeric_limits<std::size_t>::max()
+                        : static_cast<std::size_t>(std::clamp<std::uint64_t>(quota / 200, 1, std::numeric_limits<std::size_t>::max()));
+                    while (batch_bytes < integrated_batch_target && events < rate_limited_event_target) {
+                        std::string packet;
+                        std::size_t packet_events = 0;
+                        if (!pending_packet.empty()) {
+                            packet = std::move(pending_packet);
+                            packet_events = pending_packet_events;
+                            pending_packet_events = 0;
+                        } else {
+                            packet.reserve(packed_datagram_target);
+                            if (has_pending_payload) {
+                                append_frame(packet, pending_payload, domain::StreamFraming::Newline);
+                                pending_payload.clear();
+                                has_pending_payload = false;
+                                ++packet_events;
+                            }
+                            while (packet_events < packed_event_limit && events + packet_events < rate_limited_event_target) {
+                                const auto payload = logs[selection.next()].render(clock.next(), calendar_time);
+                                const auto framed_size = newline_frame_size(payload);
+                                if (framed_size > maximum_udp_payload) {
+                                    throw std::runtime_error("A newline-framed log exceeds the maximum UDP payload");
+                                }
+                                if (packet_events > 0 && packet.size() + framed_size > packed_datagram_target) {
+                                    pending_payload.assign(payload);
+                                    has_pending_payload = true;
+                                    break;
+                                }
+                                append_frame(packet, payload, domain::StreamFraming::Newline);
+                                ++packet_events;
+                            }
                         }
-                        if (events > 0 && packet.size() + framed_size > packed_payload_target) {
-                            pending_payload.assign(payload);
-                            has_pending_payload = true;
+                        if (!packet_storage.empty() && batch_bytes + packet.size() > integrated_batch_target) {
+                            pending_packet = std::move(packet);
+                            pending_packet_events = packet_events;
                             break;
                         }
-                        append_frame(packet, payload, domain::StreamFraming::Newline);
-                        ++events;
+                        batch_bytes += packet.size();
+                        events += packet_events;
+                        packet_storage.push_back(std::move(packet));
+                    }
+                    packet_views.reserve(packet_storage.size());
+                    for (const auto& packet : packet_storage) {
+                        packet_views.emplace_back(packet);
                     }
                     pacer.wait(events, stop_token);
                     if (stop_token.stop_requested()) {
                         break;
                     }
-                    const auto send_result = transport->send(packet);
+                    const auto send_result = transport->send_batch(packet_views);
                     if (send_result != SendResult::Sent) {
                         flush();
                         publish_completion(std::string{completion_message(send_result)});
                         return;
                     }
                     local_messages += events;
-                    ++local_datagrams;
-                    local_bytes += packet.size();
+                    local_datagrams += packet_views.size();
+                    local_bytes += batch_bytes;
                     if (local_messages >= 16'384) {
                         flush();
                     }

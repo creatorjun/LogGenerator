@@ -233,15 +233,51 @@ void run_stress_test_service_tests() {
     }
     parallel_state->condition.notify_all();
     parallel_service.stop();
-    const auto packed_stats = parallel_service.snapshot();
-    expect(packed_stats.udp_packetization == domain::UdpPacketization::NewlinePacked, "Parallel UDP did not enable high-throughput newline packing");
-    expect(packed_stats.total_datagrams > 0 && packed_stats.total_messages > packed_stats.total_datagrams, "Parallel UDP did not count logical events separately from physical datagrams");
-    expect(packed_stats.total_datagrams == parallel_state->sends.load(std::memory_order_relaxed), "Parallel UDP datagram statistics diverged from transport sends");
+    const auto parallel_default_stats = parallel_service.snapshot();
+    expect(parallel_default_stats.udp_packetization == domain::UdpPacketization::OneEventPerDatagram, "Parallel UDP enabled integration without explicit permission");
+    expect(parallel_default_stats.total_datagrams > 0 && parallel_default_stats.total_messages == parallel_default_stats.total_datagrams, "Default UDP did not preserve one event per datagram");
+    expect(parallel_default_stats.total_datagrams == parallel_state->sends.load(std::memory_order_relaxed), "Parallel UDP datagram statistics diverged from transport sends");
     {
         std::scoped_lock lock(parallel_state->mutex);
-        expect(!parallel_state->payloads.empty(), "Parallel UDP did not produce a packed payload");
-        expect(std::count(parallel_state->payloads.front().begin(), parallel_state->payloads.front().end(), '\n') > 1, "Parallel UDP payload did not contain multiple newline-framed events");
-        expect(parallel_state->payloads.front().size() <= 65'507, "Parallel UDP produced an oversized datagram");
+        expect(!parallel_state->payloads.empty(), "Parallel UDP did not produce a payload");
+        expect(parallel_state->payloads.front() == "parallel-event", "Default UDP changed the one-event payload");
+    }
+
+    auto integrated_state = std::make_shared<TransportState>();
+    BlockingTransportFactory integrated_factory{integrated_state};
+    TestExecutionRuntime integrated_runtime;
+    application::StressTestService integrated_service{integrated_factory, integrated_runtime, preparation_cache, logger};
+    domain::GeneratorConfig integrated_config;
+    integrated_config.endpoint.host = "127.0.0.1";
+    integrated_config.endpoint.port = 5514;
+    integrated_config.endpoint.udp_packetization = domain::UdpPacketization::NewlinePacked;
+    integrated_config.transmission_mode = domain::TransmissionMode::Sequential;
+    integrated_config.templates.push_back({"integrated", "integrated", std::string(2048, 'x'), "test", {}});
+    integrated_service.start(std::move(integrated_config));
+    {
+        std::unique_lock lock(integrated_state->mutex);
+        expect(integrated_state->condition.wait_for(lock, seconds{2}, [&integrated_state] { return integrated_state->send_entered; }), "Integrated UDP worker did not enter send");
+    }
+    integrated_service.request_stop();
+    {
+        std::scoped_lock lock(integrated_state->mutex);
+        integrated_state->release_send = true;
+    }
+    integrated_state->condition.notify_all();
+    integrated_service.stop();
+    const auto integrated_stats = integrated_service.snapshot();
+    expect(integrated_stats.udp_packetization == domain::UdpPacketization::NewlinePacked, "Explicit UDP integration permission was not preserved");
+    expect(integrated_stats.total_datagrams > 1 && integrated_stats.total_messages > integrated_stats.total_datagrams, "Integrated UDP did not count logical events separately from physical datagrams");
+    expect(integrated_stats.total_datagrams == integrated_state->sends.load(std::memory_order_relaxed), "Integrated UDP datagram statistics diverged from transport sends");
+    {
+        std::scoped_lock lock(integrated_state->mutex);
+        std::size_t integrated_bytes = 0;
+        for (const auto& payload : integrated_state->payloads) {
+            expect(payload.size() <= 60U * 1024U, "Integrated UDP produced a datagram larger than 60 KiB");
+            expect(std::count(payload.begin(), payload.end(), '\n') > 1, "Integrated UDP payload did not contain newline-framed events");
+            integrated_bytes += payload.size();
+        }
+        expect(integrated_bytes > 60U * 1024U && integrated_bytes <= 600U * 1024U, "Integrated UDP did not use a bounded 600 KiB transmission unit");
     }
 
     TestExecutionRuntime execution_runtime;

@@ -33,7 +33,7 @@ namespace loggen::presentation {
 
 class App {
 public:
-    App(application::ILogCatalogUseCase& catalog_service, application::ILogger& logger, application::IStressTestUseCase& stress_service, std::filesystem::path catalog_file, std::filesystem::path generated_directory);
+    App(application::ILogCatalogUseCase& catalog_service, application::ILogger& logger, application::IStressTestUseCase& stress_service, std::filesystem::path catalog_file, std::filesystem::path generated_directory, std::filesystem::path font_directory);
     ~App();
 
 #ifdef _WIN32
@@ -104,6 +104,7 @@ private:
     application::IStressTestUseCase& stress_service_;
     std::filesystem::path catalog_file_;
     std::filesystem::path generated_directory_;
+    std::filesystem::path font_directory_;
 #ifdef _WIN32
     D3d11Context d3d_;
     HINSTANCE instance_{nullptr};
@@ -127,6 +128,7 @@ private:
     std::size_t selected_log_{0};
     bool rotate_filtered_{true};
     int protocol_index_{0};
+    int udp_integration_index_{0};
     int transmission_mode_index_{static_cast<int>(domain::TransmissionMode::Parallel)};
     int framing_index_{0};
     int timestamp_mode_index_{0};

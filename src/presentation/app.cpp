@@ -51,11 +51,11 @@ struct FontCandidate {
 };
 
 constexpr ImWchar korean_ui_glyph_ranges[]{
-    0x0020, 0x00FF, // Basic Latin + Latin supplement
-    0x2000, 0x206F, // General punctuation
-    0x25CF, 0x25CF, // Status indicator
-    0x3131, 0x3163, // Hangul compatibility jamo
-    0xAC00, 0xD7A3, // Hangul syllables
+    0x0020, 0x00FF,
+    0x2000, 0x206F,
+    0x25CF, 0x25CF,
+    0x3131, 0x3163,
+    0xAC00, 0xD7A3,
     0xFFFD, 0xFFFD,
     0};
 
@@ -259,8 +259,8 @@ std::optional<std::chrono::sys_days> parse_iso_date(const std::string_view value
 
 }
 
-App::App(application::ILogCatalogUseCase& catalog_service, application::ILogger& logger, application::IStressTestUseCase& stress_service, std::filesystem::path catalog_file, std::filesystem::path generated_directory)
-    : catalog_service_(catalog_service), logger_(logger), stress_service_(stress_service), catalog_file_(std::move(catalog_file)), generated_directory_(std::move(generated_directory)) {
+App::App(application::ILogCatalogUseCase& catalog_service, application::ILogger& logger, application::IStressTestUseCase& stress_service, std::filesystem::path catalog_file, std::filesystem::path generated_directory, std::filesystem::path font_directory)
+    : catalog_service_(catalog_service), logger_(logger), stress_service_(stress_service), catalog_file_(std::move(catalog_file)), generated_directory_(std::move(generated_directory)), font_directory_(std::move(font_directory)) {
     editor_tokenizer_ = std::jthread([this](const std::stop_token stop_token) {
         run_editor_tokenizer(stop_token);
     });
@@ -520,10 +520,6 @@ void App::initialize_imgui() {
     glfwGetFramebufferSize(window_, &framebuffer_width, &framebuffer_height);
     visual_scale_ = responsive_visual_scale(static_cast<float>(framebuffer_width), static_cast<float>(framebuffer_height), dpi_scale_);
 #ifdef __APPLE__
-    // GLFW exposes macOS window sizes in points while the framebuffer is already
-    // Retina-scaled. Applying the framebuffer scale to ImGui geometry again makes
-    // every control twice as large. ImGui 1.92 rasterizes fonts at the framebuffer
-    // density automatically, so only the responsive visual adjustment is needed.
     ui_scale_ = visual_scale_;
     const std::array regular_candidates{
         FontCandidate{"/System/Library/Fonts/AppleSDGothicNeo.ttc", 0},
@@ -534,10 +530,16 @@ void App::initialize_imgui() {
 #else
     ui_scale_ = dpi_scale_ * visual_scale_;
     const std::array regular_candidates{
+        FontCandidate{font_directory_ / "NotoSansKR-Regular.otf", 0},
+        FontCandidate{"/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc", 0},
+        FontCandidate{"/usr/share/fonts/google-noto-cjk-kr/NotoSansCJKkr-Regular.otf", 0},
         FontCandidate{"/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", 0},
         FontCandidate{"/usr/share/fonts/opentype/noto/NotoSansCJKkr-Regular.otf", 0},
         FontCandidate{"/usr/share/fonts/truetype/nanum/NanumGothic.ttf", 0}};
     const std::array bold_candidates{
+        FontCandidate{font_directory_ / "NotoSansKR-Bold.otf", 0},
+        FontCandidate{"/usr/share/fonts/google-noto-cjk/NotoSansCJK-Bold.ttc", 0},
+        FontCandidate{"/usr/share/fonts/google-noto-cjk-kr/NotoSansCJKkr-Bold.otf", 0},
         FontCandidate{"/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc", 0},
         FontCandidate{"/usr/share/fonts/opentype/noto/NotoSansCJKkr-Bold.otf", 0},
         FontCandidate{"/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf", 0}};
@@ -897,12 +899,10 @@ void App::render_configuration(const domain::TransmissionStats& stats, const Res
         ImGui::TextColored(ImVec4(0.03F, 0.52F, 0.28F, 1.0F), "%s", stats.status_message.c_str());
     } else if (protocol_index_ == static_cast<int>(domain::TransportProtocol::File)) {
         disabled_wrapped_text("FILE은 generated 폴더에 로그 1개당 파일 1개로 저장하며 설정한 안전 제한에 도달하면 정상 종료합니다.");
+    } else if (protocol_index_ == static_cast<int>(domain::TransportProtocol::Udp) && udp_integration_index_ == 1) {
+        disabled_wrapped_text("UDP 통합 전송은 로그를 개행으로 구분해 최대 60 KiB 데이터그램으로 구성하고, 여러 데이터그램을 최대 600 KiB 작업 단위로 전송합니다. 수신기는 데이터그램 내부 개행 분리를 지원해야 합니다. 일반 MTU 네트워크에서는 IP 단편화가 발생하므로 loopback, jumbo frame 또는 충분한 대역폭의 전용망에서 사용하세요.");
     } else if (protocol_index_ == static_cast<int>(domain::TransportProtocol::Udp)) {
-        if (transmission_mode_index_ == static_cast<int>(domain::TransmissionMode::Parallel)) {
-            disabled_wrapped_text("UDP 병렬 전송은 3M+ 로그 EPS를 위해 여러 로그를 개행으로 구분해 최대 60 KiB 데이터그램에 패킹합니다. 수신기가 데이터그램 내부 개행 분리를 지원해야 하며, 화면에는 로그 EPS와 실제 데이터그램 DPS를 별도로 표시합니다. 일반 MTU 네트워크에서는 IP 단편화가 발생하므로 loopback, jumbo frame 또는 충분한 대역폭의 전용망에서 사용하세요.");
-        } else {
-            disabled_wrapped_text("UDP 순차 전송은 로그 1개를 데이터그램 1개로 보냅니다. 통계는 로컬 소켓 전송 완료 기준이며 비동기 ICMP 포트 거부는 실패로 처리하지 않습니다.");
-        }
+        disabled_wrapped_text("UDP 통합 전송 불가는 로그 1개를 데이터그램 1개로 보냅니다. 통계는 로컬 소켓 전송 완료 기준이며 비동기 ICMP 포트 거부는 실패로 처리하지 않습니다.");
     } else {
         disabled_wrapped_text("TCP/TLS는 여러 로그를 묶어 스트림으로 전송하며 선택한 프레이밍을 적용합니다.");
     }
@@ -922,10 +922,22 @@ void App::render_destination_panel(const float height) {
     const char* protocols[]{"UDP", "TCP", "TLS", "FILE"};
     ImGui::TextDisabled("프로토콜");
     ImGui::SetNextItemWidth(-1.0F);
-    if (ImGui::Combo("##protocol", &protocol_index_, protocols, static_cast<int>(std::size(protocols))) && protocol_index_ == static_cast<int>(domain::TransportProtocol::File)) {
-        transmission_mode_index_ = static_cast<int>(domain::TransmissionMode::Sequential);
+    if (ImGui::Combo("##protocol", &protocol_index_, protocols, static_cast<int>(std::size(protocols)))) {
+        if (protocol_index_ == static_cast<int>(domain::TransportProtocol::File)) {
+            transmission_mode_index_ = static_cast<int>(domain::TransmissionMode::Sequential);
+        }
+        if (protocol_index_ != static_cast<int>(domain::TransportProtocol::Udp)) {
+            udp_integration_index_ = 0;
+        }
     }
     const bool file_protocol = protocol_index_ == static_cast<int>(domain::TransportProtocol::File);
+    const bool udp_protocol = protocol_index_ == static_cast<int>(domain::TransportProtocol::Udp);
+    const char* udp_integration_options[]{"불가", "허용"};
+    ImGui::TextDisabled("통합 전송 허용 여부");
+    ImGui::SetNextItemWidth(-1.0F);
+    ImGui::BeginDisabled(!udp_protocol);
+    ImGui::Combo("##udp_integration", &udp_integration_index_, udp_integration_options, static_cast<int>(std::size(udp_integration_options)));
+    ImGui::EndDisabled();
     if (file_protocol) {
         ImGui::TextDisabled("저장 폴더");
         disabled_wrapped_text(path_to_utf8(generated_directory_).c_str());
@@ -975,8 +987,8 @@ void App::render_destination_panel(const float height) {
         disabled_wrapped_text("FILE은 여러 로그를 묶어 순차 기록하므로 순차 전송으로 고정됩니다.");
     } else if (transmission_mode_index_ == static_cast<int>(domain::TransmissionMode::Sequential)) {
         disabled_wrapped_text("1개의 송신 Worker로 로그 순서를 유지해 전송합니다.");
-    } else if (protocol_index_ == static_cast<int>(domain::TransportProtocol::Udp)) {
-        disabled_wrapped_text("Worker 수와 UDP 개행 패킹 크기를 자동 최적화해 최대 로그 EPS로 전송합니다.");
+    } else if (protocol_index_ == static_cast<int>(domain::TransportProtocol::Udp) && udp_integration_index_ == 1) {
+        disabled_wrapped_text("Worker 수를 자동 최적화하고 UDP 개행 통합 전송을 적용합니다.");
     } else if (is_active(cached_stats_.state) && cached_stats_.active_workers > 0) {
         ImGui::TextDisabled("자동 선택 Worker: %u", cached_stats_.active_workers);
     } else {
@@ -1417,6 +1429,9 @@ void App::start_test() {
         config.endpoint.host = host_.data();
         config.endpoint.port = static_cast<std::uint16_t>(port_);
         config.endpoint.framing = static_cast<domain::StreamFraming>(framing_index_);
+        config.endpoint.udp_packetization = udp_integration_index_ == 1
+            ? domain::UdpPacketization::NewlinePacked
+            : domain::UdpPacketization::OneEventPerDatagram;
         config.endpoint.tls_server_name = tls_server_name_.data();
         config.endpoint.verify_certificate = verify_certificate_;
         if (protocol == domain::TransportProtocol::File) {

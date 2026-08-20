@@ -249,6 +249,15 @@ CliOptions CliApp::parse_arguments(const std::span<const std::string_view> argum
             if (options.config.endpoint.port == 0) {
                 throw std::invalid_argument("--port 값은 1 이상이어야 합니다");
             }
+        } else if (option == "--udp-integration") {
+            const auto integration = lowercase(value());
+            if (integration == "deny") {
+                options.config.endpoint.udp_packetization = domain::UdpPacketization::OneEventPerDatagram;
+            } else if (integration == "allow") {
+                options.config.endpoint.udp_packetization = domain::UdpPacketization::NewlinePacked;
+            } else {
+                throw std::invalid_argument("--udp-integration 값은 deny 또는 allow여야 합니다");
+            }
         } else if (option == "--tls-server-name") {
             options.config.endpoint.tls_server_name = value();
         } else if (option == "--insecure") {
@@ -332,6 +341,9 @@ CliOptions CliApp::parse_arguments(const std::span<const std::string_view> argum
     if (!valid_ipv4(options.config.source_ip) || !valid_ipv4(options.config.destination_ip)) {
         throw std::invalid_argument("--source-ip와 --destination-ip는 유효한 IPv4 주소여야 합니다");
     }
+    if (options.config.endpoint.udp_packetization == domain::UdpPacketization::NewlinePacked && options.config.endpoint.protocol != domain::TransportProtocol::Udp) {
+        throw std::invalid_argument("--udp-integration allow는 UDP 프로토콜에서만 사용할 수 있습니다");
+    }
     if (range_start.has_value() != range_end.has_value()) {
         throw std::invalid_argument("--from과 --to는 함께 지정해야 합니다");
     }
@@ -367,8 +379,9 @@ void CliApp::print_help(const std::string_view executable_name) {
         << "  --all                         전체 샘플을 전역 Round-Robin으로 순환\n"
         << "  --sample-id ID                반복 지정 가능, --all과 동시 사용 불가\n"
         << "  --host HOST --port PORT       네트워크 목적지\n"
+        << "  --udp-integration deny|allow  UDP 개행 통합 전송 허용 여부, 기본값: deny\n"
+        << "                                 allow는 최대 60 KiB 데이터그램을 600 KiB 단위로 전송\n"
         << "  --mode sequential|parallel    순차 또는 자동 최적화 병렬 전송, 기본값: parallel\n"
-        << "                                 UDP parallel은 개행 패킹, sequential은 로그당 데이터그램 1개\n"
         << "  --eps N                       목표 EPS, 0은 무제한\n"
         << "  --duration SECONDS            실행 시간, 0은 Ctrl+C까지 실행\n"
         << "  --output-dir PATH             FILE 출력 디렉터리\n"
@@ -385,7 +398,7 @@ void CliApp::print_help(const std::string_view executable_name) {
         << "예시:\n"
         << "  " << executable_name << " list\n"
         << "  " << executable_name << " run --protocol file --sample-id 0001 --file-max-count 100 --output-dir ./generated\n"
-        << "  " << executable_name << " run --all --protocol udp --host 192.0.2.10 --port 514 --mode parallel --eps 1000 --duration 60\n";
+        << "  " << executable_name << " run --all --protocol udp --host 192.0.2.10 --port 514 --udp-integration allow --mode parallel --eps 1000 --duration 60\n";
 }
 
 int CliApp::list_catalog(const CliOptions& options) {
