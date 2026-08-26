@@ -209,6 +209,30 @@ void run_stress_test_service_tests() {
     expect(stats.udp_packetization == domain::UdpPacketization::OneEventPerDatagram && stats.total_datagrams == stats.total_messages, "Sequential UDP did not preserve one event per datagram");
     expect(sequential_runtime.configured_workers() == 1, "Sequential mode configured more than one worker");
 
+    auto rate_limited_state = std::make_shared<TransportState>();
+    rate_limited_state->block_after = 1'000'000;
+    BlockingTransportFactory rate_limited_factory{rate_limited_state};
+    TestExecutionRuntime rate_limited_runtime;
+    application::StressTestService rate_limited_service{rate_limited_factory, rate_limited_runtime, preparation_cache, logger};
+    domain::GeneratorConfig rate_limited_config;
+    rate_limited_config.endpoint.host = "127.0.0.1";
+    rate_limited_config.endpoint.port = 5514;
+    rate_limited_config.target_eps = 20;
+    rate_limited_config.templates.push_back({"rate-limited", "rate-limited", "rate-limited-event", "test", {}});
+    rate_limited_service.start(std::move(rate_limited_config));
+    domain::TransmissionStats rate_limited_stats;
+    const auto rate_limited_deadline = steady_clock::now() + seconds{2};
+    do {
+        rate_limited_stats = rate_limited_service.snapshot();
+        if (rate_limited_stats.total_messages > 0 && rate_limited_stats.current_eps > 0.0) {
+            break;
+        }
+        std::this_thread::sleep_for(milliseconds{10});
+    } while (steady_clock::now() < rate_limited_deadline);
+    rate_limited_service.stop();
+    expect(rate_limited_stats.total_messages > 0, "Rate-limited UDP totals were not published while running");
+    expect(rate_limited_stats.current_eps > 0.0, "Rate-limited UDP current EPS was not published while running");
+
     auto parallel_state = std::make_shared<TransportState>();
     BlockingTransportFactory parallel_factory{parallel_state};
     TestExecutionRuntime parallel_runtime{3};

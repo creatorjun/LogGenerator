@@ -508,6 +508,9 @@ void StressTestService::run_worker(domain::EndpointConfig endpoint, const domain
         TimestampCursor clock{timestamp_generation, worker_index, worker_count, quota == 0 || quota >= 10'000};
         WorkerRoundRobinCursor selection{std::move(round_robin), quota == 0 || quota >= 10'000 ? 256U : 1U};
         const bool calendar_time = clock.calendar_time();
+        const auto statistics_publish_events = quota == 0
+            ? std::uint64_t{16'384}
+            : std::clamp<std::uint64_t>(quota / 10, 1, 16'384);
         if (transport->is_datagram()) {
             if (endpoint.udp_packetization == domain::UdpPacketization::NewlinePacked) {
                 constexpr std::size_t packed_event_limit = 256;
@@ -583,7 +586,7 @@ void StressTestService::run_worker(domain::EndpointConfig endpoint, const domain
                     local_messages += events;
                     local_datagrams += packet_views.size();
                     local_bytes += batch_bytes;
-                    if (local_messages >= 16'384) {
+                    if (local_messages >= statistics_publish_events) {
                         flush();
                     }
                 }
@@ -605,7 +608,7 @@ void StressTestService::run_worker(domain::EndpointConfig endpoint, const domain
                     ++local_messages;
                     ++local_datagrams;
                     local_bytes += payload.size();
-                    if (local_messages >= 16'384) {
+                    if (local_messages >= statistics_publish_events) {
                         flush();
                     }
                 }
@@ -635,7 +638,7 @@ void StressTestService::run_worker(domain::EndpointConfig endpoint, const domain
                         local_messages += events;
                         local_datagrams += events;
                         local_bytes += batch_bytes;
-                        if (local_messages >= 16'384) {
+                        if (local_messages >= statistics_publish_events) {
                             flush();
                         }
                     }
@@ -668,7 +671,7 @@ void StressTestService::run_worker(domain::EndpointConfig endpoint, const domain
                 }
                 local_messages += events;
                 local_bytes += batch.size();
-                if (endpoint.protocol == domain::TransportProtocol::File || local_messages >= 1024) {
+                if (endpoint.protocol == domain::TransportProtocol::File || local_messages >= statistics_publish_events) {
                     flush();
                 }
             }
