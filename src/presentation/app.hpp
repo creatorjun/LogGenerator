@@ -33,7 +33,7 @@ namespace loggen::presentation {
 
 class App {
 public:
-    App(application::ILogCatalogUseCase& catalog_service, application::ILogger& logger, application::IStressTestUseCase& stress_service, std::filesystem::path catalog_file, std::filesystem::path generated_directory, std::filesystem::path font_directory);
+    App(application::ILogCatalogUseCase& catalog_service, application::ILogger& logger, application::IStressTestUseCase& stress_service, std::filesystem::path catalog_file, std::filesystem::path privacy_demo_catalog_file, std::filesystem::path generated_directory, std::filesystem::path font_directory);
     ~App();
 
 #ifdef _WIN32
@@ -48,6 +48,7 @@ private:
         std::vector<std::string> search_names;
         std::vector<std::string> previews;
         std::vector<application::LogTemplateAnalysis> analyses;
+        std::filesystem::path file;
         std::string error;
         bool replace_items{true};
     };
@@ -73,7 +74,7 @@ private:
     void update_ui_scale();
     void shutdown_imgui() noexcept;
     void release_window_resources() noexcept;
-    void request_catalog_load();
+    void request_catalog_load(std::filesystem::path file);
     void request_catalog_save();
     void apply_catalog_result();
     void rebuild_filter();
@@ -103,6 +104,8 @@ private:
     application::ILogger& logger_;
     application::IStressTestUseCase& stress_service_;
     std::filesystem::path catalog_file_;
+    std::filesystem::path default_catalog_file_;
+    std::filesystem::path privacy_demo_catalog_file_;
     std::filesystem::path generated_directory_;
     std::filesystem::path font_directory_;
 #ifdef _WIN32

@@ -75,3 +75,43 @@ endforeach()
 
 file(REMOVE_RECURSE "${output_directory}")
 file(REMOVE "${all_catalog}")
+
+execute_process(
+    COMMAND "${CLI_PATH}" run --all --protocol file --file-max-count 5 --output-dir "${output_directory}" --catalog "${SOURCE_ROOT}/Sample Logs/privacy_demo_scenarios.csv" --quiet
+    RESULT_VARIABLE privacy_result
+    OUTPUT_VARIABLE privacy_output
+    ERROR_VARIABLE privacy_error
+    ENCODING UTF-8
+    TIMEOUT 15
+)
+
+if(NOT privacy_result EQUAL 0)
+    file(REMOVE_RECURSE "${output_directory}")
+    message(FATAL_ERROR "CLI privacy CSV smoke failed (${privacy_result}): ${privacy_error}${privacy_output}")
+endif()
+
+file(GLOB privacy_logs "${output_directory}/*.log")
+list(LENGTH privacy_logs privacy_count)
+if(NOT privacy_count EQUAL 5)
+    file(REMOVE_RECURSE "${output_directory}")
+    message(FATAL_ERROR "CLI privacy CSV smoke generated ${privacy_count} files instead of 5")
+endif()
+
+set(privacy_payloads "")
+foreach(generated_file IN LISTS privacy_logs)
+    file(READ "${generated_file}" generated_payload)
+    string(APPEND privacy_payloads "${generated_payload}\n")
+endforeach()
+foreach(case_id IN ITEMS MAIL-SPLIT-001 MAIL-LEAK-001 DB-QUERY-001 PRINT-PII-001 PCDLP-EXFIL-001)
+    string(FIND "${privacy_payloads}" "${case_id}" case_index)
+    if(case_index EQUAL -1)
+        file(REMOVE_RECURSE "${output_directory}")
+        message(FATAL_ERROR "CLI privacy CSV smoke did not generate ${case_id}")
+    endif()
+endforeach()
+string(FIND "${privacy_payloads}" "{{" leaked_marker_index)
+if(NOT leaked_marker_index EQUAL -1)
+    file(REMOVE_RECURSE "${output_directory}")
+    message(FATAL_ERROR "CLI privacy CSV smoke leaked an unresolved token")
+endif()
+file(REMOVE_RECURSE "${output_directory}")

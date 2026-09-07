@@ -22,6 +22,9 @@ struct SyntheticProfile {
     std::string organization;
     std::string email;
     std::string phone;
+    std::string resident_number;
+    std::string resident_number_front;
+    std::string resident_number_back;
     std::string address;
     std::string ip_address;
     std::string mac_address;
@@ -54,6 +57,10 @@ std::array<SyntheticProfile, PrivacyAnonymizer::synthetic_profile_count> make_pr
         profile.email = buffer;
         std::snprintf(buffer, sizeof(buffer), "010-0000-%04u", number);
         profile.phone = buffer;
+        profile.resident_number_front = "900101";
+        std::snprintf(buffer, sizeof(buffer), "1%06u", number);
+        profile.resident_number_back = buffer;
+        profile.resident_number = profile.resident_number_front + "-" + profile.resident_number_back;
         std::snprintf(buffer, sizeof(buffer), "서울특별시 테스트로 %u", number);
         profile.address = buffer;
         std::snprintf(buffer, sizeof(buffer), "198.51.100.%u", number);
@@ -288,7 +295,7 @@ std::string PrivacyAnonymizer::sanitize(const std::string_view sample) {
     static const std::regex user_path_pattern(R"((\b[A-Za-z]:\\Users\\)[^\\\s]+)", std::regex::ECMAScript | std::regex::icase | std::regex::optimize);
     result = replace_pattern(result, email_pattern, marker(PrivacyTokenKind::Email));
     result = replace_pattern(result, phone_pattern, marker(PrivacyTokenKind::Phone));
-    result = replace_pattern(result, resident_pattern, marker(PrivacyTokenKind::Identifier));
+    result = replace_pattern(result, resident_pattern, marker(PrivacyTokenKind::ResidentNumber));
     result = replace_pattern(result, mac_pattern, marker(PrivacyTokenKind::MacAddress));
 
     std::string path_output;
@@ -327,6 +334,15 @@ PrivacyTokenKind PrivacyAnonymizer::classify_field(const std::string_view field_
     if (field != "ldap_tel" && contains_any(field, {"phone", "mobile", "cellphone", "cell_phone", "telephone", "tel_no", "telnum", "fax"})) {
         return PrivacyTokenKind::Phone;
     }
+    if (contains_any(field, {"resident_front", "rrn_front", "ssn_front"})) {
+        return PrivacyTokenKind::ResidentNumberFront;
+    }
+    if (contains_any(field, {"resident_back", "rrn_back", "ssn_back"})) {
+        return PrivacyTokenKind::ResidentNumberBack;
+    }
+    if (contains_any(field, {"resident", "rrn", "ssn", "registration_no"})) {
+        return PrivacyTokenKind::ResidentNumber;
+    }
     if (contains_any(field, {"address", "postal", "postcode", "zip_code", "zipcode"}) || (field.find("addr") != std::string::npos && field.find("ip") == std::string::npos)) {
         return PrivacyTokenKind::Address;
     }
@@ -357,7 +373,7 @@ PrivacyTokenKind PrivacyAnonymizer::classify_field(const std::string_view field_
     if (field == "path" || contains_any(field, {"file_path", "filepath", "filename", "file_name", "origin_filename", "install_location", "application_path", "directory", "folder", "safpath"})) {
         return PrivacyTokenKind::FilePath;
     }
-    if (contains_any(field, {"resident", "rrn", "ssn", "passport", "card_no", "card_number", "customer_id", "customer_no", "cust_id", "cust_no", "member_id", "member_no", "birth", "birthday", "date_of_birth", "dob", "vehicle_no", "car_no", "license_no", "uuid", "guid", "session_id", "sessionid", "dbi_session", "dbi_statement", "dbi_transaction", "user_num", "client_num", "dept_num", "personal_id", "user_info", "user_key_id", "principalid", "identifier", "rcvid", "ec2_id", "dstid", "dst_id", "srcgrpid", "src_grp_id", "dstgrpid", "dst_grp_id", "sess_did", "sess_serverdid", "sess_uid", "sess_serveruid", "txn_stmguid", "txn_sessguid"}) || equals_any(field, {"_uid", "uid", "sssd", "sssu", "ssuid", "ssdid"})) {
+    if (contains_any(field, {"passport", "card_no", "card_number", "customer_id", "customer_no", "cust_id", "cust_no", "member_id", "member_no", "birth", "birthday", "date_of_birth", "dob", "vehicle_no", "car_no", "license_no", "uuid", "guid", "session_id", "sessionid", "dbi_session", "dbi_statement", "dbi_transaction", "user_num", "client_num", "dept_num", "personal_id", "user_info", "user_key_id", "principalid", "identifier", "rcvid", "ec2_id", "dstid", "dst_id", "srcgrpid", "src_grp_id", "dstgrpid", "dst_grp_id", "sess_did", "sess_serverdid", "sess_uid", "sess_serveruid", "txn_stmguid", "txn_sessguid"}) || equals_any(field, {"_uid", "uid", "sssd", "sssu", "ssuid", "ssdid"})) {
         return PrivacyTokenKind::Identifier;
     }
     return PrivacyTokenKind::None;
@@ -383,6 +399,12 @@ std::string_view PrivacyAnonymizer::marker(const PrivacyTokenKind kind) noexcept
         return "{{EMAIL}}";
     case PrivacyTokenKind::Phone:
         return "{{PHONE}}";
+    case PrivacyTokenKind::ResidentNumber:
+        return "{{RESIDENT_NUMBER}}";
+    case PrivacyTokenKind::ResidentNumberFront:
+        return "{{RESIDENT_NUMBER_FRONT}}";
+    case PrivacyTokenKind::ResidentNumberBack:
+        return "{{RESIDENT_NUMBER_BACK}}";
     case PrivacyTokenKind::Address:
         return "{{ADDRESS}}";
     case PrivacyTokenKind::IpAddress:
@@ -433,6 +455,12 @@ std::string_view PrivacyAnonymizer::synthetic_value(const PrivacyTokenKind kind,
         return profile.email;
     case PrivacyTokenKind::Phone:
         return profile.phone;
+    case PrivacyTokenKind::ResidentNumber:
+        return profile.resident_number;
+    case PrivacyTokenKind::ResidentNumberFront:
+        return profile.resident_number_front;
+    case PrivacyTokenKind::ResidentNumberBack:
+        return profile.resident_number_back;
     case PrivacyTokenKind::Address:
         return profile.address;
     case PrivacyTokenKind::IpAddress:
@@ -473,6 +501,12 @@ std::string_view PrivacyAnonymizer::search_terms(const PrivacyTokenKind kind) no
         return "email e-mail mail 이메일 메일";
     case PrivacyTokenKind::Phone:
         return "phone mobile telephone tel 전화 휴대폰 연락처";
+    case PrivacyTokenKind::ResidentNumber:
+        return "resident rrn ssn registration 주민등록번호 주민번호 개인식별번호";
+    case PrivacyTokenKind::ResidentNumberFront:
+        return "resident rrn ssn front 주민등록번호 앞자리 분할 개인정보";
+    case PrivacyTokenKind::ResidentNumberBack:
+        return "resident rrn ssn back 주민등록번호 뒷자리 분할 개인정보";
     case PrivacyTokenKind::Address:
         return "address postal zip 주소 우편번호";
     case PrivacyTokenKind::IpAddress:

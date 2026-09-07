@@ -13,6 +13,7 @@ set(required_paths
     "README.md"
     "BUILD.md"
     "Sample Logs/sample_logs.json"
+    "Sample Logs/privacy_demo_scenarios.csv"
     "fonts/NotoSansKR-Regular.otf"
     "fonts/NotoSansKR-Bold.otf"
     "fonts/OFL.txt"

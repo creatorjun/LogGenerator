@@ -259,8 +259,8 @@ std::optional<std::chrono::sys_days> parse_iso_date(const std::string_view value
 
 }
 
-App::App(application::ILogCatalogUseCase& catalog_service, application::ILogger& logger, application::IStressTestUseCase& stress_service, std::filesystem::path catalog_file, std::filesystem::path generated_directory, std::filesystem::path font_directory)
-    : catalog_service_(catalog_service), logger_(logger), stress_service_(stress_service), catalog_file_(std::move(catalog_file)), generated_directory_(std::move(generated_directory)), font_directory_(std::move(font_directory)) {
+App::App(application::ILogCatalogUseCase& catalog_service, application::ILogger& logger, application::IStressTestUseCase& stress_service, std::filesystem::path catalog_file, std::filesystem::path privacy_demo_catalog_file, std::filesystem::path generated_directory, std::filesystem::path font_directory)
+    : catalog_service_(catalog_service), logger_(logger), stress_service_(stress_service), catalog_file_(std::move(catalog_file)), default_catalog_file_(catalog_file_), privacy_demo_catalog_file_(std::move(privacy_demo_catalog_file)), generated_directory_(std::move(generated_directory)), font_directory_(std::move(font_directory)) {
     editor_tokenizer_ = std::jthread([this](const std::stop_token stop_token) {
         run_editor_tokenizer(stop_token);
     });
@@ -321,7 +321,7 @@ int App::run(const HINSTANCE instance, const int show_command) {
     initialize_imgui();
     ShowWindow(window_, show_command);
     UpdateWindow(window_);
-    request_catalog_load();
+    request_catalog_load(catalog_file_);
     logger_.info("UI initialization completed");
 
     MSG message{};
@@ -459,7 +459,7 @@ int App::run() {
     glfwMakeContextCurrent(window_);
     glfwSwapInterval(1);
     initialize_imgui();
-    request_catalog_load();
+    request_catalog_load(catalog_file_);
     logger_.info("UI initialization completed");
 
     while (glfwWindowShouldClose(window_) == GLFW_FALSE) {
@@ -651,16 +651,16 @@ void App::release_window_resources() noexcept {
 #endif
 }
 
-void App::request_catalog_load() {
+void App::request_catalog_load(std::filesystem::path file) {
     if (catalog_loading_.exchange(true, std::memory_order_acq_rel)) {
         return;
     }
     if (catalog_loader_.joinable()) {
         catalog_loader_.join();
     }
-    const auto file = catalog_file_;
-    catalog_loader_ = std::jthread([this, file](std::stop_token) {
+    catalog_loader_ = std::jthread([this, file = std::move(file)](std::stop_token) {
         CatalogLoadResult result;
+        result.file = file;
         try {
             result.items = catalog_service_.load(file);
             result.search_names.reserve(result.items.size());
@@ -736,11 +736,18 @@ void App::apply_catalog_result() {
         ui_error_.clear();
         return;
     }
+    const bool catalog_changed = catalog_file_ != result->file;
+    catalog_file_ = std::move(result->file);
     catalog_items_ = std::move(result->items);
     catalog_search_names_ = std::move(result->search_names);
     catalog_previews_ = std::move(result->previews);
     catalog_analyses_ = std::move(result->analyses);
-    selected_log_ = std::min(selected_log_, catalog_items_.empty() ? std::size_t{0} : catalog_items_.size() - 1);
+    if (catalog_changed) {
+        search_.fill('\0');
+        selected_log_ = 0;
+    } else {
+        selected_log_ = std::min(selected_log_, catalog_items_.empty() ? std::size_t{0} : catalog_items_.size() - 1);
+    }
     rebuild_filter();
     ui_error_.clear();
 }
@@ -1082,15 +1089,31 @@ void App::render_catalog_selector() {
         ImGui::TableNextColumn();
         ImGui::BeginDisabled(catalog_loading_.load(std::memory_order_acquire));
         if (ImGui::SmallButton("새로고침")) {
-            request_catalog_load();
+            request_catalog_load(catalog_file_);
         }
         ImGui::EndDisabled();
         ImGui::EndTable();
     }
     if (catalog_loading_.load(std::memory_order_acquire)) {
-        ImGui::TextColored(ImVec4(0.04F, 0.39F, 0.82F, 1.0F), "JSON 카탈로그 처리 중...");
+        ImGui::TextColored(ImVec4(0.04F, 0.39F, 0.82F, 1.0F), "샘플 카탈로그 처리 중...");
     }
     ImGui::BeginDisabled(catalog_loading_.load(std::memory_order_acquire));
+    if (ImGui::BeginTable("catalog_sources", 2, ImGuiTableFlags_SizingStretchSame)) {
+        ImGui::TableNextColumn();
+        ImGui::BeginDisabled(catalog_file_ == default_catalog_file_);
+        if (ImGui::Button("기본 샘플", ImVec2(-1.0F, 0.0F))) {
+            request_catalog_load(default_catalog_file_);
+        }
+        ImGui::EndDisabled();
+        ImGui::TableNextColumn();
+        ImGui::BeginDisabled(catalog_file_ == privacy_demo_catalog_file_);
+        if (ImGui::Button("개인정보 시연 CSV", ImVec2(-1.0F, 0.0F))) {
+            request_catalog_load(privacy_demo_catalog_file_);
+        }
+        ImGui::EndDisabled();
+        ImGui::EndTable();
+    }
+    ImGui::TextDisabled("현재: %s", catalog_file_ == privacy_demo_catalog_file_ ? "개인정보 시연 CSV" : "기본 샘플 JSON");
     if (ImGui::BeginTable("catalog_actions", 3, ImGuiTableFlags_SizingStretchSame)) {
         ImGui::TableNextColumn();
         if (ImGui::Button("추가", ImVec2(-1.0F, 0.0F))) {

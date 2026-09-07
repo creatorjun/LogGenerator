@@ -394,10 +394,12 @@ void CliApp::print_help(const std::string_view executable_name) {
         << "  --source-ip IP --destination-ip IP\n"
         << "  --offset-minutes N            현재 시각 오프셋\n"
         << "  --from yyyy-MM-dd --to yyyy-MM-dd\n"
-        << "  --catalog PATH --status-interval SECONDS --quiet\n\n"
+        << "  --catalog PATH                UTF-8 JSON 또는 CSV 샘플 카탈로그\n"
+        << "  --status-interval SECONDS --quiet\n\n"
         << "예시:\n"
         << "  " << executable_name << " list\n"
         << "  " << executable_name << " run --protocol file --sample-id 0001 --file-max-count 100 --output-dir ./generated\n"
+        << "  " << executable_name << " run --all --protocol file --file-max-count 5 --catalog \"./Sample Logs/privacy_demo_scenarios.csv\" --output-dir ./generated-privacy-demo\n"
         << "  " << executable_name << " run --all --protocol udp --host 192.0.2.10 --port 514 --udp-integration allow --mode parallel --eps 1000 --duration 60\n";
 }
 

@@ -3,7 +3,7 @@
 #include "application/log_preparation_cache.hpp"
 #include "application/stress_test_service.hpp"
 #include "infrastructure/async_file_logger.hpp"
-#include "infrastructure/json_log_catalog.hpp"
+#include "infrastructure/file_log_catalog.hpp"
 #include "infrastructure/transport_factory.hpp"
 #include "presentation/cli_app.hpp"
 
@@ -110,7 +110,7 @@ int main(const int argument_count, char** argument_values) {
     try {
         const auto application_directory = executable_directory();
         loggen::infrastructure::AsyncFileLogger logger{application_directory / "logs", "LogGeneratorCli"};
-        loggen::infrastructure::JsonLogCatalog catalog;
+        loggen::infrastructure::FileLogCatalog catalog;
         loggen::application::LogPreparationCache preparation_cache;
         loggen::application::LogCatalogService catalog_service{catalog, preparation_cache};
         const auto generated_directory = application_directory / "generated";
