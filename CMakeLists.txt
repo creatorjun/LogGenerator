@@ -134,8 +134,6 @@ set(LOGGEN_APPLICATION_SOURCES
 
 set(LOGGEN_INFRASTRUCTURE_SOURCES
     src/infrastructure/async_file_logger.cpp
-    src/infrastructure/csv_log_catalog.cpp
-    src/infrastructure/file_log_catalog.cpp
     src/infrastructure/file_transport.cpp
     src/infrastructure/json_log_catalog.cpp
     src/infrastructure/socket_support.cpp
@@ -293,7 +291,6 @@ set(LOGGEN_TEST_SOURCES
     tests/test_main.cpp
     tests/async_file_logger_tests.cpp
     tests/cli_app_tests.cpp
-    tests/csv_log_catalog_tests.cpp
     tests/file_transport_tests.cpp
     tests/log_catalog_service_tests.cpp
     tests/log_renderer_tests.cpp

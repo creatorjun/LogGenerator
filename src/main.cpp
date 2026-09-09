@@ -3,7 +3,7 @@
 #include "application/log_preparation_cache.hpp"
 #include "application/stress_test_service.hpp"
 #include "infrastructure/async_file_logger.hpp"
-#include "infrastructure/file_log_catalog.hpp"
+#include "infrastructure/json_log_catalog.hpp"
 #include "infrastructure/transport_factory.hpp"
 #include "presentation/app.hpp"
 #ifdef _WIN32
@@ -67,7 +67,7 @@ int main() {
         loggen::infrastructure::AsyncFileLogger logger{application_directory / "logs"};
         try {
             logger.info("LogGenerator startup");
-            loggen::infrastructure::FileLogCatalog catalog;
+            loggen::infrastructure::JsonLogCatalog catalog;
             loggen::application::LogPreparationCache preparation_cache;
             loggen::application::LogCatalogService catalog_service{catalog, preparation_cache};
             const auto generated_directory = application_directory / "generated";
@@ -82,11 +82,7 @@ int main() {
             if (!std::filesystem::exists(catalog_file)) {
                 catalog_file = std::filesystem::current_path() / "Sample Logs" / "sample_logs.json";
             }
-            auto privacy_demo_catalog_file = application_directory / "Sample Logs" / "privacy_demo_scenarios.csv";
-            if (!std::filesystem::exists(privacy_demo_catalog_file)) {
-                privacy_demo_catalog_file = std::filesystem::current_path() / "Sample Logs" / "privacy_demo_scenarios.csv";
-            }
-            loggen::presentation::App app{catalog_service, logger, stress_service, std::move(catalog_file), std::move(privacy_demo_catalog_file), generated_directory, application_directory / "fonts"};
+            loggen::presentation::App app{catalog_service, logger, stress_service, std::move(catalog_file), generated_directory, application_directory / "fonts"};
 #ifdef _WIN32
             const int result = app.run(instance, show_command);
 #else

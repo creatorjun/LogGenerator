@@ -15,7 +15,7 @@ void run_log_preparation_cache_tests() {
     domain::LogTemplate raw{
         "0001",
         "All token kinds",
-        R"(timestamp=2025-07-10T07:20:00Z src_ip=10.10.10.10 dst_ip=192.168.1.5 user_name="김테스트" store_name="당진점" str_cd=2201 user_id=real-user emp_no=991122 department="단품관리팀" organization=ExampleCorp email=person@example.com phone=010-1234-5678 resident_no=900101-1234567 resident_front=900101 resident_back=1234567 address="서울시 테스트로 1" remote_ip=10.20.30.40 mac=AA:BB:CC:DD:EE:FF host=server.internal principalid=AIDAEXAMPLE hmac=abcdef path=/data/private/secret.log mapped={{CUSTOM_VALUE}})",
+        R"(timestamp=2025-07-10T07:20:00Z src_ip=10.10.10.10 dst_ip=192.168.1.5 user_name="김테스트" store_name="당진점" str_cd=2201 user_id=real-user emp_no=991122 department="단품관리팀" organization=ExampleCorp email=person@example.com phone=010-1234-5678 address="서울시 테스트로 1" remote_ip=10.20.30.40 mac=AA:BB:CC:DD:EE:FF host=server.internal principalid=AIDAEXAMPLE hmac=abcdef path=/data/private/secret.log mapped={{CUSTOM_VALUE}})",
         "test",
         {}};
     raw.test_case.values["CUSTOM_VALUE"] = {"external@example.com"};
