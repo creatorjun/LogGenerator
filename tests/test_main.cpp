@@ -10,6 +10,7 @@ int main() {
         loggen::tests::run_log_preparation_cache_tests();
         loggen::tests::run_cli_app_tests();
         loggen::tests::run_log_catalog_service_tests();
+        loggen::tests::run_sample_log_import_tests();
         loggen::tests::run_json_log_catalog_tests();
         loggen::tests::run_file_transport_tests();
         loggen::tests::run_udp_transport_tests();

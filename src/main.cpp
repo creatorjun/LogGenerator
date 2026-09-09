@@ -1,8 +1,10 @@
 // src/main.cpp
 #include "application/log_catalog_service.hpp"
 #include "application/log_preparation_cache.hpp"
+#include "application/sample_log_import_service.hpp"
 #include "application/stress_test_service.hpp"
 #include "infrastructure/async_file_logger.hpp"
+#include "infrastructure/csv_sample_log_source.hpp"
 #include "infrastructure/json_log_catalog.hpp"
 #include "infrastructure/transport_factory.hpp"
 #include "presentation/app.hpp"
@@ -70,6 +72,8 @@ int main() {
             loggen::infrastructure::JsonLogCatalog catalog;
             loggen::application::LogPreparationCache preparation_cache;
             loggen::application::LogCatalogService catalog_service{catalog, preparation_cache};
+            loggen::infrastructure::CsvSampleLogSource sample_log_source;
+            loggen::application::SampleLogImportService sample_log_import_service{sample_log_source, catalog_service};
             const auto generated_directory = application_directory / "generated";
             loggen::infrastructure::TransportFactory transport_factory{generated_directory};
 #ifdef _WIN32
@@ -82,7 +86,7 @@ int main() {
             if (!std::filesystem::exists(catalog_file)) {
                 catalog_file = std::filesystem::current_path() / "Sample Logs" / "sample_logs.json";
             }
-            loggen::presentation::App app{catalog_service, logger, stress_service, std::move(catalog_file), generated_directory, application_directory / "fonts"};
+            loggen::presentation::App app{catalog_service, sample_log_import_service, logger, stress_service, std::move(catalog_file), generated_directory, application_directory / "fonts"};
 #ifdef _WIN32
             const int result = app.run(instance, show_command);
 #else

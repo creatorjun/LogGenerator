@@ -5,6 +5,7 @@
 #include "presentation/ui_theme.hpp"
 #ifdef _WIN32
 #include "presentation/windows_icon.hpp"
+#include <commdlg.h>
 #include <dwmapi.h>
 #include <imgui_impl_dx11.h>
 #include <imgui_impl_win32.h>
@@ -237,6 +238,30 @@ std::string path_to_utf8(const std::filesystem::path& path) {
     return {reinterpret_cast<const char*>(value.data()), value.size()};
 }
 
+#ifdef _WIN32
+std::optional<std::filesystem::path> select_csv_file(const HWND owner, const std::filesystem::path& initial_directory) {
+    std::array<wchar_t, 32'768> selected{};
+    const auto initial = initial_directory.wstring();
+    OPENFILENAMEW dialog{};
+    dialog.lStructSize = sizeof(dialog);
+    dialog.hwndOwner = owner;
+    dialog.lpstrFilter = L"CSV 파일 (*.csv)\0*.csv\0모든 파일 (*.*)\0*.*\0\0";
+    dialog.lpstrFile = selected.data();
+    dialog.nMaxFile = static_cast<DWORD>(selected.size());
+    dialog.lpstrInitialDir = initial.empty() ? nullptr : initial.c_str();
+    dialog.lpstrDefExt = L"csv";
+    dialog.Flags = OFN_DONTADDTORECENT | OFN_FILEMUSTEXIST | OFN_NOCHANGEDIR | OFN_PATHMUSTEXIST;
+    if (GetOpenFileNameW(&dialog)) {
+        return std::filesystem::path{selected.data()};
+    }
+    const DWORD error = CommDlgExtendedError();
+    if (error != 0) {
+        throw std::runtime_error(std::format("CSV 파일 선택 창을 열 수 없습니다. 오류 코드: {}", error));
+    }
+    return std::nullopt;
+}
+#endif
+
 std::optional<std::chrono::sys_days> parse_iso_date(const std::string_view value) {
     if (value.size() != 10 || value[4] != '-' || value[7] != '-') {
         return std::nullopt;
@@ -259,8 +284,8 @@ std::optional<std::chrono::sys_days> parse_iso_date(const std::string_view value
 
 }
 
-App::App(application::ILogCatalogUseCase& catalog_service, application::ILogger& logger, application::IStressTestUseCase& stress_service, std::filesystem::path catalog_file, std::filesystem::path generated_directory, std::filesystem::path font_directory)
-    : catalog_service_(catalog_service), logger_(logger), stress_service_(stress_service), catalog_file_(std::move(catalog_file)), generated_directory_(std::move(generated_directory)), font_directory_(std::move(font_directory)) {
+App::App(application::ILogCatalogUseCase& catalog_service, application::ISampleLogImportUseCase& sample_log_import_service, application::ILogger& logger, application::IStressTestUseCase& stress_service, std::filesystem::path catalog_file, std::filesystem::path generated_directory, std::filesystem::path font_directory)
+    : catalog_service_(catalog_service), sample_log_import_service_(sample_log_import_service), logger_(logger), stress_service_(stress_service), catalog_file_(std::move(catalog_file)), generated_directory_(std::move(generated_directory)), font_directory_(std::move(font_directory)) {
     editor_tokenizer_ = std::jthread([this](const std::stop_token stop_token) {
         run_editor_tokenizer(stop_token);
     });
@@ -655,6 +680,7 @@ void App::request_catalog_load() {
     if (catalog_loading_.exchange(true, std::memory_order_acq_rel)) {
         return;
     }
+    ui_notice_.clear();
     if (catalog_loader_.joinable()) {
         catalog_loader_.join();
     }
@@ -694,6 +720,7 @@ void App::request_catalog_save() {
     if (catalog_loader_.joinable()) {
         catalog_loader_.join();
     }
+    ui_notice_.clear();
     const auto file = catalog_file_;
     auto items = catalog_items_;
     catalog_loader_ = std::jthread([this, file, items = std::move(items)](std::stop_token) {
@@ -705,6 +732,54 @@ void App::request_catalog_save() {
         } catch (const std::exception& error) {
             result.error = error.what();
             logger_.error(std::format("Sample log catalog save failed: {}", error.what()));
+        }
+        {
+            std::scoped_lock lock(catalog_result_mutex_);
+            pending_catalog_result_ = std::move(result);
+        }
+        catalog_result_ready_.store(true, std::memory_order_release);
+        catalog_loading_.store(false, std::memory_order_release);
+    });
+}
+
+void App::request_sample_log_import(std::filesystem::path file) {
+    if (catalog_loading_.exchange(true, std::memory_order_acq_rel)) {
+        ui_error_ = "카탈로그 작업이 완료된 뒤 다시 시도하세요.";
+        return;
+    }
+    if (catalog_loader_.joinable()) {
+        catalog_loader_.join();
+    }
+    ui_error_.clear();
+    ui_notice_.clear();
+    const auto catalog_file = catalog_file_;
+    auto items = catalog_items_;
+    catalog_loader_ = std::jthread([this, file = std::move(file), catalog_file, items = std::move(items)](std::stop_token) mutable {
+        CatalogLoadResult result;
+        try {
+            result.items = std::move(items);
+            const auto first_imported_index = result.items.size();
+            auto imported = sample_log_import_service_.import_file(file, result.items);
+            result.items.reserve(result.items.size() + imported.size());
+            for (auto& tokenized : imported) {
+                result.items.push_back(std::move(tokenized.item));
+            }
+            catalog_service_.save(catalog_file, result.items);
+            result.search_names.reserve(result.items.size());
+            result.previews.reserve(result.items.size());
+            result.analyses.reserve(result.items.size());
+            for (auto& item : result.items) {
+                auto analysis = catalog_service_.analyze(item);
+                result.search_names.push_back(catalog_search_text(item, catalog_service_.privacy_search_terms(analysis)));
+                result.previews.push_back(sample_preview(item.sample));
+                result.analyses.push_back(std::move(analysis));
+            }
+            result.selected_index = first_imported_index;
+            result.notice = std::format("샘플 로그 {}개를 '{}'에서 가져와 저장했습니다.", imported.size(), path_to_utf8(file.filename()));
+            logger_.info(std::format("Sample logs imported: source={}, imported={}, catalog_entries={}", path_to_utf8(file), imported.size(), result.items.size()));
+        } catch (const std::exception& error) {
+            result.error = error.what();
+            logger_.error(std::format("Sample log CSV import failed: file={}, error={}", path_to_utf8(file), error.what()));
         }
         {
             std::scoped_lock lock(catalog_result_mutex_);
@@ -730,19 +805,26 @@ void App::apply_catalog_result() {
     }
     if (!result->error.empty()) {
         ui_error_ = std::move(result->error);
+        ui_notice_.clear();
         return;
     }
     if (!result->replace_items) {
         ui_error_.clear();
+        ui_notice_.clear();
         return;
     }
     catalog_items_ = std::move(result->items);
     catalog_search_names_ = std::move(result->search_names);
     catalog_previews_ = std::move(result->previews);
     catalog_analyses_ = std::move(result->analyses);
-    selected_log_ = std::min(selected_log_, catalog_items_.empty() ? std::size_t{0} : catalog_items_.size() - 1);
+    if (result->selected_index && *result->selected_index < catalog_items_.size()) {
+        selected_log_ = *result->selected_index;
+    } else {
+        selected_log_ = std::min(selected_log_, catalog_items_.empty() ? std::size_t{0} : catalog_items_.size() - 1);
+    }
     rebuild_filter();
     ui_error_.clear();
+    ui_notice_ = std::move(result->notice);
 }
 
 void App::rebuild_filter() {
@@ -895,6 +977,8 @@ void App::render_configuration(const domain::TransmissionStats& stats, const Res
         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.82F, 0.16F, 0.19F, 1.0F));
         ImGui::TextWrapped("%s", ui_error_.c_str());
         ImGui::PopStyleColor();
+    } else if (!ui_notice_.empty()) {
+        ImGui::TextColored(ImVec4(0.03F, 0.52F, 0.28F, 1.0F), "%s", ui_notice_.c_str());
     } else if (!stats.status_message.empty()) {
         ImGui::TextColored(ImVec4(0.03F, 0.52F, 0.28F, 1.0F), "%s", stats.status_message.c_str());
     } else if (protocol_index_ == static_cast<int>(domain::TransportProtocol::File)) {
@@ -1088,13 +1172,20 @@ void App::render_catalog_selector() {
         ImGui::EndTable();
     }
     if (catalog_loading_.load(std::memory_order_acquire)) {
-        ImGui::TextColored(ImVec4(0.04F, 0.39F, 0.82F, 1.0F), "JSON 카탈로그 처리 중...");
+        ImGui::TextColored(ImVec4(0.04F, 0.39F, 0.82F, 1.0F), "샘플 로그 처리 중...");
     }
     ImGui::BeginDisabled(catalog_loading_.load(std::memory_order_acquire));
-    if (ImGui::BeginTable("catalog_actions", 3, ImGuiTableFlags_SizingStretchSame)) {
+    if (ImGui::BeginTable("catalog_actions", 4, ImGuiTableFlags_SizingStretchSame)) {
         ImGui::TableNextColumn();
         if (ImGui::Button("추가", ImVec2(-1.0F, 0.0F))) {
             open_new_catalog_editor();
+        }
+        ImGui::TableNextColumn();
+        if (ImGui::Button("CSV 가져오기", ImVec2(-1.0F, 0.0F))) {
+            open_sample_log_import();
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("1개 컬럼의 각 행을 샘플 로그로 추가합니다. 쉼표, 따옴표, 개행이 있는 로그는 표준 CSV 인용 규칙을 사용하세요.");
         }
         ImGui::TableNextColumn();
         ImGui::BeginDisabled(catalog_items_.empty());
@@ -1177,6 +1268,10 @@ void App::render_catalog_editor() {
         ImGui::OpenPopup("샘플 로그 삭제");
         delete_popup_requested_ = false;
     }
+    if (import_popup_requested_) {
+        ImGui::OpenPopup("CSV 샘플 로그 가져오기");
+        import_popup_requested_ = false;
+    }
 
     const auto* viewport = ImGui::GetMainViewport();
     const float popup_max_width = std::max(320.0F * ui_scale_, viewport->WorkSize.x - 32.0F * ui_scale_);
@@ -1249,6 +1344,42 @@ void App::render_catalog_editor() {
         }
         ImGui::EndPopup();
     }
+
+    ImGui::SetNextWindowSize(ImVec2(560.0F * ui_scale_, 0.0F), ImGuiCond_Appearing);
+    if (ImGui::BeginPopupModal("CSV 샘플 로그 가져오기", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) {
+        ImGui::TextWrapped("CSV는 정확히 1개 컬럼이어야 하며 각 행을 하나의 샘플 로그로 추가합니다. 첫 행의 sample, sample_log 또는 샘플로그 헤더는 선택 사항입니다.");
+        ImGui::Spacing();
+        ImGui::TextDisabled("CSV 파일 경로");
+        ImGui::SetNextItemWidth(-1.0F);
+        ImGui::InputText("##csv_import_path", &import_path_);
+        ImGui::BeginDisabled(import_path_.empty() || catalog_loading_.load(std::memory_order_acquire));
+        if (ImGui::Button("가져오기", ImVec2(140.0F * ui_scale_, 0.0F))) {
+            request_sample_log_import(std::filesystem::path{import_path_});
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        if (ImGui::Button("취소", ImVec2(140.0F * ui_scale_, 0.0F))) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+}
+
+void App::open_sample_log_import() {
+#ifdef _WIN32
+    try {
+        if (const auto selected = select_csv_file(window_, catalog_file_.parent_path())) {
+            request_sample_log_import(*selected);
+        }
+    } catch (const std::exception& error) {
+        ui_error_ = error.what();
+        ui_notice_.clear();
+    }
+#else
+    import_path_.clear();
+    import_popup_requested_ = true;
+#endif
 }
 
 void App::open_new_catalog_editor() {
@@ -1482,6 +1613,7 @@ void App::start_test() {
         stress_service_.start(std::move(config));
         next_stats_refresh_ = {};
         ui_error_.clear();
+        ui_notice_.clear();
     } catch (const std::exception& error) {
         ui_error_ = error.what();
         logger_.warning(std::format("Stress test start rejected: {}", error.what()));

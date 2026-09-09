@@ -3,6 +3,7 @@
 
 #include "application/ports/logger.hpp"
 #include "application/use_cases/log_catalog.hpp"
+#include "application/use_cases/sample_log_import.hpp"
 #include "application/use_cases/stress_test.hpp"
 #include "domain/log_template.hpp"
 #include "presentation/responsive_layout.hpp"
@@ -33,7 +34,7 @@ namespace loggen::presentation {
 
 class App {
 public:
-    App(application::ILogCatalogUseCase& catalog_service, application::ILogger& logger, application::IStressTestUseCase& stress_service, std::filesystem::path catalog_file, std::filesystem::path generated_directory, std::filesystem::path font_directory);
+    App(application::ILogCatalogUseCase& catalog_service, application::ISampleLogImportUseCase& sample_log_import_service, application::ILogger& logger, application::IStressTestUseCase& stress_service, std::filesystem::path catalog_file, std::filesystem::path generated_directory, std::filesystem::path font_directory);
     ~App();
 
 #ifdef _WIN32
@@ -49,6 +50,8 @@ private:
         std::vector<std::string> previews;
         std::vector<application::LogTemplateAnalysis> analyses;
         std::string error;
+        std::string notice;
+        std::optional<std::size_t> selected_index;
         bool replace_items{true};
     };
 
@@ -75,6 +78,7 @@ private:
     void release_window_resources() noexcept;
     void request_catalog_load();
     void request_catalog_save();
+    void request_sample_log_import(std::filesystem::path file);
     void apply_catalog_result();
     void rebuild_filter();
     void refresh_stats();
@@ -88,6 +92,7 @@ private:
     void render_time_range();
     void render_catalog_selector();
     void render_catalog_editor();
+    void open_sample_log_import();
     void open_new_catalog_editor();
     void open_selected_catalog_editor();
     void save_catalog_editor();
@@ -100,6 +105,7 @@ private:
     void start_test();
 
     application::ILogCatalogUseCase& catalog_service_;
+    application::ISampleLogImportUseCase& sample_log_import_service_;
     application::ILogger& logger_;
     application::IStressTestUseCase& stress_service_;
     std::filesystem::path catalog_file_;
@@ -150,6 +156,7 @@ private:
     std::array<char, 11> range_end_{"2026-07-31"};
     std::array<char, 256> search_{};
     std::string ui_error_;
+    std::string ui_notice_;
     domain::TransmissionStats cached_stats_;
     std::string current_eps_text_{"0"};
     std::string average_eps_text_{"0"};
@@ -158,6 +165,8 @@ private:
     std::chrono::steady_clock::time_point next_stats_refresh_{};
     bool editor_popup_requested_{false};
     bool delete_popup_requested_{false};
+    bool import_popup_requested_{false};
+    std::string import_path_;
     bool editor_is_new_{false};
     std::size_t editor_index_{0};
     std::size_t delete_index_{0};

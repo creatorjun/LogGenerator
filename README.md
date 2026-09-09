@@ -39,9 +39,11 @@ LogGenerator/
 │  │  ├─ log_preparation_cache.cpp
 │  │  ├─ log_renderer.cpp
 │  │  ├─ privacy_anonymizer.cpp
+│  │  ├─ sample_log_import_service.cpp
 │  │  └─ stress_test_service.cpp
 │  ├─ infrastructure/
 │  │  ├─ async_file_logger.cpp
+│  │  ├─ csv_sample_log_source.cpp
 │  │  ├─ file_transport.cpp
 │  │  ├─ json_log_catalog.cpp
 │  │  ├─ openssl_transport.cpp
@@ -75,6 +77,7 @@ LogGenerator/
    ├─ log_renderer_tests.cpp
    ├─ linux_package_tests.cmake
    ├─ responsive_layout_tests.cpp
+   ├─ sample_log_import_tests.cpp
    ├─ stress_test_service_tests.cpp
    └─ windows_icon_tests.cpp
 ```
@@ -370,6 +373,8 @@ FILE 로그 100개를 생성합니다.
 ## 데이터와 로그
 
 샘플 카탈로그는 `Sample Logs/sample_logs.json`에 저장됩니다. UI에서 카탈로그를 저장할 때 임시 파일을 만든 뒤 원자적으로 교체합니다.
+
+UI의 기존 `추가` 버튼과 직접 입력 편집 방식은 그대로 사용할 수 있습니다. `CSV 가져오기`는 정확히 1개 컬럼인 `.csv` 파일을 읽고 각 행을 하나의 새 샘플 로그로 추가한 뒤 같은 JSON 카탈로그에 저장합니다. 첫 행의 `sample`, `sample_log`, `샘플로그`, `샘플 로그` 헤더는 선택 사항이며 헤더가 없으면 첫 행부터 샘플 로그로 처리합니다. 로그에 쉼표, 따옴표 또는 개행이 있으면 표준 CSV 따옴표 규칙을 사용해야 합니다. 가져온 로그도 직접 입력한 로그와 동일하게 개인정보·시간·IP 토큰화와 전송용 캐시 준비를 거칩니다.
 
 프로그램 자체 로그는 실행 파일 옆 `logs` 디렉터리에 기록됩니다. CLI 로그 파일의 기본 이름은 `LogGeneratorCli_yyyyMMdd.log`입니다.
 

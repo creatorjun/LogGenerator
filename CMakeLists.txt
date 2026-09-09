@@ -129,11 +129,13 @@ set(LOGGEN_APPLICATION_SOURCES
     src/application/log_preparation_cache.cpp
     src/application/log_renderer.cpp
     src/application/privacy_anonymizer.cpp
+    src/application/sample_log_import_service.cpp
     src/application/stress_test_service.cpp
 )
 
 set(LOGGEN_INFRASTRUCTURE_SOURCES
     src/infrastructure/async_file_logger.cpp
+    src/infrastructure/csv_sample_log_source.cpp
     src/infrastructure/file_transport.cpp
     src/infrastructure/json_log_catalog.cpp
     src/infrastructure/socket_support.cpp
@@ -228,7 +230,7 @@ target_include_directories(loggen_gui_presentation PUBLIC "${CMAKE_CURRENT_SOURC
 target_link_libraries(loggen_gui_presentation PUBLIC loggen_application PRIVATE imgui)
 if(WIN32)
     target_compile_definitions(loggen_gui_presentation PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _WIN32_WINNT=0x0A00)
-    target_link_libraries(loggen_gui_presentation PRIVATE d3d11 dxgi dwmapi shell32)
+    target_link_libraries(loggen_gui_presentation PRIVATE comdlg32 d3d11 dxgi dwmapi shell32)
 elseif(APPLE)
     target_compile_definitions(loggen_gui_presentation PRIVATE GL_SILENCE_DEPRECATION)
 endif()
@@ -296,6 +298,7 @@ set(LOGGEN_TEST_SOURCES
     tests/log_renderer_tests.cpp
     tests/log_preparation_cache_tests.cpp
     tests/json_log_catalog_tests.cpp
+    tests/sample_log_import_tests.cpp
     tests/stress_test_service_tests.cpp
     tests/udp_transport_tests.cpp
     tests/responsive_layout_tests.cpp

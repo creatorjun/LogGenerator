@@ -26,6 +26,7 @@ void run_log_renderer_tests();
 void run_log_preparation_cache_tests();
 void run_cli_app_tests();
 void run_log_catalog_service_tests();
+void run_sample_log_import_tests();
 void run_json_log_catalog_tests();
 void run_file_transport_tests();
 void run_udp_transport_tests();
