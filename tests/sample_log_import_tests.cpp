@@ -3,10 +3,13 @@
 
 #include "application/log_catalog_service.hpp"
 #include "application/log_preparation_cache.hpp"
+#include "application/log_renderer.hpp"
 #include "application/ports/log_catalog.hpp"
 #include "application/sample_log_import_service.hpp"
 #include "infrastructure/csv_sample_log_source.hpp"
 
+#include <array>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <span>
@@ -122,6 +125,38 @@ void run_sample_log_import_tests() {
     const auto wrong_extension_file = directory / "samples.txt";
     write_text(wrong_extension_file, "sample log\n");
     expect(load_rejected(source, wrong_extension_file), "CSV source accepted a non-CSV extension");
+
+    const auto scenario_file = std::filesystem::path{LOGGEN_SOURCE_DIR} / "Sample Logs" / "security_device_scenarios.csv";
+    const auto scenarios = source.load(scenario_file);
+    expect(scenarios.size() == 34, "Security device scenario CSV must contain 34 sample logs");
+    const std::array expected_cases{
+        std::pair<std::string_view, std::size_t>{"MAIL-SPLIT-001", 8},
+        std::pair<std::string_view, std::size_t>{"MAIL-PII-001", 6},
+        std::pair<std::string_view, std::size_t>{"DB-PII-QUERY-001", 7},
+        std::pair<std::string_view, std::size_t>{"PRINT-PII-001", 6},
+        std::pair<std::string_view, std::size_t>{"PCDLP-EXFIL-001", 7},
+    };
+    for (const auto& [case_id, expected_count] : expected_cases) {
+        std::size_t actual_count = 0;
+        for (const auto& scenario : scenarios) {
+            actual_count += scenario.find("case_id=" + std::string(case_id)) != std::string::npos ? 1U : 0U;
+        }
+        expect(actual_count == expected_count, "Security device scenario case count is incorrect");
+    }
+
+    const auto imported_scenarios = import_service.import_file(scenario_file, {});
+    expect(imported_scenarios.size() == scenarios.size(), "Security device scenario import changed the sample count");
+    const auto render_time = std::chrono::sys_days{std::chrono::year{2030} / std::chrono::January / 2} + std::chrono::hours{3} + std::chrono::minutes{4} + std::chrono::seconds{5};
+    std::vector<std::string> rendered_scenarios;
+    rendered_scenarios.reserve(imported_scenarios.size());
+    for (const auto& imported_scenario : imported_scenarios) {
+        auto prepared = application::LogRenderer::prepare_one(imported_scenario.item, "192.0.2.10", "192.0.2.20", std::chrono::seconds{0});
+        rendered_scenarios.emplace_back(prepared.render(render_time, true));
+        expect(rendered_scenarios.back().find("{{") == std::string::npos, "Security device scenario left an unresolved token");
+        expect(rendered_scenarios.back().find_first_of("\r\n") == std::string::npos, "Security device scenario rendered more than one event line");
+    }
+    expect(rendered_scenarios[0].find("id_part_a=900101") != std::string::npos, "Split mail scenario lost the first personal identifier fragment");
+    expect(rendered_scenarios[1].find("id_part_b=1234567") != std::string::npos, "Split mail scenario lost the second personal identifier fragment");
 }
 
 }
