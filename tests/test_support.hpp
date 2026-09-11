@@ -32,6 +32,7 @@ void run_file_transport_tests();
 void run_udp_transport_tests();
 void run_stress_test_service_tests();
 void run_async_file_logger_tests();
+void run_runtime_paths_tests();
 #ifdef LOGGEN_HAS_WINDOWS_ICON_TESTS
 void run_windows_icon_tests();
 #endif

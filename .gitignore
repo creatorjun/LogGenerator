@@ -1,5 +1,9 @@
 # .gitignore
 /build/
+/build-store/
+/packaging/windows/StoreConfig.local.psd1
+*.pfx
+*.p12
 /build-windows-cli/
 /build-linux/
 /build-linux-headless/

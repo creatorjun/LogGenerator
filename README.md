@@ -12,7 +12,13 @@ LogGenerator/
 ├─ PERFORMANCE.md
 ├─ README.md
 ├─ requirements.txt
+├─ docs/
+│  ├─ MICROSOFT_STORE.md
+│  └─ PRIVACY_POLICY.ko.md
 ├─ packaging/
+│  ├─ windows/
+│  │  ├─ AppxManifest.xml.in
+│  │  └─ StoreConfig.example.psd1
 │  └─ linux/
 │     ├─ install-shortcuts.sh
 │     └─ run-loggenerator.sh
@@ -29,6 +35,8 @@ LogGenerator/
 │  ├─ build.ps1
 │  ├─ build.sh
 │  ├─ package-linux.cmake
+│  ├─ package-store.ps1
+│  ├─ test-store-package.ps1
 │  └─ publish.ps1
 ├─ src/
 │  ├─ domain/
@@ -49,6 +57,7 @@ LogGenerator/
 │  │  ├─ json_log_catalog.cpp
 │  │  ├─ openssl_transport.cpp
 │  │  ├─ posix_execution_runtime.cpp
+│  │  ├─ runtime_paths.cpp
 │  │  ├─ schannel_transport.cpp
 │  │  ├─ socket_support.cpp
 │  │  ├─ tcp_transport.cpp
@@ -82,6 +91,26 @@ LogGenerator/
    ├─ stress_test_service_tests.cpp
    └─ windows_icon_tests.cpp
 ```
+
+## Microsoft Store 링크 배포
+
+Windows x64 앱은 MSIX로 패키징할 수 있습니다. Partner Center에서 `Public audience` → `Make this product available but not discoverable in the Store` → `Direct link only`를 선택하면 Store 검색에서 숨기고 링크를 받은 누구나 설치하도록 제공할 수 있습니다. 링크 재전달은 제한하지 않습니다.
+
+모든 MSIX 패키지는 샘플 로그 **0개**로 시작합니다. 패키지에는 빈 `sample_logs.json`만 넣으며 저장소의 샘플 60개와 CSV는 포함하지 않습니다. 저장소 원본은 보존됩니다. 사용자는 첫 실행 후 `추가` 또는 `CSV 가져오기`로 샘플을 준비합니다.
+
+Partner Center 제품 `9NDZGLF6HDKR`의 Submission 1 초안에 샘플 0개 패키지를 업로드했고, 서버 검사 `Validated`와 저장 후 `패키지 상태: 완료`를 확인했습니다. Public/검색 숨김/Direct link only 설정도 저장했습니다. 가격과 개인정보처리방침·Store 목록을 완성하기 전이며, 인증 제출과 게시는 아직 수행하지 않았습니다. 초안 업로드용 패키지는 다음 명령으로 생성합니다.
+
+```powershell
+.\scripts\package-store.ps1 -ConfigPath .\packaging\windows\StoreConfig.local.psd1 -DraftUpload -RunWack
+```
+
+이 명령은 별도 `build-store`에서 AVX2 필수 조건을 해제한 Release 빌드와 테스트를 실행하고, `out/store/draft`에 실제 identity의 MSIX와 로컬 검사 보고서를 생성합니다. `-DraftUpload`는 개인정보처리방침 URL이 없는 Packages 초안 업로드를 허용합니다. 인증 제출 전에는 공개 HTTPS 방침 URL을 `packaging/windows/StoreConfig.local.psd1`의 `PrivacyPolicyUrl`에 기입하고 Store 목록을 완성한 뒤, `-DraftUpload` 없이 다시 패키징합니다. 이때 산출물은 `out/store/submission`에 생성되며, URL이 비어 있으면 실패합니다. 업로드·분석·초안 저장은 Store 심사 승인이나 게시 완료와 구분합니다.
+
+실제 identity가 필요 없는 로컬 검증은 `.\scripts\package-store.ps1 -ValidationOnly -RunWack`로 실행합니다. `out/store/validation`의 개발 identity 패키지는 Partner Center에 업로드하지 않습니다.
+
+Store 신규 설치에서는 빈 카탈로그를 사용자별 `LocalState`에 복제하고, 사용자가 추가한 샘플·진단 로그·기본 FILE 출력도 그곳에 저장합니다. 업데이트는 기존 사용자 카탈로그를 보존하므로 새 패키지의 샘플이 0개여도 사용자의 기존 샘플을 삭제하지 않습니다. 일반 실행 파일 배포의 저장 위치는 유지합니다.
+
+전체 설정, 서명과 설치 검증, 심사 준비 및 링크 발급 절차는 [Microsoft Store 배포 안내](docs/MICROSOFT_STORE.md), 공개 전 운영자 정보를 채워야 하는 방침 초안은 [개인정보처리방침](docs/PRIVACY_POLICY.ko.md)을 확인하세요.
 
 ## 플랫폼 구성
 
@@ -259,7 +288,7 @@ bash scripts/build.sh Release --headless
 ./build-macos-headless/bin/LogGenerator --help
 ```
 
-모든 플랫폼에서 빌드 후 실행 파일 옆에 `Sample Logs/sample_logs.json`이 자동 복사됩니다. Linux GUI 빌드는 검증된 Noto Sans KR 글꼴도 `fonts` 디렉터리에 복사합니다.
+일반 빌드에서는 모든 플랫폼의 실행 파일 옆에 `Sample Logs/sample_logs.json`이 자동 복사됩니다. Store MSIX를 생성할 때는 별도의 패키지 준비 폴더에 빈 카탈로그를 기록하여 원본 샘플과 CSV를 제외합니다. Linux GUI 빌드는 검증된 Noto Sans KR 글꼴도 `fonts` 디렉터리에 복사합니다.
 
 ## 사용 방법
 
@@ -273,7 +302,7 @@ bash scripts/build.sh Release --headless
 8. 순차 전송 또는 병렬 전송을 선택하고 목표 EPS를 설정합니다. 목표 EPS가 0이면 최대 처리량 모드입니다.
 9. `전송 시작`을 누르고 현재 EPS, 평균 EPS, 총 로그 수, 총 바이트를 확인합니다.
 
-FILE 방식은 네트워크 객체를 생성하지 않으며 실행 파일 옆 `generated` 디렉터리에 로그 이벤트 하나당 파일 하나를 기록합니다. 총 바이트, 파일 수, 실행 시간 제한을 0으로 두면 해당 제한은 비활성화됩니다.
+FILE 방식은 네트워크 객체를 생성하지 않으며 로그 이벤트 하나당 파일 하나를 기록합니다. 기본 위치는 일반 배포에서 실행 파일 옆 `generated`, Store 설치에서 사용자별 `LocalState\generated`입니다. 총 바이트, 파일 수, 실행 시간 제한을 0으로 두면 해당 제한은 비활성화됩니다.
 
 UDP 통계는 로그 이벤트 EPS와 실제 데이터그램 DPS를 분리해 표시합니다. `통합 전송 허용 여부`의 기본값인 `불가`는 순차·병렬 모드와 관계없이 로그 1개를 데이터그램 1개로 전송합니다. `허용`은 로그를 개행으로 구분해 최대 60 KiB 데이터그램에 패킹하고 여러 데이터그램을 최대 600 KiB 작업 단위로 벡터 전송하므로 수신기가 데이터그램 내부의 개행 단위 이벤트 분리를 지원해야 합니다. 단일 UDP payload의 프로토콜 상한은 65,507바이트이므로 600 KiB를 하나의 데이터그램으로 만들지 않습니다. 로그 내부의 실제 CR/LF는 `\\r`, `\\n`으로 이스케이프됩니다. 60 KiB UDP는 일반 MTU에서 IP 단편화되므로 loopback, jumbo frame 또는 충분한 대역폭의 전용망을 권장합니다. 수신 포트가 없을 때 나중에 도착하는 ICMP Port Unreachable은 UDP 송신을 중단시키지 않으며, 권한 거부·라우팅 실패·버퍼 오류 등 실제 로컬 송신 오류는 계속 실패로 보고합니다.
 
@@ -373,13 +402,13 @@ FILE 로그 100개를 생성합니다.
 
 ## 데이터와 로그
 
-샘플 카탈로그는 `Sample Logs/sample_logs.json`에 저장됩니다. UI에서 카탈로그를 저장할 때 임시 파일을 만든 뒤 원자적으로 교체합니다.
+샘플 카탈로그는 `Sample Logs/sample_logs.json`에 저장됩니다. 일반 배포는 실행 파일 옆 경로를 사용하고, Store 설치는 `%LOCALAPPDATA%\Packages\<PackageFamilyName>\LocalState` 아래 경로를 사용합니다. Store 패키지의 초기 카탈로그에는 샘플이 없습니다. UI에서 카탈로그를 저장할 때 임시 파일을 만든 뒤 원자적으로 교체합니다.
 
 UI의 기존 `추가` 버튼과 직접 입력 편집 방식은 그대로 사용할 수 있습니다. `CSV 가져오기`는 정확히 1개 컬럼인 `.csv` 파일을 읽고 각 행을 하나의 새 샘플 로그로 추가한 뒤 같은 JSON 카탈로그에 저장합니다. 첫 행의 `sample`, `sample_log`, `샘플로그`, `샘플 로그` 헤더는 선택 사항이며 헤더가 없으면 첫 행부터 샘플 로그로 처리합니다. 로그에 쉼표, 따옴표 또는 개행이 있으면 표준 CSV 따옴표 규칙을 사용해야 합니다. 가져온 로그도 직접 입력한 로그와 동일하게 개인정보·시간·IP 토큰화와 전송용 캐시 준비를 거칩니다.
 
-`Sample Logs/security_device_scenarios.csv`는 합성 데이터로 작성한 고객 시연용 파일입니다. 메일 분할 유출, 개인정보 포함 메일, DB 개인정보 조회, 개인정보 출력, PC DLP 반출의 5개 케이스와 34개 장비 이벤트를 포함합니다. 각 이벤트의 `case_id`, `correlation_id`, `seq`, `device_type`으로 동일 케이스의 시간순 흐름과 장비 간 연관관계를 확인할 수 있습니다.
+`Sample Logs/security_device_scenarios.csv`는 저장소에 보존된 합성 데이터 기반 고객 시연용 파일이며 Store MSIX에는 포함하지 않습니다. 메일 분할 유출, 개인정보 포함 메일, DB 개인정보 조회, 개인정보 출력, PC DLP 반출의 5개 케이스와 34개 장비 이벤트를 포함합니다. 각 이벤트의 `case_id`, `correlation_id`, `seq`, `device_type`으로 동일 케이스의 시간순 흐름과 장비 간 연관관계를 확인할 수 있습니다.
 
-프로그램 자체 로그는 실행 파일 옆 `logs` 디렉터리에 기록됩니다. CLI 로그 파일의 기본 이름은 `LogGeneratorCli_yyyyMMdd.log`입니다.
+프로그램 자체 로그는 일반 배포의 실행 파일 옆 `logs` 디렉터리, Store 설치의 사용자별 `LocalState\logs`에 기록됩니다. CLI 로그 파일의 기본 이름은 `LogGeneratorCli_yyyyMMdd.log`입니다.
 
 ```text
 logs/LogGenerator_yyyyMMdd.log

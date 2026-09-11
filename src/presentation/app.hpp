@@ -22,6 +22,7 @@ struct GLFWwindow;
 #include <cstdint>
 #include <condition_variable>
 #include <filesystem>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -31,6 +32,10 @@ struct GLFWwindow;
 struct ImFont;
 
 namespace loggen::presentation {
+
+#ifdef _WIN32
+class PrivacyPolicyLauncher;
+#endif
 
 class App {
 public:
@@ -84,6 +89,7 @@ private:
     void refresh_stats();
     void render();
     void render_header(const domain::TransmissionStats& stats, const ResponsiveLayout& layout);
+    void render_privacy_notice();
     void render_metrics(const domain::TransmissionStats& stats, const ResponsiveLayout& layout);
     void render_configuration(const domain::TransmissionStats& stats, const ResponsiveLayout& layout);
     void render_destination_panel(float height);
@@ -166,6 +172,11 @@ private:
     bool editor_popup_requested_{false};
     bool delete_popup_requested_{false};
     bool import_popup_requested_{false};
+    bool privacy_popup_requested_{false};
+    std::string privacy_policy_error_;
+#ifdef _WIN32
+    std::unique_ptr<PrivacyPolicyLauncher> privacy_policy_launcher_;
+#endif
     std::string import_path_;
     bool editor_is_new_{false};
     std::size_t editor_index_{0};

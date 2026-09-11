@@ -4,6 +4,7 @@
 #include "presentation/windows_resource.hpp"
 
 #include <Shobjidl.h>
+#include <appmodel.h>
 
 #include <limits>
 #include <string>
@@ -73,7 +74,10 @@ void set_application_window_icons(const HWND window, const HINSTANCE instance) n
 }
 
 void configure_application_identity() noexcept {
-    static_cast<void>(SetCurrentProcessExplicitAppUserModelID(L"LogGenerator.Desktop"));
+    UINT32 package_name_length = 0;
+    if (GetCurrentPackageFullName(&package_name_length, nullptr) == APPMODEL_ERROR_NO_PACKAGE) {
+        static_cast<void>(SetCurrentProcessExplicitAppUserModelID(L"LogGenerator.Desktop"));
+    }
 }
 
 void show_application_error(const HINSTANCE instance, const std::string_view message) noexcept {

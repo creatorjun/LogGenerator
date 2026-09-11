@@ -13,6 +13,16 @@ powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File .\script
 
 완료 후 GUI는 `build\bin\Release\LogGenerator.exe`, CLI는 `build\bin\Release\LogGeneratorCli.exe`입니다.
 
+## Microsoft Store MSIX
+
+Windows SDK의 MakeAppx와 MakePri를 추가로 설치한 뒤 검증용 패키지를 만듭니다. 이 빌드는 `build-store`를 사용하며 기존 빌드 디렉터리를 삭제하지 않습니다.
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\package-store.ps1 -ValidationOnly
+```
+
+실제 Store 제출용 identity 및 개인정보처리방침 URL 설정, 서명과 인증 절차는 [Microsoft Store 링크 배포](docs/MICROSOFT_STORE.md)를 참고하세요.
+
 ## Oracle Linux 8.10/9.8 x86_64/arm64
 
 Linux의 기본 빌드 기준은 Oracle Linux 8.10과 9.8입니다. 먼저 실제 운영체제 버전을 확인합니다.

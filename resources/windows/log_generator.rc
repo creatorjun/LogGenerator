@@ -1,4 +1,14 @@
 // resources/windows/log_generator.rc
+#include <windows.h>
+
+#include "loggen_version.h"
 #include "presentation/windows_resource.hpp"
 
+#define LOGGEN_FILE_DESCRIPTION "LogGenerator Desktop"
+#define LOGGEN_INTERNAL_NAME "LogGenerator"
+#define LOGGEN_ORIGINAL_FILENAME "LogGenerator.exe"
+
+#include "version_info.rcinc"
+
 IDI_LOGGENERATOR ICON "log.ico"
+CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "log_generator.manifest"

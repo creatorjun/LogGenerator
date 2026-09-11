@@ -4,6 +4,7 @@
 #include "application/stress_test_service.hpp"
 #include "infrastructure/async_file_logger.hpp"
 #include "infrastructure/json_log_catalog.hpp"
+#include "infrastructure/runtime_paths.hpp"
 #include "infrastructure/transport_factory.hpp"
 #include "presentation/cli_app.hpp"
 
@@ -12,14 +13,9 @@
 #include <Windows.h>
 #else
 #include "infrastructure/posix_execution_runtime.hpp"
-#ifdef __APPLE__
-#include <mach-o/dyld.h>
-#endif
 #endif
 
 #include <algorithm>
-#include <array>
-#include <cstdint>
 #include <cstdio>
 #include <exception>
 #include <filesystem>
@@ -74,33 +70,6 @@ private:
 };
 #endif
 
-std::filesystem::path executable_directory() {
-#ifdef _WIN32
-    std::array<wchar_t, 32'768> buffer{};
-    const DWORD length = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
-    if (length == 0 || length >= static_cast<DWORD>(buffer.size())) {
-        return std::filesystem::current_path();
-    }
-    return std::filesystem::path(std::wstring(buffer.data(), length)).parent_path();
-#elif defined(__APPLE__)
-    std::uint32_t buffer_size = 1024;
-    std::vector<char> buffer(buffer_size);
-    if (_NSGetExecutablePath(buffer.data(), &buffer_size) != 0) {
-        buffer.resize(buffer_size);
-        if (_NSGetExecutablePath(buffer.data(), &buffer_size) != 0) {
-            return std::filesystem::current_path();
-        }
-    }
-    std::error_code error;
-    const auto executable = std::filesystem::weakly_canonical(std::filesystem::path(buffer.data()), error);
-    return (error ? std::filesystem::path(buffer.data()) : executable).parent_path();
-#else
-    std::error_code error;
-    const auto executable = std::filesystem::read_symlink("/proc/self/exe", error);
-    return error ? std::filesystem::current_path() : executable.parent_path();
-#endif
-}
-
 }
 
 int main(const int argument_count, char** argument_values) {
@@ -108,23 +77,19 @@ int main(const int argument_count, char** argument_values) {
     const ConsoleUtf8Guard console_encoding;
 #endif
     try {
-        const auto application_directory = executable_directory();
-        loggen::infrastructure::AsyncFileLogger logger{application_directory / "logs", "LogGeneratorCli"};
+        const auto paths = loggen::infrastructure::discover_runtime_paths();
+        loggen::infrastructure::AsyncFileLogger logger{paths.log_directory, "LogGeneratorCli"};
+        loggen::infrastructure::initialize_runtime_catalog(paths);
         loggen::infrastructure::JsonLogCatalog catalog;
         loggen::application::LogPreparationCache preparation_cache;
         loggen::application::LogCatalogService catalog_service{catalog, preparation_cache};
-        const auto generated_directory = application_directory / "generated";
-        loggen::infrastructure::TransportFactory transport_factory{generated_directory};
+        loggen::infrastructure::TransportFactory transport_factory{paths.generated_directory};
 #ifdef _WIN32
         loggen::infrastructure::WindowsExecutionRuntime execution_runtime;
 #else
         loggen::infrastructure::PosixExecutionRuntime execution_runtime;
 #endif
         loggen::application::StressTestService stress_service{transport_factory, execution_runtime, preparation_cache, logger};
-        auto catalog_file = application_directory / "Sample Logs" / "sample_logs.json";
-        if (!std::filesystem::exists(catalog_file)) {
-            catalog_file = std::filesystem::current_path() / "Sample Logs" / "sample_logs.json";
-        }
         std::vector<std::string_view> arguments;
         arguments.reserve(static_cast<std::size_t>(std::max(argument_count - 1, 0)));
         for (int index = 1; index < argument_count; ++index) {
@@ -137,7 +102,7 @@ int main(const int argument_count, char** argument_values) {
                 executable_name = candidate;
             }
         }
-        loggen::presentation::CliApp app{catalog_service, stress_service, logger, std::move(catalog_file)};
+        loggen::presentation::CliApp app{catalog_service, stress_service, logger, paths.catalog_file};
         return app.run(arguments, executable_name);
     } catch (const std::exception& error) {
         std::fprintf(stderr, "LogGeneratorCli: %s\n", error.what());

@@ -2,15 +2,85 @@
 #include "test_support.hpp"
 
 #include "presentation/cli_app.hpp"
+#include "application/log_catalog_service.hpp"
+#include "application/log_preparation_cache.hpp"
+#include "infrastructure/json_log_catalog.hpp"
 
 #include <array>
 #include <chrono>
+#include <fstream>
 #include <stdexcept>
 #include <string_view>
 
 namespace loggen::tests {
+namespace {
+
+class EmptyCatalogFixture final {
+public:
+    EmptyCatalogFixture() : file(unique_test_path("loggen_empty_cli_catalog_")) {
+        std::ofstream output(file, std::ios::binary | std::ios::trunc);
+        output << R"({"schema_version":1,"logs":[]})";
+        output.close();
+        expect(static_cast<bool>(output), "Unable to create empty Store catalog fixture");
+    }
+
+    ~EmptyCatalogFixture() {
+        std::error_code error;
+        std::filesystem::remove(file, error);
+    }
+
+    EmptyCatalogFixture(const EmptyCatalogFixture&) = delete;
+    EmptyCatalogFixture& operator=(const EmptyCatalogFixture&) = delete;
+
+    const std::filesystem::path file;
+};
+
+class EmptyCatalogLogger final : public application::ILogger {
+public:
+    void log(application::LogLevel, std::string_view) noexcept override {
+    }
+};
+
+class EmptyCatalogStressService final : public application::IStressTestUseCase {
+public:
+    void start(domain::GeneratorConfig) override {
+        started = true;
+        throw std::logic_error("Empty catalog must not start a generator");
+    }
+
+    void request_stop() noexcept override {
+    }
+
+    void stop() noexcept override {
+    }
+
+    [[nodiscard]] domain::TransmissionStats snapshot() override {
+        return {};
+    }
+
+    bool started{false};
+};
+
+void empty_store_catalog_is_listed_and_cannot_start_transmission() {
+    const EmptyCatalogFixture fixture;
+    infrastructure::JsonLogCatalog catalog;
+    application::LogPreparationCache preparation_cache;
+    application::LogCatalogService catalog_service{catalog, preparation_cache};
+    EmptyCatalogStressService stress_service;
+    EmptyCatalogLogger logger;
+    presentation::CliApp app{catalog_service, stress_service, logger, fixture.file};
+    constexpr std::array<std::string_view, 1> list_arguments{"list"};
+    expect(app.run(list_arguments) == 0, "CLI must list an empty Store catalog successfully");
+    constexpr std::array<std::string_view, 3> run_arguments{"run", "--all", "--quiet"};
+    expect(app.run(run_arguments) == 2, "CLI must reject transmission from an empty Store catalog");
+    expect(!stress_service.started, "An empty Store catalog started a transport");
+    expect(catalog_service.load(fixture.file).empty(), "CLI must not populate an empty Store catalog with default samples");
+}
+
+}
 
 void run_cli_app_tests() {
+    empty_store_catalog_is_listed_and_cannot_start_transmission();
     using namespace std::chrono;
     constexpr std::array<std::string_view, 25> run_arguments{
         "run",

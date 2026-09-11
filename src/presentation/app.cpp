@@ -4,6 +4,7 @@
 #include "domain/generator_config.hpp"
 #include "presentation/ui_theme.hpp"
 #ifdef _WIN32
+#include "presentation/privacy_policy_launcher.hpp"
 #include "presentation/windows_icon.hpp"
 #include <commdlg.h>
 #include <dwmapi.h>
@@ -292,6 +293,9 @@ App::App(application::ILogCatalogUseCase& catalog_service, application::ISampleL
 }
 
 App::~App() {
+#ifdef _WIN32
+    privacy_policy_launcher_.reset();
+#endif
     if (editor_tokenizer_.joinable()) {
         editor_tokenizer_.request_stop();
         editor_tokenization_condition_.notify_all();
@@ -871,6 +875,7 @@ void App::render() {
     render_configuration(stats, layout);
     ImGui::Spacing();
     render_catalog_editor();
+    render_privacy_notice();
     ImGui::End();
 }
 
@@ -886,18 +891,100 @@ void App::render_header(const domain::TransmissionStats& stats, const Responsive
     ImGui::PushFont(bold_font_, ImGui::GetStyle().FontSizeBase * layout.title_scale);
     ImGui::TextColored(ImVec4(0.97F, 0.98F, 1.0F, 1.0F), "LogGenerator");
     ImGui::PopFont();
+    const float privacy_width = ImGui::CalcTextSize("개인정보 안내").x + ImGui::GetStyle().FramePadding.x * 2.0F;
+    const float status_width = layout.inline_header_status
+        ? ImGui::CalcTextSize("● ").x + ImGui::CalcTextSize(status.data(), status.data() + status.size()).x + ImGui::GetStyle().ItemSpacing.x
+        : 0.0F;
+    ImGui::SameLine();
+    ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x - status_width - privacy_width));
     if (layout.inline_header_status) {
-        const float status_width = ImGui::CalcTextSize("● ").x + ImGui::CalcTextSize(status.data(), status.data() + status.size()).x;
-        ImGui::SameLine();
-        ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x - status_width));
         ImGui::TextColored(state_color(stats.state), "● %.*s", static_cast<int>(status.size()), status.data());
+        ImGui::SameLine();
     }
+    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.88F, 0.92F, 0.98F, 1.0F));
+    ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.16F, 0.22F, 0.32F, 1.0F));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.22F, 0.30F, 0.43F, 1.0F));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.27F, 0.36F, 0.50F, 1.0F));
+    if (ImGui::SmallButton("개인정보 안내")) {
+        privacy_popup_requested_ = true;
+        privacy_policy_error_.clear();
+    }
+    ImGui::PopStyleColor(4);
     ImGui::TextColored(ImVec4(0.66F, 0.73F, 0.84F, 1.0F), "고성능 SIEM 로그 생성 · 네트워크 전송 스트레스 도구");
     if (!layout.inline_header_status) {
         ImGui::TextColored(state_color(stats.state), "● %.*s", static_cast<int>(status.size()), status.data());
     }
     ImGui::EndChild();
     ImGui::PopStyleColor();
+}
+
+void App::render_privacy_notice() {
+#if defined(_WIN32) && defined(LOGGEN_PRIVACY_POLICY_URL)
+    const auto launch_status = privacy_policy_launcher_ ? privacy_policy_launcher_->poll() : PrivacyPolicyLaunchStatus::Idle;
+    if (launch_status == PrivacyPolicyLaunchStatus::Failed) {
+        privacy_policy_error_ = "온라인 개인정보처리방침을 열 수 없습니다.";
+    }
+#endif
+    if (privacy_popup_requested_) {
+        ImGui::OpenPopup("개인정보 안내");
+        privacy_popup_requested_ = false;
+    }
+    const auto* viewport = ImGui::GetMainViewport();
+    const ImVec2 popup_size{
+        std::min(680.0F * ui_scale_, std::max(1.0F, viewport->WorkSize.x - 32.0F * ui_scale_)),
+        std::min(530.0F * ui_scale_, std::max(1.0F, viewport->WorkSize.y - 32.0F * ui_scale_))};
+    ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5F, 0.5F));
+    ImGui::SetNextWindowSize(popup_size, ImGuiCond_Always);
+    if (ImGui::BeginPopupModal("개인정보 안내", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings)) {
+        const float error_height = privacy_policy_error_.empty() ? 0.0F
+            : ImGui::CalcTextSize(privacy_policy_error_.c_str(), nullptr, false, ImGui::GetContentRegionAvail().x).y + ImGui::GetStyle().ItemSpacing.y;
+        const float content_height = std::max(ImGui::GetTextLineHeightWithSpacing(), ImGui::GetContentRegionAvail().y - ImGui::GetFrameHeightWithSpacing() - error_height);
+        ImGui::BeginChild("privacy_content", ImVec2(0.0F, content_height));
+        ImGui::TextWrapped("앱은 사용 통계나 로그를 개발자에게 자동 전송하지 않습니다.");
+        ImGui::Spacing();
+        ImGui::SeparatorText("로그 전송");
+        ImGui::TextWrapped("전송을 시작하면 사용자가 지정한 수신 서버로 로그를 보냅니다. 수신 서버에서 데이터를 보관할 수 있으므로 전송할 내용과 목적지를 확인하세요.");
+        ImGui::Spacing();
+        ImGui::SeparatorText("PC에 저장되는 데이터");
+        ImGui::TextWrapped("CSV 파일명과 입력한 로그 내용을 카탈로그에 저장합니다. 실행 진단 로그와 생성 로그 파일도 PC에 저장하며, 진단 로그에는 대상 주소와 파일 경로가 포함될 수 있습니다.");
+        ImGui::Spacing();
+        ImGui::SeparatorText("개인정보 치환");
+        ImGui::TextWrapped("로그의 일부 값을 치환하는 기능은 완전한 익명화를 보장하지 않습니다. 원본과 생성된 로그에 개인정보나 기밀정보가 남아 있는지 확인하세요.");
+        ImGui::Spacing();
+        ImGui::SeparatorText("데이터 삭제");
+        ImGui::TextWrapped("Microsoft Store 설치본을 제거하면 앱 내부 저장소의 데이터가 삭제됩니다. 사용자가 앱 밖의 경로에 저장한 파일은 남으므로 필요한 경우 직접 삭제하세요.");
+        ImGui::EndChild();
+        if (!privacy_policy_error_.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.82F, 0.16F, 0.19F, 1.0F));
+            ImGui::TextWrapped("%s", privacy_policy_error_.c_str());
+            ImGui::PopStyleColor();
+        }
+#if defined(_WIN32) && defined(LOGGEN_PRIVACY_POLICY_URL)
+        constexpr std::string_view policy_url{LOGGEN_PRIVACY_POLICY_URL};
+        if (!policy_url.empty()) {
+            const float button_width = (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) * 0.5F;
+            const bool opening = launch_status == PrivacyPolicyLaunchStatus::Opening;
+            ImGui::BeginDisabled(opening);
+            if (ImGui::Button(opening ? "브라우저 여는 중" : "온라인 방침 열기", ImVec2(button_width, 0.0F))) {
+                try {
+                    if (!privacy_policy_launcher_) {
+                        privacy_policy_launcher_ = std::make_unique<PrivacyPolicyLauncher>();
+                    }
+                    privacy_policy_launcher_->launch(policy_url);
+                    privacy_policy_error_.clear();
+                } catch (...) {
+                    privacy_policy_error_ = "온라인 개인정보처리방침을 열 수 없습니다.";
+                }
+            }
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+        }
+#endif
+        if (ImGui::Button("닫기", ImVec2(-1.0F, 0.0F))) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
 }
 
 void App::render_metrics(const domain::TransmissionStats& stats, const ResponsiveLayout& layout) {

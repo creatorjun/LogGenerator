@@ -1,0 +1,39 @@
+<!-- packaging/windows/AppxManifest.xml.in -->
+<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+         xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+         xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+         xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+         xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+         IgnorableNamespaces="uap uap3 desktop rescap">
+  <Identity Name="@IdentityName@" Publisher="@Publisher@" Version="@Version@" ProcessorArchitecture="x64" />
+  <Properties>
+    <DisplayName>@DisplayName@</DisplayName>
+    <PublisherDisplayName>@PublisherDisplayName@</PublisherDisplayName>
+    <Description>SIEM log generation and UDP, TCP, TLS or file transmission.</Description>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+  <Resources>
+    <Resource Language="ko-KR" />
+    <Resource Language="en-US" />
+  </Resources>
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="@MaxVersionTested@" />
+  </Dependencies>
+  <Applications>
+    <Application Id="LogGenerator" Executable="LogGenerator.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="@DisplayName@" Description="SIEM log generation and transmission."
+                          Square150x150Logo="Assets\Square150x150Logo.png"
+                          Square44x44Logo="Assets\Square44x44Logo.png" BackgroundColor="transparent" />
+      <Extensions>
+        <uap3:Extension Category="windows.appExecutionAlias" Executable="LogGeneratorCli.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap3:AppExecutionAlias>
+            <desktop:ExecutionAlias Alias="LogGeneratorCli.exe" />
+          </uap3:AppExecutionAlias>
+        </uap3:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

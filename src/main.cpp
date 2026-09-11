@@ -6,6 +6,7 @@
 #include "infrastructure/async_file_logger.hpp"
 #include "infrastructure/csv_sample_log_source.hpp"
 #include "infrastructure/json_log_catalog.hpp"
+#include "infrastructure/runtime_paths.hpp"
 #include "infrastructure/transport_factory.hpp"
 #include "presentation/app.hpp"
 #ifdef _WIN32
@@ -14,49 +15,11 @@
 #include <Windows.h>
 #else
 #include "infrastructure/posix_execution_runtime.hpp"
-#ifdef __APPLE__
-#include <mach-o/dyld.h>
-#endif
 #endif
 
-#include <array>
-#include <cstdint>
 #include <cstdio>
 #include <exception>
-#include <filesystem>
 #include <string>
-#include <vector>
-
-namespace {
-
-std::filesystem::path executable_directory() {
-#ifdef _WIN32
-    std::array<wchar_t, 32'768> buffer{};
-    const DWORD length = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
-    if (length == 0 || length >= static_cast<DWORD>(buffer.size())) {
-        return std::filesystem::current_path();
-    }
-    return std::filesystem::path(std::wstring(buffer.data(), length)).parent_path();
-#elif defined(__APPLE__)
-    std::uint32_t buffer_size = 1024;
-    std::vector<char> buffer(buffer_size);
-    if (_NSGetExecutablePath(buffer.data(), &buffer_size) != 0) {
-        buffer.resize(buffer_size);
-        if (_NSGetExecutablePath(buffer.data(), &buffer_size) != 0) {
-            return std::filesystem::current_path();
-        }
-    }
-    std::error_code error;
-    const auto executable = std::filesystem::weakly_canonical(std::filesystem::path(buffer.data()), error);
-    return (error ? std::filesystem::path(buffer.data()) : executable).parent_path();
-#else
-    std::error_code error;
-    const auto executable = std::filesystem::read_symlink("/proc/self/exe", error);
-    return error ? std::filesystem::current_path() : executable.parent_path();
-#endif
-}
-
-}
 
 #ifdef _WIN32
 int WINAPI wWinMain(const HINSTANCE instance, HINSTANCE, PWSTR, const int show_command) {
@@ -65,28 +28,24 @@ int WINAPI wWinMain(const HINSTANCE instance, HINSTANCE, PWSTR, const int show_c
 int main() {
 #endif
     try {
-        const auto application_directory = executable_directory();
-        loggen::infrastructure::AsyncFileLogger logger{application_directory / "logs"};
+        const auto paths = loggen::infrastructure::discover_runtime_paths();
+        loggen::infrastructure::AsyncFileLogger logger{paths.log_directory};
         try {
             logger.info("LogGenerator startup");
+            loggen::infrastructure::initialize_runtime_catalog(paths);
             loggen::infrastructure::JsonLogCatalog catalog;
             loggen::application::LogPreparationCache preparation_cache;
             loggen::application::LogCatalogService catalog_service{catalog, preparation_cache};
             loggen::infrastructure::CsvSampleLogSource sample_log_source;
             loggen::application::SampleLogImportService sample_log_import_service{sample_log_source, catalog_service};
-            const auto generated_directory = application_directory / "generated";
-            loggen::infrastructure::TransportFactory transport_factory{generated_directory};
+            loggen::infrastructure::TransportFactory transport_factory{paths.generated_directory};
 #ifdef _WIN32
             loggen::infrastructure::WindowsExecutionRuntime execution_runtime;
 #else
             loggen::infrastructure::PosixExecutionRuntime execution_runtime;
 #endif
             loggen::application::StressTestService stress_service{transport_factory, execution_runtime, preparation_cache, logger};
-            auto catalog_file = application_directory / "Sample Logs" / "sample_logs.json";
-            if (!std::filesystem::exists(catalog_file)) {
-                catalog_file = std::filesystem::current_path() / "Sample Logs" / "sample_logs.json";
-            }
-            loggen::presentation::App app{catalog_service, sample_log_import_service, logger, stress_service, std::move(catalog_file), generated_directory, application_directory / "fonts"};
+            loggen::presentation::App app{catalog_service, sample_log_import_service, logger, stress_service, paths.catalog_file, paths.generated_directory, paths.font_directory};
 #ifdef _WIN32
             const int result = app.run(instance, show_command);
 #else
@@ -104,7 +63,7 @@ int main() {
             return 1;
         }
     } catch (const std::exception& error) {
-        const auto message = std::string("File logger initialization failed: ") + error.what();
+        const auto message = std::string("Application data initialization failed: ") + error.what();
 #ifdef _WIN32
         loggen::presentation::show_application_error(instance, message);
 #else

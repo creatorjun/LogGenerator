@@ -16,6 +16,7 @@ int main() {
         loggen::tests::run_udp_transport_tests();
         loggen::tests::run_stress_test_service_tests();
         loggen::tests::run_async_file_logger_tests();
+        loggen::tests::run_runtime_paths_tests();
 #ifdef LOGGEN_HAS_WINDOWS_ICON_TESTS
         loggen::tests::run_windows_icon_tests();
 #endif
